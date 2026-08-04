@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+
+	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 )
 
 func TestSendRequiresIdempotencyKey(t *testing.T) {
 	router := echo.New()
-	router.POST("/emails", NewHandler(nil).Send)
+	router.POST("/emails", NewHandler(&emailmodule.Service{}).Send)
 	request := httptest.NewRequest(http.MethodPost, "/emails", strings.NewReader(`{}`))
 	request.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	response := httptest.NewRecorder()
