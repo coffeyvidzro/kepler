@@ -2,23 +2,37 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	legacy "github.com/coffeyvidzro/dugble/server/internal/database"
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrNilTransactionOperation = legacy.ErrNilTransactionOperation
+var ErrNilTransactionOperation = errors.New("transaction operation is required")
 
-type TransactionBeginner = legacy.TransactionBeginner
+type TransactionBeginner interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}
 
 func InTransaction(ctx context.Context, beginner TransactionBeginner, operation func(pgx.Tx) error) error {
-	return legacy.InTransaction(ctx, beginner, operation)
+	return InTransactionWithOptions(ctx, beginner, pgx.TxOptions{}, operation)
 }
 
 func InTransactionWithOptions(ctx context.Context, beginner TransactionBeginner, options pgx.TxOptions, operation func(pgx.Tx) error) error {
-	return legacy.InTransactionWithOptions(ctx, beginner, options, operation)
+	if operation == nil { return ErrNilTransactionOperation }
+	if beginner == nil { return errors.New("transaction beginner is required") }
+	tx, err := beginner.BeginTx(ctx, options)
+	if err != nil { return fmt.Errorf("begin transaction: %w", err) }
+	defer func(){ _ = tx.Rollback(ctx) }()
+	if err := operation(tx); err != nil { return err }
+	if err := tx.Commit(ctx); err != nil { return fmt.Errorf("commit transaction: %w", err) }
+	return nil
 }
 
 func InTransactionResult[T any](ctx context.Context, beginner TransactionBeginner, operation func(pgx.Tx) (T, error)) (T, error) {
-	return legacy.InTransactionResult(ctx, beginner, operation)
+	var result T
+	if operation == nil { return result, ErrNilTransactionOperation }
+	err := InTransaction(ctx, beginner, func(tx pgx.Tx) error { var err error; result, err = operation(tx); return err })
+	if err != nil { var zero T; return zero, err }
+	return result, nil
 }
