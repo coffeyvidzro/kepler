@@ -1,8 +1,11 @@
+// Package httputil contains the shared JSON response contract for Echo HTTP
+// handlers.
 package httputil
 
 import (
-	"errors"
+	stderrors "errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -16,69 +19,86 @@ type Response struct {
 	Error   *ErrorObj `json:"error,omitempty"`
 }
 
-// ErrorObj describes an API error.
+// ErrorObj describes a public API error.
 type ErrorObj struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// OK sends a 200 response with data.
+// JSON sends a successful JSON response with status.
+func JSON(c *echo.Context, status int, data any) error {
+	if status == http.StatusNoContent {
+		return c.NoContent(status)
+	}
+	return c.JSON(status, Response{Success: true, Data: data})
+}
+
 func OK(c *echo.Context, data any) error {
-	return c.JSON(http.StatusOK, Response{
-		Success: true,
-		Data:    data,
-	})
+	return JSON(c, http.StatusOK, data)
 }
 
-// Created sends a 201 response with data.
 func Created(c *echo.Context, data any) error {
-	return c.JSON(http.StatusCreated, Response{
-		Success: true,
-		Data:    data,
-	})
+	return JSON(c, http.StatusCreated, data)
 }
 
-// Accepted sends a 202 response for work accepted for asynchronous processing.
 func Accepted(c *echo.Context, data any) error {
-	return c.JSON(http.StatusAccepted, Response{Success: true, Data: data})
+	return JSON(c, http.StatusAccepted, data)
 }
 
-// Partial sends a response that includes committed data plus an error.
+func NoContent(c *echo.Context) error {
+	return c.NoContent(http.StatusNoContent)
+}
+
+// Partial sends committed data together with a public error description.
 func Partial(c *echo.Context, status int, data any, err error) error {
-	errObj := &ErrorObj{
-		Code:    "INTERNAL_ERROR",
-		Message: "An unexpected error occurred",
+	if status < http.StatusBadRequest || status > 599 {
+		status = http.StatusInternalServerError
 	}
-
-	if appErr, ok := errors.AsType[*apperrors.AppError](err); ok {
-		errObj.Code = appErr.Code
-		errObj.Message = appErr.Message
-	}
-
-	return c.JSON(status, Response{
-		Success: false,
-		Data:    data,
-		Error:   errObj,
-	})
+	_, publicError := describeError(err)
+	return c.JSON(status, Response{Success: false, Data: data, Error: publicError})
 }
 
-// Error sends an error response based on AppError.
+// Error sends a safe error response. Internal causes are retained in the error
+// chain for logging but never included in the JSON body.
 func Error(c *echo.Context, err error) error {
-	status := http.StatusInternalServerError
+	status, publicError := describeError(err)
+	return c.JSON(status, Response{Success: false, Error: publicError})
+}
 
-	errObj := &ErrorObj{
-		Code:    "INTERNAL_ERROR",
+func describeError(err error) (int, *ErrorObj) {
+	if appErr, ok := apperrors.As(err); ok {
+		return appErr.Status, &ErrorObj{Code: appErr.Code, Message: appErr.Message}
+	}
+
+	var httpErr *echo.HTTPError
+	if stderrors.As(err, &httpErr) {
+		status := httpErr.Code
+		if status < http.StatusBadRequest || status > 599 {
+			status = http.StatusInternalServerError
+		}
+		message := http.StatusText(status)
+		if status < http.StatusInternalServerError {
+			if value, ok := httpErr.Message.(string); ok && strings.TrimSpace(value) != "" {
+				message = strings.TrimSpace(value)
+			}
+		}
+		return status, &ErrorObj{Code: codeForStatus(status), Message: message}
+	}
+
+	return http.StatusInternalServerError, &ErrorObj{
+		Code:    apperrors.CodeInternal,
 		Message: "An unexpected error occurred",
 	}
+}
 
-	if appErr, ok := errors.AsType[*apperrors.AppError](err); ok {
-		status = appErr.Status
-		errObj.Code = appErr.Code
-		errObj.Message = appErr.Message
+func codeForStatus(status int) string {
+	if status == http.StatusInternalServerError {
+		return apperrors.CodeInternal
 	}
-
-	return c.JSON(status, Response{
-		Success: false,
-		Error:   errObj,
-	})
+	code := strings.TrimSpace(strings.ToUpper(http.StatusText(status)))
+	code = strings.NewReplacer("-", "_", " ", "_").Replace(code)
+	if code == "" {
+		return apperrors.CodeInternal
+	}
+	return code
 }
