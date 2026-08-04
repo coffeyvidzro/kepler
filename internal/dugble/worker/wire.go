@@ -25,7 +25,7 @@ import (
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
 	verifyfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/feedback"
-	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhooks"
+	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
 	smsintegration "github.com/coffeyvidzro/dugble/server/internal/integration/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/arkesel"
 	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/celcom"
@@ -158,9 +158,9 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	emailFeedbackReconciler := emailfeedback.NewObservedReconciler(
 		emailFeedbackRepository,
 		emailfeedback.ReconcilerConfig{
-			PollInterval: 5 * time.Second,
-			BatchSize:    25,
-			Concurrency:  5,
+			PollInterval:  5 * time.Second,
+			BatchSize:     25,
+			Concurrency:   5,
 			LeaseDuration: 2 * time.Minute,
 			HandleTimeout: 30 * time.Second,
 		},
@@ -175,13 +175,13 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		domainRepository,
 		domainService,
 		domainreconciliation.Config{
-			PollInterval:          30 * time.Second,
-			BatchSize:             25,
-			Concurrency:           5,
-			LockTimeout:           2 * time.Minute,
-			CheckTimeout:          20 * time.Second,
-			HealthCheckInterval:   24 * time.Hour,
-			HealthRetryInterval:   time.Hour,
+			PollInterval:           30 * time.Second,
+			BatchSize:              25,
+			Concurrency:            5,
+			LockTimeout:            2 * time.Minute,
+			CheckTimeout:           20 * time.Second,
+			HealthCheckInterval:    24 * time.Hour,
+			HealthRetryInterval:    time.Hour,
 			HealthFailureThreshold: 3,
 		},
 		domainWorkerID,
@@ -266,7 +266,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		db,
 		webhookdelivery.RepositoryConfig{AutoDisableAfter: 20},
 	)
-	webhookHandler := webhookdelivery.NewHandler(
+	webhookProcessor := webhookdelivery.NewProcessor(
 		webhookRepository,
 		webhookdelivery.NewClient(10*time.Second),
 		webhookdelivery.DefaultRetryPolicy(),
@@ -274,12 +274,12 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	)
 	webhookConsumer := webhookdelivery.NewConsumer(
 		webhookRepository,
-		webhookHandler,
+		webhookProcessor,
 		webhookdelivery.ConsumerConfig{
-			PollInterval: 500 * time.Millisecond,
-			BatchSize:    50,
-			Concurrency:  10,
-			LockTimeout:  30 * time.Second,
+			PollInterval:  500 * time.Millisecond,
+			BatchSize:     50,
+			Concurrency:   10,
+			LockTimeout:   30 * time.Second,
 			HandleTimeout: 15 * time.Second,
 		},
 		webhookWorkerID,

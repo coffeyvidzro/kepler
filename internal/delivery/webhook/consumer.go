@@ -1,4 +1,4 @@
-package webhookdelivery
+package webhook
 
 import (
 	"context"
@@ -10,11 +10,7 @@ import (
 	"time"
 )
 
-type claimStore interface {
-	Claim(context.Context, string, int32, time.Time) ([]ClaimedDelivery, error)
-}
-
-type deliveryHandler interface {
+type deliveryProcessor interface {
 	Handle(context.Context, ClaimedDelivery) error
 }
 
@@ -27,13 +23,13 @@ type ConsumerConfig struct {
 }
 
 type Consumer struct {
-	store    claimStore
-	handler  deliveryHandler
-	config   ConsumerConfig
-	workerID string
+	queue     ClaimQueue
+	processor deliveryProcessor
+	config    ConsumerConfig
+	workerID  string
 }
 
-func NewConsumer(store claimStore, handler deliveryHandler, config ConsumerConfig, workerID string) *Consumer {
+func NewConsumer(queue ClaimQueue, processor deliveryProcessor, config ConsumerConfig, workerID string) *Consumer {
 	if config.PollInterval <= 0 {
 		config.PollInterval = 500 * time.Millisecond
 	}
@@ -50,35 +46,35 @@ func NewConsumer(store claimStore, handler deliveryHandler, config ConsumerConfi
 		config.HandleTimeout = 15 * time.Second
 	}
 	return &Consumer{
-		store: store, handler: handler, config: config,
+		queue: queue, processor: processor, config: config,
 		workerID: strings.TrimSpace(workerID),
 	}
 }
 
-func (c *Consumer) Run(ctx context.Context) error {
-	if c == nil || c.store == nil {
-		return errors.New("webhook delivery claim store is not configured")
+func (consumer *Consumer) Run(ctx context.Context) error {
+	if consumer == nil || consumer.queue == nil {
+		return ErrQueueNotConfigured
 	}
-	if c.handler == nil {
-		return errors.New("webhook delivery handler is not configured")
+	if consumer.processor == nil {
+		return ErrProcessorNotConfigured
 	}
-	if c.workerID == "" {
+	if consumer.workerID == "" {
 		return errors.New("webhook delivery worker id is required")
 	}
 
 	for {
-		processed, err := c.processBatch(ctx)
+		processed, err := consumer.processBatch(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
 			return err
 		}
-		if processed == int(c.config.BatchSize) {
+		if processed == int(consumer.config.BatchSize) {
 			continue
 		}
 
-		timer := time.NewTimer(c.config.PollInterval)
+		timer := time.NewTimer(consumer.config.PollInterval)
 		select {
 		case <-ctx.Done():
 			if !timer.Stop() {
@@ -90,9 +86,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 }
 
-func (c *Consumer) processBatch(ctx context.Context) (int, error) {
-	staleBefore := time.Now().UTC().Add(-c.config.LockTimeout)
-	deliveries, err := c.store.Claim(ctx, c.workerID, c.config.BatchSize, staleBefore)
+func (consumer *Consumer) processBatch(ctx context.Context) (int, error) {
+	staleBefore := time.Now().UTC().Add(-consumer.config.LockTimeout)
+	deliveries, err := consumer.queue.Claim(ctx, consumer.workerID, consumer.config.BatchSize, staleBefore)
 	if err != nil {
 		return 0, fmt.Errorf("claim webhook deliveries: %w", err)
 	}
@@ -100,31 +96,24 @@ func (c *Consumer) processBatch(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
-	semaphore := make(chan struct{}, c.config.Concurrency)
+	semaphore := make(chan struct{}, consumer.config.Concurrency)
 	var group sync.WaitGroup
 
 dispatchLoop:
 	for _, delivery := range deliveries {
-		if ctx.Err() != nil {
-			break
-		}
 		select {
 		case semaphore <- struct{}{}:
 		case <-ctx.Done():
 			break dispatchLoop
-		}
-		if ctx.Err() != nil {
-			<-semaphore
-			break
 		}
 		group.Add(1)
 		go func(delivery ClaimedDelivery) {
 			defer group.Done()
 			defer func() { <-semaphore }()
 
-			handleContext, cancel := context.WithTimeout(ctx, c.config.HandleTimeout)
+			handleContext, cancel := context.WithTimeout(ctx, consumer.config.HandleTimeout)
 			defer cancel()
-			if err := c.handler.Handle(handleContext, delivery); err != nil && ctx.Err() == nil {
+			if err := consumer.processor.Handle(handleContext, delivery); err != nil && ctx.Err() == nil {
 				slog.Error(
 					"webhook delivery failed",
 					"delivery_id", delivery.ID,

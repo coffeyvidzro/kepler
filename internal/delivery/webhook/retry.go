@@ -1,4 +1,4 @@
-package webhookdelivery
+package webhook
 
 import "time"
 
@@ -20,8 +20,8 @@ func DefaultRetryPolicy() RetryPolicy {
 	return RetryPolicy{Schedule: append([]time.Duration(nil), defaultRetrySchedule...)}
 }
 
-func (p RetryPolicy) Next(attempt int, now time.Time) (time.Time, bool) {
-	schedule := p.Schedule
+func (policy RetryPolicy) Next(attempt int, now time.Time) (time.Time, bool) {
+	schedule := policy.Schedule
 	if len(schedule) == 0 {
 		schedule = defaultRetrySchedule
 	}
