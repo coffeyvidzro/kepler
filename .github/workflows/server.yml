@@ -69,7 +69,6 @@ jobs:
         run: go test -race ./...
 
   docker:
-    name: Docker Compose smoke test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
