@@ -1,0 +1,44 @@
+{{template "layout_start" .}}
+<form class="filters" method="get">
+  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="team, domain, provider"></label>
+  <label>Status <input type="search" name="status" value="{{.Filter.Status}}" placeholder="pending"></label>
+  <button type="submit">Filter</button>
+  <a href="/domains">Clear</a>
+</form>
+<table>
+  <thead><tr><th>Team</th><th>Domain</th><th>Provider</th><th>Status</th><th>Created</th><th>ID</th><th>Review</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr>
+      <td>{{.TeamName}}</td>
+      <td><a href="/domains/{{.ID}}">{{.Domain}}</a></td>
+      <td>{{.Provider}}</td>
+      <td>{{.Status}}</td>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td><code>{{.ID}}</code></td>
+      <td>
+        {{if eq .Status "pending"}}
+        <div class="actions">
+          <form method="post" action="/domains/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="verify">
+            <button type="submit">Verify</button>
+          </form>
+          <form method="post" action="/domains/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="fail">
+            <input type="text" name="reason" placeholder="Reason" required>
+            <button class="danger" type="submit">Fail</button>
+          </form>
+        </div>
+        {{else}}
+        —
+        {{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7">No domains found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

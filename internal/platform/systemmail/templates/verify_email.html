@@ -1,0 +1,11 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>
+      Thanks for signing up for Dugble. Please verify your email address by
+      clicking the link below. This verification link will expire soon.
+    </p>
+    <p><a href="{{.VerificationURL}}">Verify your email address</a></p>
+    <p>
+      If you did not sign up for Dugble, you can safely ignore this email.
+    </p>
+{{template "email.footer" .}}

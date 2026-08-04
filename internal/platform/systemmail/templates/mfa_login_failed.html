@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Someone with your password failed the multi-factor authentication step while trying to access your Dugble account.</p>
+    <p>Your account was not accessed through this attempt.</p>
+    <p>If this was not you, reset your password immediately and review your active sessions.</p>
+{{template "email.footer" .}}

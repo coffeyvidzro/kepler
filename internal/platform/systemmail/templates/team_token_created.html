@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>A team API token named <strong>{{.TokenName}}</strong> was created.</p>
+    <dl><dt>Team ID</dt><dd>{{.TeamID}}</dd><dt>Token prefix</dt><dd>{{.TokenPrefix}}</dd></dl>
+    <p>If you did not create this token, revoke it immediately and review your team's tokens.</p>
+{{template "email.footer" .}}

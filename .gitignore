@@ -1,0 +1,89 @@
+# --- IDE & System ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.vim/
+.project
+.classpath
+*.iml
+
+# --- Dependencies & Build Artifacts ---
+# Recursive: Catches node_modules in ANY folder
+**/node_modules/
+**/dist/
+**/build/
+**/bin/
+**/tmp/
+**/.next/
+**/.mintlify/
+**/.cache/
+**/out/
+
+# --- Go Specific ---
+# Exclude compiled binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.o
+*.a
+
+# --- Secrets ---
+# Use a wildcard to catch .env, .env.local, .env.development, etc.
+.env*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# --- Local databases / assets ---
+**/GeoLite2-*.mmdb
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Tooling Caches ---
+.golangci-cache/
+.atlas/
+.tmp/
+.precommit/
+.turbo/
+
+# --- OpenTofu ---
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+terraform.tfvars
+crash.log
+crash.*.log
+
+
+# --- Python Specific ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.pyc
+.pytest_cache/
+.coverage
+*.egg-info/
+dist/
+build/

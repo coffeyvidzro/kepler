@@ -1,0 +1,38 @@
+{{template "layout_start" .}}
+{{$detail := .Data}}
+<p><a href="/sender-ids">← Back to sender IDs</a></p>
+<section class="detail-grid">
+  <article><span>Name</span><strong>{{$detail.Name}}</strong></article>
+  <article><span>Status</span><strong>{{$detail.Status}}</strong></article>
+  <article><span>Team</span><strong>{{$detail.TeamName}}</strong></article>
+  <article><span>Country</span><strong>{{$detail.CountryCode}}</strong></article>
+  <article><span>Provider</span><strong>{{$detail.Provider}}</strong></article>
+  <article><span>Purpose</span><strong>{{$detail.Purpose}}</strong></article>
+  <article><span>Created</span><strong>{{$detail.CreatedAt.Format "2006-01-02 15:04"}}</strong></article>
+  <article><span>Updated</span><strong>{{$detail.UpdatedAt.Format "2006-01-02 15:04"}}</strong></article>
+  <article><span>ID</span><strong><code>{{$detail.ID}}</code></strong></article>
+  <article><span>Team ID</span><strong><code>{{$detail.TeamID}}</code></strong></article>
+  <article><span>Created by</span><strong><code>{{$detail.CreatedBy}}</code></strong></article>
+  <article><span>Approved at</span><strong>{{$detail.ApprovedAt}}</strong></article>
+  <article><span>Rejected at</span><strong>{{$detail.RejectedAt}}</strong></article>
+  <article><span>Suspended at</span><strong>{{$detail.SuspendedAt}}</strong></article>
+</section>
+{{if $detail.RejectionReason}}
+<h2>Rejection reason</h2>
+<p>{{$detail.RejectionReason}}</p>
+{{end}}
+<h2>Status</h2>
+<form class="control-panel" method="post" action="/sender-ids/{{$detail.ID}}/status">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Action
+    <select name="action" required>
+      <option value="approve">Approve</option>
+      <option value="reject">Reject</option>
+    </select>
+  </label>
+  <label>Reason (required for rejection)
+    <input type="text" name="reason" placeholder="Policy or carrier reason">
+  </label>
+  <button type="submit">Update status</button>
+</form>
+{{template "layout_end" .}}

@@ -1,0 +1,12 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>
+      {{.InviterName}} invited you to join {{.TeamName}} as {{.Role}} on
+      Dugble.
+    </p>
+    <p><a href="{{.InvitationURL}}">Review your invitation</a></p>
+    <p>
+      If you were not expecting this invitation, you can safely ignore this
+      email.
+    </p>
+{{template "email.footer" .}}

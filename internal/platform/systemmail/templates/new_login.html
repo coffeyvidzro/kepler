@@ -1,0 +1,10 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>A new sign-in was detected on your Dugble account.</p>
+    <dl>
+      <dt>Authentication method</dt><dd>{{.Method}}</dd>
+      <dt>IP address</dt><dd>{{.IPAddress}}</dd>
+      <dt>Device</dt><dd>{{.UserAgent}}</dd>
+    </dl>
+    <p>If this was not you, reset your password and revoke the session immediately.</p>
+{{template "email.footer" .}}

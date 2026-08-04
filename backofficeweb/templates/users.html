@@ -1,0 +1,17 @@
+{{template "layout_start" .}}
+<form class="filters" method="get">
+  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="email or name"></label>
+  <button type="submit">Filter</button>
+  <a href="/users">Clear</a>
+</form>
+<table>
+  <thead><tr><th>Email</th><th>Name</th><th>Verified</th><th>Created</th><th>ID</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr><td><a href="/users/{{.ID}}">{{.Email}}</a></td><td>{{.Name}}</td><td>{{.EmailVerified}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td><code>{{.ID}}</code></td></tr>
+  {{else}}
+    <tr><td colspan="5">No users found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

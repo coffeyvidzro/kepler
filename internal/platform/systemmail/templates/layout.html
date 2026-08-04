@@ -1,0 +1,12 @@
+{{define "email.header" -}}
+<!doctype html>
+<html lang="en">
+  <body>
+    {{with .PreviewText}}<span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden">{{.}}</span>{{end}}
+{{- end}}
+
+{{define "email.footer" -}}
+    <p>Thanks,<br>The Dugble Team</p>
+  </body>
+</html>
+{{- end}}

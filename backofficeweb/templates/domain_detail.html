@@ -1,0 +1,39 @@
+{{template "layout_start" .}}
+{{$detail := .Data}}
+<p><a href="/domains">← Back to domains</a></p>
+<section class="detail-grid">
+  <article><span>Domain</span><strong>{{$detail.Domain}}</strong></article>
+  <article><span>Status</span><strong>{{$detail.Status}}</strong></article>
+  <article><span>Team</span><strong>{{$detail.TeamName}}</strong></article>
+  <article><span>Provider</span><strong>{{$detail.Provider}}</strong></article>
+  <article><span>Provider region</span><strong>{{$detail.ProviderRegion}}</strong></article>
+  <article><span>Created</span><strong>{{$detail.CreatedAt.Format "2006-01-02 15:04"}}</strong></article>
+  <article><span>Updated</span><strong>{{$detail.UpdatedAt.Format "2006-01-02 15:04"}}</strong></article>
+  <article><span>ID</span><strong><code>{{$detail.ID}}</code></strong></article>
+  <article><span>Team ID</span><strong><code>{{$detail.TeamID}}</code></strong></article>
+  <article><span>Created by</span><strong><code>{{$detail.CreatedBy}}</code></strong></article>
+  <article><span>Last checked</span><strong>{{$detail.LastCheckedAt}}</strong></article>
+  <article><span>Verified at</span><strong>{{$detail.VerifiedAt}}</strong></article>
+  <article><span>Disabled at</span><strong>{{$detail.DisabledAt}}</strong></article>
+</section>
+{{if $detail.FailureReason}}
+<h2>Failure reason</h2>
+<p>{{$detail.FailureReason}}</p>
+{{end}}
+<h2>Verification records</h2>
+<pre>{{$detail.VerificationRecords}}</pre>
+<h2>Status</h2>
+<form class="control-panel" method="post" action="/domains/{{$detail.ID}}/status">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Action
+    <select name="action" required>
+      <option value="verify">Verify</option>
+      <option value="fail">Fail</option>
+    </select>
+  </label>
+  <label>Reason (required for failure)
+    <input type="text" name="reason" placeholder="DNS or provider reason">
+  </label>
+  <button type="submit">Update status</button>
+</form>
+{{template "layout_end" .}}

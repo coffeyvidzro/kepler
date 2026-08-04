@@ -1,0 +1,21 @@
+{{template "layout_start" .}}
+{{$detail := .Data}}
+<p><a href="/users">← Back to users</a></p>
+<section class="detail-grid">
+  <article><span>Email</span><strong>{{$detail.User.Email}}</strong></article>
+  <article><span>Name</span><strong>{{$detail.User.Name}}</strong></article>
+  <article><span>Email verified</span><strong>{{$detail.User.EmailVerified}}</strong></article>
+  <article><span>Created</span><strong>{{$detail.User.CreatedAt.Format "2006-01-02 15:04"}}</strong></article>
+</section>
+<h2>Teams</h2>
+<table>
+  <thead><tr><th>Team</th><th>Role</th><th>Status</th><th>ID</th></tr></thead>
+  <tbody>
+  {{range $detail.Teams}}
+    <tr><td><a href="/teams/{{.ID}}">{{.Name}}</a></td><td>{{.Role}}</td><td>{{.Status}}</td><td><code>{{.ID}}</code></td></tr>
+  {{else}}
+    <tr><td colspan="4">This user is not a member of any teams.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

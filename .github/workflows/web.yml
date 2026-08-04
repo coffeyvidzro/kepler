@@ -1,0 +1,43 @@
+name: Web CI
+
+on:
+  push:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NODE_ENV: production
+      BACKEND_URL: "http://localhost:8080"
+      NEXT_PUBLIC_BASE_URL: "https://dugble.com"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: web/package.json
+
+      - name: Bun install
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun run test
+
+      - name: Biome Lint
+        run: bun run lint
+
+      - name: Run Build
+        run: bun run build

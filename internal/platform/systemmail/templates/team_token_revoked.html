@@ -1,0 +1,6 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>The team API token named <strong>{{.TokenName}}</strong> was revoked.</p>
+    <dl><dt>Team ID</dt><dd>{{.TeamID}}</dd><dt>Token prefix</dt><dd>{{.TokenPrefix}}</dd></dl>
+    <p>The token can no longer authenticate requests. If this was unexpected, review your team's administrators and tokens.</p>
+{{template "email.footer" .}}

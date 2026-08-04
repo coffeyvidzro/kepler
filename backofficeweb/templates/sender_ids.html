@@ -1,0 +1,44 @@
+{{template "layout_start" .}}
+<form class="filters" method="get">
+  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="team, sender, country"></label>
+  <label>Status <input type="search" name="status" value="{{.Filter.Status}}" placeholder="pending"></label>
+  <button type="submit">Filter</button>
+  <a href="/sender-ids">Clear</a>
+</form>
+<table>
+  <thead><tr><th>Team</th><th>Name</th><th>Country</th><th>Status</th><th>Created</th><th>ID</th><th>Review</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr>
+      <td>{{.TeamName}}</td>
+      <td><a href="/sender-ids/{{.ID}}">{{.Name}}</a></td>
+      <td>{{.CountryCode}}</td>
+      <td>{{.Status}}</td>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td><code>{{.ID}}</code></td>
+      <td>
+        {{if eq .Status "pending"}}
+        <div class="actions">
+          <form method="post" action="/sender-ids/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="approve">
+            <button type="submit">Approve</button>
+          </form>
+          <form method="post" action="/sender-ids/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="reject">
+            <input type="text" name="reason" placeholder="Reason" required>
+            <button class="danger" type="submit">Reject</button>
+          </form>
+        </div>
+        {{else}}
+        —
+        {{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7">No sender IDs found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

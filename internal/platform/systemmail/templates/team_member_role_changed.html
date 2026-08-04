@@ -1,0 +1,5 @@
+{{template "email.header" .}}
+    <p>Hi {{.Name}},</p>
+    <p>Your role on the <strong>{{.Team}}</strong> team was changed to <strong>{{.Role}}</strong>.</p>
+    <p>Your permissions now reflect the new role. If you believe this was a mistake, contact a team owner.</p>
+{{template "email.footer" .}}

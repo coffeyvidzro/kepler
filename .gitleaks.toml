@@ -1,0 +1,19 @@
+title = "Dugble Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Atlas migration checksums are integrity hashes, not credentials."
+  paths = ['''^server/migrations/atlas\.sum$''']
+
+  [[rules.allowlists]]
+  description = "Documentation idempotency keys are public request examples, not credentials."
+  regexTarget = "secret"
+  regexes = [
+    '''^reschedule-order-1234-v2$''',
+    '''^cancel-order-1234$''',
+  ]
