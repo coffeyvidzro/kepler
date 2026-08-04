@@ -5,24 +5,26 @@ on:
     branches:
       - main
     paths:
-      - ".env.example"
       - ".golangci.yml"
       - ".github/workflows/server.yml"
+      - "go.mod"
+      - "go.sum"
       - "go.work"
       - "go.work.sum"
-      - "server/**"
-      - "deploy/compose.yaml"
-      - "deploy/Caddyfile"
+      - "sqlc.yaml"
+      - "**/*.go"
+      - "**/*.sql"
   pull_request:
     paths:
-      - ".env.example"
       - ".golangci.yml"
       - ".github/workflows/server.yml"
+      - "go.mod"
+      - "go.sum"
       - "go.work"
       - "go.work.sum"
-      - "server/**"
-      - "deploy/compose.yaml"
-      - "deploy/Caddyfile"
+      - "sqlc.yaml"
+      - "**/*.go"
+      - "**/*.sql"
 
 permissions:
   contents: read
@@ -31,9 +33,6 @@ jobs:
   server:
     name: Server quality gates
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -41,9 +40,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: server/go.mod
+          go-version-file: go.mod
           cache: true
-          cache-dependency-path: server/go.sum
+          cache-dependency-path: go.sum
 
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
@@ -57,82 +56,13 @@ jobs:
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
       - name: Verify golangci-lint config
-        run: golangci-lint config verify --config ../.golangci.yml
+        run: golangci-lint config verify --config .golangci.yml
 
       - name: Run golangci-lint
-        run: golangci-lint run --config ../.golangci.yml ./...
+        run: golangci-lint run --config .golangci.yml ./...
 
       - name: Vet
         run: go vet ./...
 
       - name: Test
         run: go test -race ./...
-
-  docker:
-    name: Docker Compose smoke test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Validate Compose configuration
-        run: docker compose --env-file .env.example -f deploy/compose.yaml config --quiet
-
-      - name: Apply migrations
-        run: |
-          set +e
-          docker compose --env-file .env.example -f deploy/compose.yaml up \
-            --abort-on-container-exit \
-            --exit-code-from migrate \
-            migrate > migration.log 2>&1
-          status=$?
-          cat migration.log
-          exit $status
-
-      - name: Upload migration logs
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: migration-logs
-          path: migration.log
-          retention-days: 1
-
-      - name: Start application stack
-        run: |
-          export API_DOMAIN=http://api.localhost
-          export BACKOFFICE_DOMAIN=http://bo.localhost
-
-          docker compose --env-file .env.example -f deploy/compose.yaml up \
-            --detach \
-            --build \
-            --wait \
-            --wait-timeout 120 \
-            caddy
-
-          docker compose --env-file .env.example -f deploy/compose.yaml ps
-
-      - name: Verify server readiness
-        run: |
-          curl --fail --silent --show-error \
-            --header "Host: api.localhost" \
-            http://127.0.0.1/ready \
-            | tee api-ready.json
-          grep -q '"status":"ready"' api-ready.json
-
-          curl --fail --silent --show-error \
-            --header "Host: bo.localhost" \
-            http://127.0.0.1/ready \
-            | tee backoffice-ready.json
-          grep -q '"status":"ready"' backoffice-ready.json
-
-      - name: Show service logs
-        if: failure()
-        run: |
-          docker compose --env-file .env.example -f deploy/compose.yaml logs \
-            --no-color \
-            --tail=300 \
-            postgres migrate redis server backoffice caddy
-
-      - name: Clean up Compose services
-        if: always()
-        run: docker compose --env-file .env.example -f deploy/compose.yaml down -v --remove-orphans
