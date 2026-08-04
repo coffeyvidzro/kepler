@@ -27,15 +27,22 @@ func NewWithResolver(resolver *net.Resolver) *Resolver {
 }
 
 // Verify reports whether the expected DNS record is present for domain.
-func (r *Resolver) Verify(ctx context.Context, domain string, record platformemail.VerificationRecord) bool {
-	if r == nil || r.resolver == nil {
+func (resolver *Resolver) Verify(
+	ctx context.Context,
+	domain string,
+	record platformemail.VerificationRecord,
+) bool {
+	if ctx == nil || resolver == nil || resolver.resolver == nil {
 		return false
 	}
 
-	fqdn := strings.TrimSuffix(record.Name, ".") + "." + strings.TrimSuffix(domain, ".")
+	name := fullyQualifiedName(domain, record.Name)
+	if name == "" {
+		return false
+	}
 	switch record.Type {
 	case platformemail.RecordTypeTXT:
-		values, err := r.resolver.LookupTXT(ctx, fqdn)
+		values, err := resolver.resolver.LookupTXT(ctx, name)
 		if err != nil {
 			return false
 		}
@@ -46,19 +53,39 @@ func (r *Resolver) Verify(ctx context.Context, domain string, record platformema
 			}
 		}
 	case platformemail.RecordTypeMX:
-		values, err := r.resolver.LookupMX(ctx, fqdn)
+		values, err := resolver.resolver.LookupMX(ctx, name)
 		if err != nil {
 			return false
 		}
-		expected := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.Value)), ".")
+		expected := normalizeHostname(record.Value)
 		for _, value := range values {
-			if strings.TrimSuffix(strings.ToLower(value.Host), ".") == expected &&
+			if normalizeHostname(value.Host) == expected &&
 				(record.Priority == nil || int(value.Pref) == *record.Priority) {
 				return true
 			}
 		}
+	}
 
 	return false
+}
+
+func fullyQualifiedName(domain string, recordName string) string {
+	domain = normalizeHostname(domain)
+	recordName = normalizeHostname(recordName)
+	if domain == "" {
+		return ""
+	}
+	if recordName == "" || recordName == "@" {
+		return domain
+	}
+	if recordName == domain || strings.HasSuffix(recordName, "."+domain) {
+		return recordName
+	}
+	return recordName + "." + domain
+}
+
+func normalizeHostname(value string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
 func normalizeValue(value string) string {
