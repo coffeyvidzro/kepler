@@ -34,11 +34,6 @@ type AWSConfig struct {
 	SNSTopicARNs                     []string `env:"SNS_TOPIC_ARNS" envSeparator:","`
 }
 
-type BackofficeConfig struct {
-	HTTPPort    string   `env:"HTTP_PORT" envDefault:"8081"`
-	AdminEmails []string `env:"ADMIN_EMAILS" envSeparator:","`
-}
-
 type NewRelicConfig struct {
 	LicenseKey                string `env:"LICENSE_KEY"`
 	DistributedTracingEnabled bool   `env:"DISTRIBUTED_TRACING_ENABLED" envDefault:"true"`
@@ -53,25 +48,24 @@ type SentryConfig struct {
 }
 
 type Config struct {
-	AppEnv         string           `env:"APP_ENV"   envDefault:"development"`
-	HTTPPort       string           `env:"HTTP_PORT" envDefault:"8080"`
-	DatabaseURL    string           `env:"DATABASE_URL,required,notEmpty"`
-	RedisURL       string           `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
-	CORSOrigins    []string         `env:"CORS_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000,http://127.0.0.1:3000"`
-	ArcjetKey      string           `env:"ARCJET_KEY,required,notEmpty"`
-	FrontendURL    string           `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
-	BackendURL     string           `env:"BACKEND_URL"  envDefault:"http://localhost:8080"`
-	CookieDomain   string           `env:"COOKIE_DOMAIN"`
-	EncryptionKeys []string         `env:"ENCRYPTION_KEYS" envSeparator:","`
-	Verify         VerifyConfig     `envPrefix:"VERIFY_"`
-	AWS            AWSConfig        `envPrefix:"AWS_"`
-	NATSURL        string           `env:"NATS_URL" envDefault:"nats://localhost:4222"`
-	Arkesel        ProviderConfig   `envPrefix:"ARKESEL_"`
-	MNotify        ProviderConfig   `envPrefix:"MNOTIFY_"`
-	Celcom         CelcomConfig     `envPrefix:"CELCOM_"`
-	Backoffice     BackofficeConfig `envPrefix:"BACKOFFICE_"`
-	NewRelic       NewRelicConfig   `envPrefix:"NEW_RELIC_"`
-	Sentry         SentryConfig     `envPrefix:"SENTRY_"`
+	AppEnv         string         `env:"APP_ENV"   envDefault:"development"`
+	HTTPPort       string         `env:"HTTP_PORT" envDefault:"8080"`
+	DatabaseURL    string         `env:"DATABASE_URL,required,notEmpty"`
+	RedisURL       string         `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
+	CORSOrigins    []string       `env:"CORS_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000,http://127.0.0.1:3000"`
+	ArcjetKey      string         `env:"ARCJET_KEY,required,notEmpty"`
+	FrontendURL    string         `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
+	BackendURL     string         `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
+	CookieDomain   string         `env:"COOKIE_DOMAIN"`
+	EncryptionKeys []string       `env:"ENCRYPTION_KEYS" envSeparator:","`
+	Verify         VerifyConfig   `envPrefix:"VERIFY_"`
+	AWS            AWSConfig      `envPrefix:"AWS_"`
+	NATSURL        string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
+	Arkesel        ProviderConfig `envPrefix:"ARKESEL_"`
+	MNotify        ProviderConfig `envPrefix:"MNOTIFY_"`
+	Celcom         CelcomConfig   `envPrefix:"CELCOM_"`
+	NewRelic       NewRelicConfig `envPrefix:"NEW_RELIC_"`
+	Sentry         SentryConfig   `envPrefix:"SENTRY_"`
 }
 
 func Load() (*Config, error) {
@@ -114,18 +108,10 @@ func (c *Config) normalize() {
 	c.Celcom.APIKey = strings.TrimSpace(c.Celcom.APIKey)
 	c.Celcom.PartnerID = strings.TrimSpace(c.Celcom.PartnerID)
 	c.Celcom.BaseURL = strings.TrimRight(strings.TrimSpace(c.Celcom.BaseURL), "/")
-	c.Backoffice.HTTPPort = strings.TrimSpace(c.Backoffice.HTTPPort)
 	c.NewRelic.LicenseKey = strings.TrimSpace(c.NewRelic.LicenseKey)
 	c.Sentry.DSN = strings.TrimSpace(c.Sentry.DSN)
 	c.Sentry.Release = strings.TrimSpace(c.Sentry.Release)
 	c.CORSOrigins = normalizeStrings(c.CORSOrigins)
-	adminEmails := make([]string, 0, len(c.Backoffice.AdminEmails))
-	for _, email := range c.Backoffice.AdminEmails {
-		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
-			adminEmails = append(adminEmails, email)
-		}
-	}
-	c.Backoffice.AdminEmails = adminEmails
 }
 
 func normalizeStrings(values []string) []string {

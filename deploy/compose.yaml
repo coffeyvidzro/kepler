@@ -43,7 +43,6 @@ services:
     restart: unless-stopped
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
-      BACKOFFICE_DOMAIN: ${BACKOFFICE_DOMAIN:?set BACKOFFICE_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -65,8 +64,6 @@ services:
       start_period: 10s
     depends_on:
       server:
-        condition: service_healthy
-      backoffice:
         condition: service_healthy
 
   postgres:
@@ -294,35 +291,6 @@ services:
       nats-2:
         condition: service_healthy
       nats-3:
-        condition: service_healthy
-
-  backoffice:
-    <<: *app-build
-    container_name: dugble-backoffice
-    restart: unless-stopped
-    command: ["/dugble/backoffice"]
-    environment:
-      <<: *app-env
-      BACKOFFICE_HTTP_PORT: "8081"
-      BACKOFFICE_ADMIN_EMAILS: ${BACKOFFICE_ADMIN_EMAILS:-}
-    expose:
-      - "8081"
-    networks:
-      - dugble-network
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -q -O /dev/null http://127.0.0.1:8081/ready || exit 1",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
         condition: service_healthy
 
 networks:

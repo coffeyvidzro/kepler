@@ -39,4 +39,4 @@ migrate:
 
 .PHONY: restart
 restart:
-	$(COMPOSE) restart server worker backoffice caddy
+	$(COMPOSE) restart server worker caddy

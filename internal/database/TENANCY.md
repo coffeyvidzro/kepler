@@ -13,13 +13,13 @@ The SQL audit permits narrowly listed queries that cannot accept a caller-select
 
 ## Row-level security
 
-PostgreSQL row-level security is intentionally not enabled yet. The API, worker, and backoffice currently share the same database role and connection-pool setup. Enabling policies without separating those roles would either be ineffective (through owner/bypass behavior) or break trusted cross-tenant worker jobs.
+PostgreSQL row-level security is intentionally not enabled yet. The API and worker currently share the same database role and connection-pool setup. Enabling policies without separating those roles would either be ineffective through owner or bypass behavior, or break trusted cross-tenant worker jobs.
 
 Before enabling RLS:
 
-- provision separate API, worker, backoffice, and migration roles;
+- provision separate API, worker, and migration roles;
 - make API repository operations transaction-bound and set a transaction-local tenant ID;
-- define explicit worker/backoffice policies rather than relying on the API policy;
+- define explicit worker policies rather than relying on the API policy;
 - verify pooled connections cannot retain tenant state between transactions;
 - exercise every tenant-owned table with policy integration tests.
 
