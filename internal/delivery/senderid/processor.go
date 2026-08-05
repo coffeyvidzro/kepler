@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
 )
 
 func (consumer *Consumer) process(
 	ctx context.Context,
 	provider platformsenderid.Provider,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 ) error {
 	if claim.ProviderSubmittedAt == nil && !strings.EqualFold(claim.ProviderStatus, providerStatusSubmissionUnknown) {
 		return consumer.submit(ctx, provider, claim)
@@ -24,7 +23,7 @@ func (consumer *Consumer) process(
 func (consumer *Consumer) submit(
 	ctx context.Context,
 	provider platformsenderid.Provider,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 ) error {
 	providerCtx, cancel := context.WithTimeout(ctx, consumer.config.ProviderTimeout)
 	response, err := provider.Create(providerCtx, platformsenderid.CreateRequest{SenderID: claim.Name})
@@ -69,7 +68,7 @@ func (consumer *Consumer) submit(
 func (consumer *Consumer) checkStatus(
 	ctx context.Context,
 	provider platformsenderid.Provider,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 ) error {
 	providerCtx, cancel := context.WithTimeout(ctx, consumer.config.ProviderTimeout)
 	response, err := provider.CheckStatus(providerCtx, claim.Name)
@@ -89,7 +88,7 @@ func (consumer *Consumer) checkStatus(
 
 func (consumer *Consumer) completeStatus(
 	ctx context.Context,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 	response *platformsenderid.StatusResponse,
 ) error {
 	var rejectionReason *string
@@ -123,7 +122,7 @@ func (consumer *Consumer) completeStatus(
 
 func validateCreateResponse(
 	provider platformsenderid.Provider,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 	response *platformsenderid.CreateResponse,
 ) error {
 	if response == nil {
@@ -140,7 +139,7 @@ func validateCreateResponse(
 
 func validateStatusResponse(
 	provider platformsenderid.Provider,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 	response *platformsenderid.StatusResponse,
 ) error {
 	if response == nil {
