@@ -37,9 +37,7 @@ func NewClientWithHTTP(apiKey string, httpClient *http.Client) *Client {
 }
 
 func newClient(baseURL, apiKey string, httpClient *http.Client) *Client {
-	if httpClient == nil {
-		httpClient = platformhttp.NewFixedEndpointClient(baseURL, defaultClientTimeout)
-	}
+	httpClient = platformhttp.ForFixedEndpoint(baseURL, httpClient, defaultClientTimeout)
 	return &Client{
 		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:     strings.TrimSpace(apiKey),
