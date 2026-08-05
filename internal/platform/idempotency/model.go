@@ -1,6 +1,7 @@
 package idempotency
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ var (
 	ErrKeyRequired = errors.New("idempotency key is required")
 	ErrKeyTooLong  = errors.New("idempotency key is too long")
 )
+
+type Lease interface {
+	Release(context.Context) error
+}
 
 func ValidateKey(value string) (string, error) {
 	value = strings.TrimSpace(value)
