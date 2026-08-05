@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 
+	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 )
 
@@ -55,19 +56,19 @@ type Client struct {
 // ProvisionTenant converges an SES tenant and its shared resource associations
 // on Dugble's desired state. Every operation is safe to repeat after a partial
 // failure or a redelivered command.
-func (client *Client) ProvisionTenant(ctx context.Context, request platformemail.TenantProvisionRequest) (platformemail.TenantProvisionResult, error) {
+func (client *Client) ProvisionTenant(ctx context.Context, request emailtenant.ProvisionRequest) (emailtenant.ProvisionResult, error) {
 	tenantClient, err := client.tenantClient(request.Region)
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, err
+		return emailtenant.ProvisionResult{}, err
 	}
 	name := strings.TrimSpace(request.ExternalName)
 	if name == "" {
-		return platformemail.TenantProvisionResult{}, errors.New("SES tenant name is required")
+		return emailtenant.ProvisionResult{}, errors.New("SES tenant name is required")
 	}
 
 	scope, err := suppressionScope(request.SuppressionScope)
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, err
+		return emailtenant.ProvisionResult{}, err
 	}
 	suppression := &sestypes.TenantSuppressionAttributes{
 		SuppressionScope: scope,
@@ -79,10 +80,10 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 
 	tenant, err := createOrGetTenant(ctx, tenantClient, name, suppression)
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, err
+		return emailtenant.ProvisionResult{}, err
 	}
 	if tenant.TenantId == nil || strings.TrimSpace(*tenant.TenantId) == "" || tenant.TenantArn == nil || strings.TrimSpace(*tenant.TenantArn) == "" {
-		return platformemail.TenantProvisionResult{}, errors.New("SES returned incomplete tenant identity")
+		return emailtenant.ProvisionResult{}, errors.New("SES returned incomplete tenant identity")
 	}
 
 	_, err = tenantClient.PutTenantSuppressionAttributes(ctx, &sesv2.PutTenantSuppressionAttributesInput{
@@ -91,7 +92,7 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 		SuppressedReasons: suppression.SuppressedReasons,
 	})
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, fmt.Errorf("configure SES tenant suppression: %w", err)
+		return emailtenant.ProvisionResult{}, fmt.Errorf("configure SES tenant suppression: %w", err)
 	}
 
 	tenantARN := strings.TrimSpace(*tenant.TenantArn)
@@ -102,7 +103,7 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 	for _, configurationSet := range []string{TransactionalConfigurationSet, MarketingConfigurationSet} {
 		resourceARN, arnErr := configurationSetARN(tenantARN, configurationSet)
 		if arnErr != nil {
-			return platformemail.TenantProvisionResult{}, arnErr
+			return emailtenant.ProvisionResult{}, arnErr
 		}
 		resources = append(resources, struct {
 			label string
@@ -111,7 +112,7 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 	}
 	onboardingARN, err := identityARN(tenantARN, platformemail.CustomerOnboardingSESIdentity)
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, err
+		return emailtenant.ProvisionResult{}, err
 	}
 	resources = append(resources, struct {
 		label string
@@ -124,13 +125,13 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 			ResourceArn: aws.String(resource.arn),
 		})
 		if associationErr != nil && !isAlreadyExists(associationErr) {
-			return platformemail.TenantProvisionResult{}, fmt.Errorf("associate SES %s: %w", resource.label, associationErr)
+			return emailtenant.ProvisionResult{}, fmt.Errorf("associate SES %s: %w", resource.label, associationErr)
 		}
 	}
 
 	policyARN, err := reputationPolicyARN(tenantARN, request.ReputationPolicy)
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, err
+		return emailtenant.ProvisionResult{}, err
 	}
 	_, err = tenantClient.UpdateReputationEntityPolicy(ctx, &sesv2.UpdateReputationEntityPolicyInput{
 		ReputationEntityType:      sestypes.ReputationEntityTypeResource,
@@ -138,10 +139,10 @@ func (client *Client) ProvisionTenant(ctx context.Context, request platformemail
 		ReputationEntityPolicy:    aws.String(policyARN),
 	})
 	if err != nil {
-		return platformemail.TenantProvisionResult{}, fmt.Errorf("apply SES tenant reputation policy: %w", err)
+		return emailtenant.ProvisionResult{}, fmt.Errorf("apply SES tenant reputation policy: %w", err)
 	}
 
-	return platformemail.TenantProvisionResult{
+	return emailtenant.ProvisionResult{
 		ExternalID: strings.TrimSpace(*tenant.TenantId),
 		TenantARN:  tenantARN,
 	}, nil
