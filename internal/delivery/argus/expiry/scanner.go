@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"time"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics"
 )
 
 type batchExpirer interface {
@@ -46,12 +44,9 @@ func (scanner *Scanner) Run(ctx context.Context) error {
 
 func (scanner *Scanner) scan(ctx context.Context) {
 	for {
-		started := time.Now()
 		batchCtx, cancel := context.WithTimeout(ctx, scanner.config.BatchTimeout)
 		expired, err := scanner.processor.ExpireBatch(batchCtx, scanner.config.BatchSize)
 		cancel()
-		argusmetrics.Default.Observe("expiry_batch", argusmetrics.Outcome(err), time.Since(started))
-		argusmetrics.Default.AddExpired(expired)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
 				slog.Error("verification expiry batch failed", "error", err)

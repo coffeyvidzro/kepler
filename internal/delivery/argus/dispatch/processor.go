@@ -16,7 +16,6 @@ import (
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics"
 )
 
 type DispatchState struct {
@@ -284,9 +283,7 @@ func NewHandler(repository *Repository, cipher codeCipher, email, sms channelDis
 }
 
 func (processor *Processor) Handle(ctx context.Context, command Command) (err error) {
-	started := time.Now()
 	defer func() {
-		argusmetrics.Default.Observe("dispatch", argusmetrics.Outcome(err), time.Since(started))
 		if err != nil {
 			slog.WarnContext(ctx, "verification dispatch failed",
 				"verification_id", command.VerificationID,
@@ -370,10 +367,6 @@ func (processor *Processor) Handle(ctx context.Context, command Command) (err er
 }
 
 func (processor *Processor) HandleExhausted(ctx context.Context, command Command, cause error) (err error) {
-	started := time.Now()
-	defer func() {
-		argusmetrics.Default.Observe("dispatch_exhausted", argusmetrics.Outcome(err), time.Since(started))
-	}()
 	if err := processor.validate(); err != nil {
 		return err
 	}
