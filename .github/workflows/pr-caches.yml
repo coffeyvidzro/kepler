@@ -1,0 +1,119 @@
+name: Cleanup PR caches
+
+on:
+  pull_request_target:
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      cleanup:
+        description: Cache cleanup to run
+        required: true
+        default: trim-excess
+        type: choice
+        options:
+          - trim-excess
+          - pull-request-caches
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pr-cache-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup-closed-pr:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Delete caches for the closed pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          gh cache delete \
+            --all \
+            --ref "$PR_REF" \
+            --succeed-on-no-caches
+
+  cleanup-existing-pr-caches:
+    if: github.event_name == 'workflow_dispatch' && inputs.cleanup == 'pull-request-caches'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Delete all existing pull-request caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mapfile -t cache_ids < <(
+            gh cache list \
+              --limit 10000 \
+              --json id,ref \
+              --jq '.[] | select(.ref | startswith("refs/pull/")) | .id'
+          )
+
+          if (( ${#cache_ids[@]} == 0 )); then
+            echo "No pull-request caches found."
+            exit 0
+          fi
+
+          echo "Deleting ${#cache_ids[@]} pull-request cache(s)."
+          for cache_id in "${cache_ids[@]}"; do
+            gh cache delete "$cache_id"
+          done
+
+  cleanup-excess-caches:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cleanup == 'trim-excess')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Keep cache storage below 7 GiB
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_BYTES: "7516192768"
+        run: |
+          mapfile -t caches < <(
+            gh cache list \
+              --limit 10000 \
+              --sort last_accessed_at \
+              --order asc \
+              --json id,sizeInBytes \
+              --jq '.[] | [.id, .sizeInBytes] | @tsv'
+          )
+
+          total_bytes=0
+          for cache in "${caches[@]}"; do
+            IFS=$'\t' read -r _ cache_size <<< "$cache"
+            total_bytes=$((total_bytes + cache_size))
+          done
+
+          echo "Current cache storage: ${total_bytes} bytes."
+
+          if (( total_bytes <= TARGET_BYTES )); then
+            echo "Cache storage is already below the 7 GiB target."
+            exit 0
+          fi
+
+          for cache in "${caches[@]}"; do
+            if (( total_bytes <= TARGET_BYTES )); then
+              break
+            fi
+
+            IFS=$'\t' read -r cache_id cache_size <<< "$cache"
+            echo "Deleting cache ${cache_id} (${cache_size} bytes)."
+            gh cache delete "$cache_id"
+            total_bytes=$((total_bytes - cache_size))
+          done
+
+          echo "Cache storage after cleanup: ${total_bytes} bytes."
