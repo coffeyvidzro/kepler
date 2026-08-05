@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/rename-verify-to-argus
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -133,10 +136,11 @@ jobs:
 
           go test ./...
 
-          rm -f .github/workflows/agent-rename-verify-to-argus.yml
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'Rename Dugble Verify to Dugble Argus'
-          git push origin HEAD:agent/rename-verify-to-argus
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            rm -f .github/workflows/agent-rename-verify-to-argus.yml
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -A
+            git commit -m 'Rename Dugble Verify to Dugble Argus'
+            git push origin HEAD:agent/rename-verify-to-argus
+          fi
