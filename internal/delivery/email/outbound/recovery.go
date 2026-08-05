@@ -74,10 +74,11 @@ func (r *Repository) RecoverStale(
 	var attemptStatus string
 	if err := tx.QueryRow(ctx, `
 		SELECT status
-		FROM email_delivery_attempts
+		FROM message_delivery_attempts
 		WHERE id = $1
 		  AND email_message_id = $2
 		  AND team_id = $3
+		  AND channel = 'email'
 		FOR UPDATE
 	`, *attemptID, messageID, teamID).Scan(&attemptStatus); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -89,13 +90,13 @@ func (r *Repository) RecoverStale(
 	switch attemptStatus {
 	case "claimed":
 		if _, err := tx.Exec(ctx, `
-			UPDATE email_delivery_attempts
+			UPDATE message_delivery_attempts
 			SET status = 'retryable_failure',
 				error_code = 'worker_interrupted_before_request',
 				error_message = 'Worker stopped before the provider request started',
-				completed_at = COALESCE(completed_at, now()),
-				updated_at = now()
-			WHERE id = $1
+				request_completed_at = COALESCE(request_completed_at, now()),
+				terminal_at = COALESCE(terminal_at, now()), updated_at = now()
+			WHERE id = $1 AND channel = 'email'
 		`, *attemptID); err != nil {
 			return RecoveryNotRequired, fmt.Errorf("recover unstarted email attempt: %w", err)
 		}
@@ -118,13 +119,13 @@ func (r *Repository) RecoverStale(
 
 	case "request_started":
 		if _, err := tx.Exec(ctx, `
-			UPDATE email_delivery_attempts
+			UPDATE message_delivery_attempts
 			SET status = 'submission_unknown',
 				error_code = 'worker_interrupted',
 				error_message = 'Worker stopped after the provider request started',
-				completed_at = COALESCE(completed_at, now()),
+				request_completed_at = COALESCE(request_completed_at, now()),
 				updated_at = now()
-			WHERE id = $1
+			WHERE id = $1 AND channel = 'email'
 		`, *attemptID); err != nil {
 			return RecoveryNotRequired, fmt.Errorf("recover uncertain email attempt: %w", err)
 		}

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS email_messages (
     status TEXT NOT NULL DEFAULT 'queued',
     provider TEXT,
     provider_message_id TEXT,
+    current_delivery_attempt_id UUID,
     error_code TEXT,
     error_message TEXT,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -37,8 +38,9 @@ CREATE TABLE IF NOT EXISTS email_messages (
     CONSTRAINT chk_email_body_present CHECK (html_body IS NOT NULL OR text_body IS NOT NULL),
     CONSTRAINT chk_email_message_type CHECK (message_type IN ('transactional', 'marketing')),
     CONSTRAINT chk_email_status CHECK (status IN (
-        'queued', 'processing', 'submitted', 'delivered', 'delayed',
-        'bounced', 'complained', 'rejected', 'failed', 'canceled'
+        'queued', 'processing', 'submission_unknown', 'submitted',
+        'delivered', 'delayed', 'bounced', 'complained', 'rejected',
+        'failed', 'canceled'
     )),
     CONSTRAINT chk_email_metadata_object CHECK (jsonb_typeof(metadata) = 'object'),
     CONSTRAINT chk_email_recipients_object CHECK (jsonb_typeof(recipients) = 'object'),
@@ -69,3 +71,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_messages_provider_message
 CREATE INDEX IF NOT EXISTS idx_email_messages_team_scheduled
     ON email_messages (team_id, scheduled_at)
     WHERE status = 'queued' AND scheduled_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_email_messages_submission_unknown
+    ON email_messages (updated_at)
+    WHERE status = 'submission_unknown';

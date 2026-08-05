@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
         REFERENCES sender_provider_bindings (id, sender_asset_id)
         ON DELETE RESTRICT,
 
+    CONSTRAINT uq_message_delivery_attempts_email_reference
+        UNIQUE (id, email_message_id, team_id),
+
     CONSTRAINT chk_message_delivery_attempts_channel
         CHECK (channel IN ('email', 'sms')),
 
@@ -142,3 +145,13 @@ CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_reconciliation
         'unknown'
     )
       AND next_reconcile_at IS NOT NULL;
+
+ALTER TABLE email_messages
+    ADD CONSTRAINT fk_email_messages_current_delivery_attempt
+    FOREIGN KEY (current_delivery_attempt_id, id, team_id)
+    REFERENCES message_delivery_attempts (id, email_message_id, team_id)
+    DEFERRABLE INITIALLY DEFERRED;
+
+CREATE INDEX IF NOT EXISTS idx_email_messages_current_delivery_attempt
+    ON email_messages (current_delivery_attempt_id)
+    WHERE current_delivery_attempt_id IS NOT NULL;

@@ -133,16 +133,23 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 	var attemptNumber int
 	if err := tx.QueryRow(ctx, `
 		SELECT COALESCE(MAX(attempt_number), 0) + 1
-		FROM email_delivery_attempts
+		FROM message_delivery_attempts
 		WHERE email_message_id = $1
 	`, messageID).Scan(&attemptNumber); err != nil {
 		return DeliveryMessage{}, fmt.Errorf("calculate email delivery attempt number: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO email_delivery_attempts (
-			id, email_message_id, team_id, attempt_number, status, provider
+		INSERT INTO message_delivery_attempts (
+			id, team_id, channel, email_message_id, attempt_number, status, provider,
+			sender_asset_id, sender_provider_binding_id
 		)
-		VALUES ($1, $2, $3, $4, 'claimed', $5)
+		SELECT $1, $3, 'email', $2, $4, 'claimed', $5,
+			binding.sender_asset_id, message.sender_domain_id
+		FROM email_messages AS message
+		LEFT JOIN sender_provider_bindings AS binding
+		  ON binding.id = message.sender_domain_id
+		WHERE message.id = $2
+		  AND message.team_id = $3
 	`, message.AttemptID, messageID, teamID, attemptNumber, message.Provider); err != nil {
 		return DeliveryMessage{}, fmt.Errorf("create email delivery attempt: %w", err)
 	}
@@ -166,12 +173,13 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 
 func (r *Repository) MarkRequestStarted(ctx context.Context, messageID, teamID, attemptID uuid.UUID) error {
 	commandTag, err := r.db.Exec(ctx, `
-		UPDATE email_delivery_attempts AS attempt
+		UPDATE message_delivery_attempts AS attempt
 		SET status = 'request_started', request_started_at = now(), updated_at = now()
 		FROM email_messages AS message
 		WHERE attempt.id = $3
 		  AND attempt.email_message_id = $1
 		  AND attempt.team_id = $2
+		  AND attempt.channel = 'email'
 		  AND attempt.status = 'claimed'
 		  AND message.id = attempt.email_message_id
 		  AND message.team_id = attempt.team_id
@@ -195,10 +203,12 @@ func (r *Repository) MarkSubmitted(ctx context.Context, messageID, teamID, attem
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	commandTag, err := tx.Exec(ctx, `
-		UPDATE email_delivery_attempts
+		UPDATE message_delivery_attempts
 		SET status = 'submitted', provider = $4, provider_message_id = $5,
-			completed_at = now(), error_code = NULL, error_message = NULL, updated_at = now()
+			request_completed_at = now(), submitted_at = COALESCE(submitted_at, now()),
+			error_code = NULL, error_message = NULL, updated_at = now()
 		WHERE id = $3 AND email_message_id = $1 AND team_id = $2
+		  AND channel = 'email'
 		  AND status = 'request_started'
 	`, messageID, teamID, attemptID, result.Provider, result.MessageID)
 	if err != nil {
@@ -238,7 +248,7 @@ func (r *Repository) MarkSubmissionUnknown(ctx context.Context, messageID, teamI
 }
 
 func (r *Repository) MarkFailed(ctx context.Context, messageID, teamID, attemptID uuid.UUID, code string, cause error) error {
-	return r.completeAttempt(ctx, messageID, teamID, attemptID, "failed", "failed", code, cause)
+	return r.completeAttempt(ctx, messageID, teamID, attemptID, "permanent_failure", "failed", code, cause)
 }
 
 func (r *Repository) completeAttempt(
@@ -254,10 +264,17 @@ func (r *Repository) completeAttempt(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	commandTag, err := tx.Exec(ctx, `
-		UPDATE email_delivery_attempts
+		UPDATE message_delivery_attempts
 		SET status = $4, error_code = $5, error_message = $6,
-			completed_at = now(), updated_at = now()
+			request_completed_at = COALESCE(request_completed_at, now()),
+			terminal_at = CASE
+				WHEN $4 IN ('retryable_failure', 'permanent_failure')
+				THEN COALESCE(terminal_at, now())
+				ELSE terminal_at
+			END,
+			updated_at = now()
 		WHERE id = $3 AND email_message_id = $1 AND team_id = $2
+		  AND channel = 'email'
 		  AND status IN ('claimed', 'request_started')
 	`, messageID, teamID, attemptID, attemptStatus, code, truncateError(cause))
 	if err != nil {
@@ -329,17 +346,19 @@ func (r *Repository) ResetStaleProcessing(ctx context.Context, olderThan time.Ti
 		WITH stale AS (
 			SELECT message.id, message.team_id, message.current_delivery_attempt_id
 			FROM email_messages AS message
-			JOIN email_delivery_attempts AS attempt
+			JOIN message_delivery_attempts AS attempt
 			  ON attempt.id = message.current_delivery_attempt_id
+			 AND attempt.channel = 'email'
 			WHERE message.status = 'processing'
 			  AND message.processing_at < $1
 			  AND attempt.status = 'request_started'
 			FOR UPDATE OF message, attempt
 		), updated_attempts AS (
-			UPDATE email_delivery_attempts AS attempt
+			UPDATE message_delivery_attempts AS attempt
 			SET status = 'submission_unknown', error_code = 'worker_interrupted',
 				error_message = 'Worker stopped after the provider request started',
-				completed_at = now(), updated_at = now()
+				request_completed_at = COALESCE(request_completed_at, now()),
+				updated_at = now()
 			FROM stale
 			WHERE attempt.id = stale.current_delivery_attempt_id
 			RETURNING stale.id, stale.team_id, stale.current_delivery_attempt_id
@@ -360,17 +379,19 @@ func (r *Repository) ResetStaleProcessing(ctx context.Context, olderThan time.Ti
 		WITH stale AS (
 			SELECT message.id, message.team_id, message.current_delivery_attempt_id
 			FROM email_messages AS message
-			JOIN email_delivery_attempts AS attempt
+			JOIN message_delivery_attempts AS attempt
 			  ON attempt.id = message.current_delivery_attempt_id
+			 AND attempt.channel = 'email'
 			WHERE message.status = 'processing'
 			  AND message.processing_at < $1
 			  AND attempt.status = 'claimed'
 			FOR UPDATE OF message, attempt
 		), updated_attempts AS (
-			UPDATE email_delivery_attempts AS attempt
+			UPDATE message_delivery_attempts AS attempt
 			SET status = 'retryable_failure', error_code = 'worker_interrupted_before_request',
 				error_message = 'Worker stopped before the provider request started',
-				completed_at = now(), updated_at = now()
+				request_completed_at = COALESCE(request_completed_at, now()),
+				terminal_at = COALESCE(terminal_at, now()), updated_at = now()
 			FROM stale
 			WHERE attempt.id = stale.current_delivery_attempt_id
 			RETURNING stale.id, stale.team_id, stale.current_delivery_attempt_id

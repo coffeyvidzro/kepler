@@ -49,23 +49,6 @@ type Currency struct {
 	IsEnabled bool   `db:"is_enabled" json:"is_enabled"`
 }
 
-type EmailDeliveryAttempt struct {
-	ID                uuid.UUID          `db:"id" json:"id"`
-	EmailMessageID    uuid.UUID          `db:"email_message_id" json:"email_message_id"`
-	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
-	AttemptNumber     int32              `db:"attempt_number" json:"attempt_number"`
-	Status            string             `db:"status" json:"status"`
-	Provider          string             `db:"provider" json:"provider"`
-	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
-	ErrorCode         *string            `db:"error_code" json:"error_code"`
-	ErrorMessage      *string            `db:"error_message" json:"error_message"`
-	ClaimedAt         pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
-	RequestStartedAt  pgtype.Timestamptz `db:"request_started_at" json:"request_started_at"`
-	CompletedAt       pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
 type EmailMessage struct {
 	ID                       uuid.UUID          `db:"id" json:"id"`
 	TeamID                   uuid.UUID          `db:"team_id" json:"team_id"`
@@ -84,6 +67,7 @@ type EmailMessage struct {
 	Status                   string             `db:"status" json:"status"`
 	Provider                 *string            `db:"provider" json:"provider"`
 	ProviderMessageID        *string            `db:"provider_message_id" json:"provider_message_id"`
+	CurrentDeliveryAttemptID *uuid.UUID         `db:"current_delivery_attempt_id" json:"current_delivery_attempt_id"`
 	ErrorCode                *string            `db:"error_code" json:"error_code"`
 	ErrorMessage             *string            `db:"error_message" json:"error_message"`
 	Metadata                 []byte             `db:"metadata" json:"metadata"`
@@ -99,7 +83,6 @@ type EmailMessage struct {
 	FailedAt                 pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
 	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CurrentDeliveryAttemptID *uuid.UUID         `db:"current_delivery_attempt_id" json:"current_delivery_attempt_id"`
 }
 
 type EmailProviderEvent struct {
