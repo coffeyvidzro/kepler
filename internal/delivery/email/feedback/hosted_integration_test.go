@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
 	"github.com/coffeyvidzro/dugble/server/internal/database"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/integration/aws/sns"
 	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/messaging/jetstream"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/processed"

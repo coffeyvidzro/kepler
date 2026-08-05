@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/integration/aws/ses"
+	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/integration/aws/ses"
+	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
 

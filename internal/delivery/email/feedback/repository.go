@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/integration/aws/ses"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/integration/aws/sns"
+	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
+	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 )
 
@@ -29,6 +29,10 @@ type Repository struct {
 
 func NewRepository(db *pgxpool.Pool, outboxRepository *outbox.Repository) *Repository {
 	return &Repository{db: db, outbox: outboxRepository, now: time.Now}
+}
+
+func (repository *Repository) IngestSNS(ctx context.Context, envelope awssns.Envelope) error {
+	return repository.Ingest(ctx, envelope)
 }
 
 func (r *Repository) Ingest(ctx context.Context, envelope awssns.Envelope) error {
