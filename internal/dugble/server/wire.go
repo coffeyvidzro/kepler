@@ -13,12 +13,15 @@ import (
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/dns/netdns"
+	leamoutsms "github.com/coffeyvidzro/dugble/server/internal/adapters/leamout/sms"
+	mnotifyadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
+	mnotifysms "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify/sms"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	moolresms "github.com/coffeyvidzro/dugble/server/internal/adapters/moolre/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/redis"
+	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
 	arcjetadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/security/arcjet"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/arkesel"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
 	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
@@ -158,9 +161,10 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 
 	smsRouter, err := platformsms.NewRoutingService(
 		platformsms.DefaultRoutingConfig(),
-		arkesel.NewProvider(arkesel.NewClient(cfg.Arkesel)),
-		celcom.NewProvider(celcom.NewClient(cfg.Celcom)),
-		mnotify.NewProvider(mnotify.NewClient(cfg.MNotify)),
+		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.BaseURL, cfg.MNotify.APIKey)),
+		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.BaseURL, cfg.Moolre.VASKey)),
+		leamoutsms.NewProvider(),
+		runnagesms.NewProvider(),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS router: %w", err))
