@@ -1,0 +1,27 @@
+name: Validate verification abuse removal
+
+on:
+  push:
+    branches:
+      - agent/remove-verify-abuse
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify abuse removal
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -ni 'abuse' -- internal/modules/verify internal/transport/http/verify internal/dugble/server/wire.go; then
+            echo 'verification abuse references remain' >&2
+            exit 1
+          fi
+          go test ./internal/modules/verify ./internal/transport/http/verify ./internal/dugble/server
