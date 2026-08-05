@@ -118,6 +118,7 @@ func (r *Repository) CompleteSubmission(
 			provider_submitted_at = COALESCE(provider_submitted_at, now()),
 			provider_last_checked_at = now(),
 			next_status_check_at = $4,
+			provider_attempts = 0,
 			provider_error = NULL,
 			registration_locked_at = NULL,
 			registration_locked_by = NULL,
@@ -148,6 +149,7 @@ func (r *Repository) CompleteStatus(
 			provider_submitted_at = COALESCE(provider_submitted_at, now()),
 			provider_last_checked_at = now(),
 			next_status_check_at = $7,
+			provider_attempts = 0,
 			provider_error = NULL,
 			rejection_reason = CASE WHEN $3 = 'rejected' THEN $6 ELSE NULL END,
 			approved_at = CASE
