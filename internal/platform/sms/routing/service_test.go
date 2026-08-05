@@ -11,32 +11,32 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
 
-func TestServiceOrdersProvidersByPriority(t *testing.T) {
+func TestServiceOrdersNigeriaProvidersByPriority(t *testing.T) {
 	t.Parallel()
 
 	leamout := leamoutsms.NewProvider()
 	runnage := runnagesms.NewProvider()
-	router, err := platformsms.NewRoutingService(routing.Config{Routes: []routing.Route{
-		{ProviderID: leamout.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 2, Enabled: true},
-		{ProviderID: runnage.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 1, Enabled: true},
-	}}, leamout, runnage)
+	router, err := routing.NewService(routing.Config{Routes: []routing.Route{
+		{ProviderID: leamout.ID(), DestinationCountry: platformsms.CountryNigeria, Priority: 2, Enabled: true},
+		{ProviderID: runnage.ID(), DestinationCountry: platformsms.CountryNigeria, Priority: 1, Enabled: true},
+	}}, routing.NewPriorityStrategy(), leamout.ID(), runnage.ID())
 	if err != nil {
-		t.Fatalf("NewRoutingService() error = %v", err)
+		t.Fatalf("NewService() error = %v", err)
 	}
 
-	providers, err := router.Route(context.Background(), validKenyaRequest())
+	providerIDs, err := router.Route(context.Background(), validNigeriaRequest())
 	if err != nil {
 		t.Fatalf("Route() error = %v", err)
 	}
-	if len(providers) != 2 {
-		t.Fatalf("Route() count = %d, want 2", len(providers))
+	if len(providerIDs) != 2 {
+		t.Fatalf("Route() count = %d, want 2", len(providerIDs))
 	}
-	if providers[0].ID() != runnagesms.ProviderID || providers[1].ID() != leamoutsms.ProviderID {
-		t.Fatalf("Route() order = %q, %q", providers[0].ID(), providers[1].ID())
+	if providerIDs[0] != runnagesms.ProviderID || providerIDs[1] != leamoutsms.ProviderID {
+		t.Fatalf("Route() order = %q, %q", providerIDs[0], providerIDs[1])
 	}
 }
 
-func TestSMSServiceFallsBackAfterDefinitiveRejection(t *testing.T) {
+func TestSMSServiceFallsBackAfterDefinitiveNigeriaRejection(t *testing.T) {
 	t.Parallel()
 
 	primary, err := runnagesms.NewProviderWithConfig(runnagesms.Config{
@@ -52,7 +52,7 @@ func TestSMSServiceFallsBackAfterDefinitiveRejection(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	response, err := sender.Send(context.Background(), validKenyaRequest())
+	response, err := sender.Send(context.Background(), validNigeriaRequest())
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -61,7 +61,7 @@ func TestSMSServiceFallsBackAfterDefinitiveRejection(t *testing.T) {
 	}
 }
 
-func TestSMSServiceStopsAfterUncertainOutcome(t *testing.T) {
+func TestSMSServiceStopsAfterUncertainNigeriaOutcome(t *testing.T) {
 	t.Parallel()
 
 	primary, err := runnagesms.NewProviderWithConfig(runnagesms.Config{
@@ -77,7 +77,7 @@ func TestSMSServiceStopsAfterUncertainOutcome(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	response, err := sender.Send(context.Background(), validKenyaRequest())
+	response, err := sender.Send(context.Background(), validNigeriaRequest())
 	if response != nil {
 		t.Fatalf("Send() response = %#v, want nil", response)
 	}
@@ -94,24 +94,24 @@ func newTestRouter(
 	t *testing.T,
 	primary platformsms.Provider,
 	secondary platformsms.Provider,
-) *platformsms.RoutingService {
+) platformsms.Router {
 	t.Helper()
-	router, err := platformsms.NewRoutingService(routing.Config{Routes: []routing.Route{
-		{ProviderID: primary.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 1, Enabled: true},
-		{ProviderID: secondary.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 2, Enabled: true},
+	router, err := platformsms.NewRoutingService(platformsms.RoutingConfig{Routes: []platformsms.Route{
+		{ProviderID: primary.ID(), DestinationCountry: platformsms.CountryNigeria, Priority: 1, Enabled: true},
+		{ProviderID: secondary.ID(), DestinationCountry: platformsms.CountryNigeria, Priority: 2, Enabled: true},
 	}}, primary, secondary)
 	if err != nil {
-		t.Fatalf("NewRoutingService() error = %v", err)
+		t.Fatalf("platformsms.NewRoutingService() error = %v", err)
 	}
 	return router
 }
 
-func validKenyaRequest() platformsms.SendRequest {
+func validNigeriaRequest() platformsms.SendRequest {
 	return platformsms.SendRequest{
 		Reference:          "message-1",
-		To:                 "+254700000001",
+		To:                 "+2348000000000",
 		From:               "Dugble",
 		Message:            "Hello",
-		DestinationCountry: platformsms.CountryKenya,
+		DestinationCountry: platformsms.CountryNigeria,
 	}
 }
