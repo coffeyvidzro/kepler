@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS sender_ids (
     CONSTRAINT chk_sender_ids_name_not_empty
         CHECK (length(trim(name)) > 0),
 
+    CONSTRAINT chk_sender_ids_name_characters
+        CHECK (name ~ '^[A-Za-z0-9]+$'),
+
+    CONSTRAINT chk_sender_ids_name_has_letter
+        CHECK (name ~ '[A-Za-z]'),
+
     CONSTRAINT chk_sender_ids_purpose_not_empty
         CHECK (length(trim(purpose)) > 0),
 
