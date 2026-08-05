@@ -1,4 +1,4 @@
-package verifymetrics
+package argusmetrics
 
 import (
 	"fmt"
@@ -72,7 +72,7 @@ func Outcome(err error) string {
 
 func (metrics *Metrics) ServeHTTP(response http.ResponseWriter, _ *http.Request) {
 	if metrics == nil {
-		http.Error(response, "verify metrics are not configured", http.StatusServiceUnavailable)
+		http.Error(response, "Argus metrics are not configured", http.StatusServiceUnavailable)
 		return
 	}
 	metrics.mu.RLock()
@@ -89,8 +89,8 @@ func (metrics *Metrics) ServeHTTP(response http.ResponseWriter, _ *http.Request)
 
 	response.Header().Set("Content-Type", metricsContentType)
 	response.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(response, "# HELP dugble_verify_operations_total Verify operations by operation and outcome.")
-	_, _ = fmt.Fprintln(response, "# TYPE dugble_verify_operations_total counter")
+	_, _ = fmt.Fprintln(response, "# HELP dugble_argus_operations_total Argus operations by operation and outcome.")
+	_, _ = fmt.Fprintln(response, "# TYPE dugble_argus_operations_total counter")
 	keys := make([]key, 0, len(operations))
 	for metric := range operations {
 		keys = append(keys, metric)
@@ -102,11 +102,11 @@ func (metrics *Metrics) ServeHTTP(response http.ResponseWriter, _ *http.Request)
 		return keys[left].outcome < keys[right].outcome
 	})
 	for _, metric := range keys {
-		_, _ = fmt.Fprintf(response, "dugble_verify_operations_total{operation=\"%s\",outcome=\"%s\"} %d\n", escape(metric.operation), escape(metric.outcome), operations[metric])
+		_, _ = fmt.Fprintf(response, "dugble_argus_operations_total{operation=\"%s\",outcome=\"%s\"} %d\n", escape(metric.operation), escape(metric.outcome), operations[metric])
 	}
 
-	_, _ = fmt.Fprintln(response, "# HELP dugble_verify_operation_duration_seconds Time spent in Verify operations.")
-	_, _ = fmt.Fprintln(response, "# TYPE dugble_verify_operation_duration_seconds summary")
+	_, _ = fmt.Fprintln(response, "# HELP dugble_argus_operation_duration_seconds Time spent in Argus operations.")
+	_, _ = fmt.Fprintln(response, "# TYPE dugble_argus_operation_duration_seconds summary")
 	names := make([]string, 0, len(durations))
 	for operation := range durations {
 		names = append(names, operation)
@@ -114,13 +114,13 @@ func (metrics *Metrics) ServeHTTP(response http.ResponseWriter, _ *http.Request)
 	sort.Strings(names)
 	for _, operation := range names {
 		value := durations[operation]
-		_, _ = fmt.Fprintf(response, "dugble_verify_operation_duration_seconds_sum{operation=\"%s\"} %s\n", escape(operation), strconv.FormatFloat(value.sum, 'g', -1, 64))
-		_, _ = fmt.Fprintf(response, "dugble_verify_operation_duration_seconds_count{operation=\"%s\"} %d\n", escape(operation), value.count)
+		_, _ = fmt.Fprintf(response, "dugble_argus_operation_duration_seconds_sum{operation=\"%s\"} %s\n", escape(operation), strconv.FormatFloat(value.sum, 'g', -1, 64))
+		_, _ = fmt.Fprintf(response, "dugble_argus_operation_duration_seconds_count{operation=\"%s\"} %d\n", escape(operation), value.count)
 	}
 
-	_, _ = fmt.Fprintln(response, "# HELP dugble_verify_expired_total Verifications expired by the expiry worker.")
-	_, _ = fmt.Fprintln(response, "# TYPE dugble_verify_expired_total counter")
-	_, _ = fmt.Fprintf(response, "dugble_verify_expired_total %d\n", expired)
+	_, _ = fmt.Fprintln(response, "# HELP dugble_argus_expired_total Verifications expired by the expiry worker.")
+	_, _ = fmt.Fprintln(response, "# TYPE dugble_argus_expired_total counter")
+	_, _ = fmt.Fprintf(response, "dugble_argus_expired_total %d\n", expired)
 }
 
 func label(value string) string {

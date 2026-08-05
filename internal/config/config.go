@@ -18,7 +18,7 @@ type CelcomConfig struct {
 	PartnerID string `env:"PARTNER_ID"`
 }
 
-type VerifyConfig struct {
+type ArgusConfig struct {
 	HMACSecret string `env:"HMAC_SECRET"`
 }
 
@@ -58,7 +58,7 @@ type Config struct {
 	BackendURL     string         `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
 	CookieDomain   string         `env:"COOKIE_DOMAIN"`
 	EncryptionKeys []string       `env:"ENCRYPTION_KEYS" envSeparator:","`
-	Verify         VerifyConfig   `envPrefix:"VERIFY_"`
+	Argus          ArgusConfig    `envPrefix:"ARGUS_"`
 	AWS            AWSConfig      `envPrefix:"AWS_"`
 	NATSURL        string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
 	Arkesel        ProviderConfig `envPrefix:"ARKESEL_"`
@@ -90,7 +90,7 @@ func (c *Config) normalize() {
 	c.BackendURL = strings.TrimRight(strings.TrimSpace(c.BackendURL), "/")
 	c.CookieDomain = strings.TrimSpace(c.CookieDomain)
 	c.EncryptionKeys = normalizeStrings(c.EncryptionKeys)
-	c.Verify.HMACSecret = strings.TrimSpace(c.Verify.HMACSecret)
+	c.Argus.HMACSecret = strings.TrimSpace(c.Argus.HMACSecret)
 	c.AWS.FromEmail = strings.TrimSpace(c.AWS.FromEmail)
 	c.AWS.Region = strings.TrimSpace(c.AWS.Region)
 	c.AWS.AccessKey = strings.TrimSpace(c.AWS.AccessKey)

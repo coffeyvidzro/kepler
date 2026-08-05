@@ -1,4 +1,4 @@
-package verify
+package argus
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
+	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
 type dispatchQueue interface {
-	EnqueueVerificationDispatchTx(context.Context, pgx.Tx, verifydispatch.Command) error
+	EnqueueVerificationDispatchTx(context.Context, pgx.Tx, argusdispatch.Command) error
 }
 
 type eventEmitter interface {
