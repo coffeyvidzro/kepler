@@ -105,8 +105,8 @@ LIMIT 1
 `
 
 type FindApprovedSMSSenderParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
-	Name   string    `db:"name" json:"name"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
+	Name   string     `db:"name" json:"name"`
 }
 
 func (q *Queries) FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMSSenderParams) (uuid.UUID, error) {

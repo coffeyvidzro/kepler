@@ -201,7 +201,6 @@ type MessageDeliveryAttempt struct {
 	LastReconciledAt        pgtype.Timestamptz `db:"last_reconciled_at" json:"last_reconciled_at"`
 	ReconcileAttempts       int32              `db:"reconcile_attempts" json:"reconcile_attempts"`
 	Metadata                []byte             `db:"metadata" json:"metadata"`
-	LegacyEmailAttemptID    *uuid.UUID         `db:"legacy_email_attempt_id" json:"legacy_email_attempt_id"`
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
@@ -289,22 +288,14 @@ type SenderAssetGrant struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-type SenderAssetLegacyLink struct {
-	ID             uuid.UUID          `db:"id" json:"id"`
-	SenderAssetID  uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
-	SenderDomainID *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
-	SenderID       *uuid.UUID         `db:"sender_id" json:"sender_id"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
 type SenderDomain struct {
 	ID                        uuid.UUID          `db:"id" json:"id"`
-	TeamID                    uuid.UUID          `db:"team_id" json:"team_id"`
+	TeamID                    *uuid.UUID         `db:"team_id" json:"team_id"`
 	Domain                    string             `db:"domain" json:"domain"`
-	Provider                  string             `db:"provider" json:"provider"`
+	Provider                  interface{}        `db:"provider" json:"provider"`
 	ProviderRegion            string             `db:"provider_region" json:"provider_region"`
-	Status                    string             `db:"status" json:"status"`
-	VerificationRecords       []byte             `db:"verification_records" json:"verification_records"`
+	Status                    interface{}        `db:"status" json:"status"`
+	VerificationRecords       interface{}        `db:"verification_records" json:"verification_records"`
 	FailureReason             *string            `db:"failure_reason" json:"failure_reason"`
 	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
 	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
@@ -324,11 +315,11 @@ type SenderDomain struct {
 
 type SenderID struct {
 	ID                    uuid.UUID          `db:"id" json:"id"`
-	TeamID                uuid.UUID          `db:"team_id" json:"team_id"`
+	TeamID                *uuid.UUID         `db:"team_id" json:"team_id"`
 	Name                  string             `db:"name" json:"name"`
 	CountryCode           string             `db:"country_code" json:"country_code"`
 	Purpose               string             `db:"purpose" json:"purpose"`
-	Status                string             `db:"status" json:"status"`
+	Status                interface{}        `db:"status" json:"status"`
 	Provider              *string            `db:"provider" json:"provider"`
 	ProviderStatus        *string            `db:"provider_status" json:"provider_status"`
 	ProviderWhitelisted   bool               `db:"provider_whitelisted" json:"provider_whitelisted"`
@@ -349,33 +340,37 @@ type SenderID struct {
 }
 
 type SenderProviderBinding struct {
-	ID                   uuid.UUID          `db:"id" json:"id"`
-	SenderAssetID        uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
-	Provider             string             `db:"provider" json:"provider"`
-	ProviderAccount      string             `db:"provider_account" json:"provider_account"`
-	Region               *string            `db:"region" json:"region"`
-	CountryCode          *string            `db:"country_code" json:"country_code"`
-	ExternalID           *string            `db:"external_id" json:"external_id"`
-	Status               string             `db:"status" json:"status"`
-	ProviderStatus       *string            `db:"provider_status" json:"provider_status"`
-	Verified             bool               `db:"verified" json:"verified"`
-	HealthStatus         string             `db:"health_status" json:"health_status"`
-	VerificationData     []byte             `db:"verification_data" json:"verification_data"`
-	SubmittedAt          pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
-	VerifiedAt           pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
-	RejectedAt           pgtype.Timestamptz `db:"rejected_at" json:"rejected_at"`
-	SuspendedAt          pgtype.Timestamptz `db:"suspended_at" json:"suspended_at"`
-	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	LastCheckedAt        pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
-	NextCheckAt          pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
-	Attempts             int32              `db:"attempts" json:"attempts"`
-	LastError            *string            `db:"last_error" json:"last_error"`
-	ReconcileLockedAt    pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
-	ReconcileLockedBy    *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
-	LegacySenderDomainID *uuid.UUID         `db:"legacy_sender_domain_id" json:"legacy_sender_domain_id"`
-	LegacySenderID       *uuid.UUID         `db:"legacy_sender_id" json:"legacy_sender_id"`
-	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                        uuid.UUID          `db:"id" json:"id"`
+	SenderAssetID             uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
+	Provider                  *string            `db:"provider" json:"provider"`
+	ProviderAccount           string             `db:"provider_account" json:"provider_account"`
+	Region                    *string            `db:"region" json:"region"`
+	CountryCode               *string            `db:"country_code" json:"country_code"`
+	ExternalID                *string            `db:"external_id" json:"external_id"`
+	Status                    string             `db:"status" json:"status"`
+	ProviderStatus            *string            `db:"provider_status" json:"provider_status"`
+	Verified                  bool               `db:"verified" json:"verified"`
+	ProviderWhitelisted       bool               `db:"provider_whitelisted" json:"provider_whitelisted"`
+	HealthStatus              string             `db:"health_status" json:"health_status"`
+	VerificationData          []byte             `db:"verification_data" json:"verification_data"`
+	SubmittedAt               pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	VerifiedAt                pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	RejectedAt                pgtype.Timestamptz `db:"rejected_at" json:"rejected_at"`
+	SuspendedAt               pgtype.Timestamptz `db:"suspended_at" json:"suspended_at"`
+	DisabledAt                pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	ExpiresAt                 pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
+	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
+	Attempts                  int32              `db:"attempts" json:"attempts"`
+	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
+	LastHealthCheckedAt       pgtype.Timestamptz `db:"last_health_checked_at" json:"last_health_checked_at"`
+	LastHealthFailureAt       pgtype.Timestamptz `db:"last_health_failure_at" json:"last_health_failure_at"`
+	RejectionReason           *string            `db:"rejection_reason" json:"rejection_reason"`
+	LastError                 *string            `db:"last_error" json:"last_error"`
+	ReconcileLockedAt         pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
+	ReconcileLockedBy         *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Session struct {

@@ -156,8 +156,8 @@ RETURNING id, team_id, domain, provider, provider_region, status, verification_r
 `
 
 type CompleteSenderDomainReconciliationParams struct {
-	Status              string             `db:"status" json:"status"`
-	VerificationRecords []byte             `db:"verification_records" json:"verification_records"`
+	Status              interface{}        `db:"status" json:"status"`
+	VerificationRecords interface{}        `db:"verification_records" json:"verification_records"`
 	NextCheckAt         pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
 	ID                  uuid.UUID          `db:"id" json:"id"`
 	WorkerID            *string            `db:"worker_id" json:"worker_id"`
@@ -219,12 +219,12 @@ RETURNING id, team_id, domain, provider, provider_region, status, verification_r
 `
 
 type CreateSenderDomainParams struct {
-	TeamID              uuid.UUID  `db:"team_id" json:"team_id"`
-	Domain              string     `db:"domain" json:"domain"`
-	Provider            string     `db:"provider" json:"provider"`
-	ProviderRegion      string     `db:"provider_region" json:"provider_region"`
-	VerificationRecords []byte     `db:"verification_records" json:"verification_records"`
-	CreatedBy           *uuid.UUID `db:"created_by" json:"created_by"`
+	TeamID              *uuid.UUID  `db:"team_id" json:"team_id"`
+	Domain              string      `db:"domain" json:"domain"`
+	Provider            interface{} `db:"provider" json:"provider"`
+	ProviderRegion      string      `db:"provider_region" json:"provider_region"`
+	VerificationRecords interface{} `db:"verification_records" json:"verification_records"`
+	CreatedBy           *uuid.UUID  `db:"created_by" json:"created_by"`
 }
 
 func (q *Queries) CreateSenderDomain(ctx context.Context, arg CreateSenderDomainParams) (SenderDomain, error) {
@@ -272,8 +272,8 @@ RETURNING id, team_id, domain, provider, provider_region, status, verification_r
 `
 
 type DeleteSenderDomainParams struct {
-	ID     uuid.UUID `db:"id" json:"id"`
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	ID     uuid.UUID  `db:"id" json:"id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) DeleteSenderDomain(ctx context.Context, arg DeleteSenderDomainParams) (SenderDomain, error) {
@@ -314,8 +314,8 @@ WHERE id = $1
 `
 
 type GetSenderDomainParams struct {
-	ID     uuid.UUID `db:"id" json:"id"`
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	ID     uuid.UUID  `db:"id" json:"id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) GetSenderDomain(ctx context.Context, arg GetSenderDomainParams) (SenderDomain, error) {
@@ -356,8 +356,8 @@ WHERE team_id = $1
 `
 
 type GetSenderDomainByDomainParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
-	Domain string    `db:"domain" json:"domain"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
+	Domain string     `db:"domain" json:"domain"`
 }
 
 func (q *Queries) GetSenderDomainByDomain(ctx context.Context, arg GetSenderDomainByDomainParams) (SenderDomain, error) {
@@ -398,7 +398,7 @@ ORDER BY created_at DESC
 `
 
 type ListSenderDomainsParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) ListSenderDomains(ctx context.Context, arg ListSenderDomainsParams) ([]SenderDomain, error) {
@@ -581,11 +581,11 @@ RETURNING id, team_id, domain, provider, provider_region, status, verification_r
 `
 
 type UpdateSenderDomainVerificationParams struct {
-	Status              string    `db:"status" json:"status"`
-	VerificationRecords []byte    `db:"verification_records" json:"verification_records"`
-	FailureReason       *string   `db:"failure_reason" json:"failure_reason"`
-	ID                  uuid.UUID `db:"id" json:"id"`
-	TeamID              uuid.UUID `db:"team_id" json:"team_id"`
+	Status              interface{} `db:"status" json:"status"`
+	VerificationRecords interface{} `db:"verification_records" json:"verification_records"`
+	FailureReason       *string     `db:"failure_reason" json:"failure_reason"`
+	ID                  uuid.UUID   `db:"id" json:"id"`
+	TeamID              *uuid.UUID  `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) UpdateSenderDomainVerification(ctx context.Context, arg UpdateSenderDomainVerificationParams) (SenderDomain, error) {

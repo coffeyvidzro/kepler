@@ -91,8 +91,8 @@ RETURNING sender.id, sender.team_id, sender.name, sender.country_code, sender.pu
 `
 
 type DeleteSenderIDParams struct {
-	ID     uuid.UUID `db:"id" json:"id"`
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	ID     uuid.UUID  `db:"id" json:"id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) DeleteSenderID(ctx context.Context, arg DeleteSenderIDParams) (SenderID, error) {
@@ -136,8 +136,8 @@ WHERE sender.id = $1
 `
 
 type GetSenderIDParams struct {
-	ID     uuid.UUID `db:"id" json:"id"`
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	ID     uuid.UUID  `db:"id" json:"id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) GetSenderID(ctx context.Context, arg GetSenderIDParams) (SenderID, error) {
@@ -181,7 +181,7 @@ ORDER BY sender.created_at DESC
 `
 
 type ListSenderIDsParams struct {
-	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) ListSenderIDs(ctx context.Context, arg ListSenderIDsParams) ([]SenderID, error) {
