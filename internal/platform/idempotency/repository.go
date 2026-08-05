@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	tryAcquireLeaseSQL = `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`
-	releaseLeaseSQL    = `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`
+	tryAcquireLeaseSQL  = `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`
+	releaseLeaseSQL     = `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`
 	leaseReleaseTimeout = 5 * time.Second
 )
 
