@@ -12,6 +12,7 @@ func TestVerifyPassword(t *testing.T) {
 		t.Fatalf("hash password: %v", err)
 	}
 	malformedHash := "not-a-bcrypt-hash"
+	storedDummyHash := dummyPasswordHash
 
 	tests := []struct {
 		name     string
@@ -41,6 +42,12 @@ func TestVerifyPassword(t *testing.T) {
 			name:     "malformed password hash",
 			hash:     &malformedHash,
 			password: "correct-password",
+			want:     false,
+		},
+		{
+			name:     "stored dummy password hash",
+			hash:     &storedDummyHash,
+			password: "kepler-login-timing-dummy-password-v1",
 			want:     false,
 		},
 	}
