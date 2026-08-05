@@ -8,7 +8,7 @@ import (
 )
 
 func TestFixedEndpointClientAllowsSameOriginHTTPSRedirect(t *testing.T) {
-	client := NewFixedEndpointClient("https://api.example.com", time.Second)
+	client := ForFixedEndpoint("https://api.example.com", nil, time.Second)
 	request := &http.Request{URL: mustParseURL(t, "https://api.example.com/v2")}
 
 	if err := client.CheckRedirect(request, []*http.Request{{}}); err != nil {
@@ -17,7 +17,7 @@ func TestFixedEndpointClientAllowsSameOriginHTTPSRedirect(t *testing.T) {
 }
 
 func TestFixedEndpointClientRejectsPlainHTTPRedirect(t *testing.T) {
-	client := NewFixedEndpointClient("https://api.example.com", time.Second)
+	client := ForFixedEndpoint("https://api.example.com", nil, time.Second)
 	request := &http.Request{URL: mustParseURL(t, "http://api.example.com/v2")}
 
 	if err := client.CheckRedirect(request, []*http.Request{{}}); err == nil {
@@ -26,8 +26,18 @@ func TestFixedEndpointClientRejectsPlainHTTPRedirect(t *testing.T) {
 }
 
 func TestFixedEndpointClientRejectsDifferentHostRedirect(t *testing.T) {
-	client := NewFixedEndpointClient("https://api.example.com", time.Second)
+	client := ForFixedEndpoint("https://api.example.com", nil, time.Second)
 	request := &http.Request{URL: mustParseURL(t, "https://attacker.example/v2")}
+
+	if err := client.CheckRedirect(request, []*http.Request{{}}); err == nil {
+		t.Fatal("CheckRedirect() error = nil")
+	}
+}
+
+func TestFixedEndpointClientOverridesInjectedRedirectPolicy(t *testing.T) {
+	injected := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return nil }}
+	client := ForFixedEndpoint("https://api.example.com", injected, time.Second)
+	request := &http.Request{URL: mustParseURL(t, "http://api.example.com/v2")}
 
 	if err := client.CheckRedirect(request, []*http.Request{{}}); err == nil {
 		t.Fatal("CheckRedirect() error = nil")
