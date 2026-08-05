@@ -1,0 +1,38 @@
+name: Cleanup messaging refactor helpers
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-messaging-refactor.yml"
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary helper files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          delete_file() {
+            path="$1"
+            message="$2"
+            sha="$(gh api "repos/${REPOSITORY}/contents/${path}?ref=${BRANCH}" --jq .sha 2>/dev/null || true)"
+            if [ -n "$sha" ]; then
+              gh api --method DELETE "repos/${REPOSITORY}/contents/${path}" \
+                -f message="$message" \
+                -f sha="$sha" \
+                -f branch="$BRANCH"
+            fi
+          }
+          delete_file ".github/scripts/refactor_messaging_layout.py" "chore: remove messaging refactor script"
+          delete_file ".github/workflows/refactor-messaging-layout.yml" "chore: remove messaging refactor workflow"
+          delete_file ".github/workflows/cleanup-messaging-refactor.yml" "chore: remove messaging cleanup workflow"
