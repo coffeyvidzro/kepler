@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/database"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/keyrotation"
 )
@@ -25,7 +25,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load encryption keyring: %w", err)
 	}
-	db, err := database.NewPostgres(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}

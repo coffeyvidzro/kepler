@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/database"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )
@@ -75,7 +75,7 @@ func (service *Service) UpdateService(ctx context.Context, value string, req Upd
 	if err != nil {
 		return VerificationService{}, err
 	}
-	result, err := database.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (VerificationService, error) {
+	result, err := postgres.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (VerificationService, error) {
 		repository := service.repository.WithTx(tx)
 		current, getErr := repository.GetService(ctx, id, access.Scope.TeamID)
 		if getErr != nil {
