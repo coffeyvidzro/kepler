@@ -20,9 +20,6 @@ const (
 	HealthStatusDegraded = "degraded"
 
 	DefaultHealthFailureThreshold int32 = 3
-
-	emailInfrastructureRetryAfterSeconds   = 10
-	emailInfrastructureProvisioningMessage = "Customer email infrastructure is being prepared"
 )
 
 type VerificationRecord = platformemail.VerificationRecord
