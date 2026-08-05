@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
 )
 
 var (
@@ -18,6 +16,8 @@ var (
 	ErrDuplicateProvider  = errors.New("duplicate SMS provider")
 	ErrDuplicatePriority  = errors.New("duplicate SMS provider priority")
 )
+
+type CountryValidator func(string) bool
 
 type Route struct {
 	ProviderID         string
@@ -32,30 +32,10 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{Routes: []Route{
-		{
-			ProviderID:         "mnotify",
-			DestinationCountry: destination.CountryGhana,
-			Priority:           1,
-			Enabled:            true,
-		},
-		{
-			ProviderID:         "moolre",
-			DestinationCountry: destination.CountryGhana,
-			Priority:           2,
-			Enabled:            true,
-		},
-		{
-			ProviderID:         "leamout",
-			DestinationCountry: destination.CountryNigeria,
-			Priority:           1,
-			Enabled:            true,
-		},
-		{
-			ProviderID:         "runnage",
-			DestinationCountry: destination.CountryNigeria,
-			Priority:           2,
-			Enabled:            true,
-		},
+		{ProviderID: "mnotify", DestinationCountry: "GH", Priority: 1, Enabled: true},
+		{ProviderID: "moolre", DestinationCountry: "GH", Priority: 2, Enabled: true},
+		{ProviderID: "leamout", DestinationCountry: "NG", Priority: 1, Enabled: true},
+		{ProviderID: "runnage", DestinationCountry: "NG", Priority: 2, Enabled: true},
 	}}
 }
 
@@ -74,8 +54,8 @@ func (config Config) Validate() error {
 			return ErrInvalidProviderID
 		}
 
-		country := destination.NormalizeCountryCode(route.DestinationCountry)
-		if !destination.IsSupportedCountry(country) {
+		country := normalizeCountryCode(route.DestinationCountry)
+		if !isCountryCode(country) {
 			return fmt.Errorf("%w for provider %q: %q", ErrInvalidCountryCode, providerID, route.DestinationCountry)
 		}
 		if route.Priority < 1 {
@@ -119,7 +99,7 @@ func (config Config) enabledRoutes() []Route {
 			continue
 		}
 		route.ProviderID = normalizeProviderID(route.ProviderID)
-		route.DestinationCountry = destination.NormalizeCountryCode(route.DestinationCountry)
+		route.DestinationCountry = normalizeCountryCode(route.DestinationCountry)
 		routes = append(routes, route)
 	}
 
@@ -134,4 +114,21 @@ func (config Config) enabledRoutes() []Route {
 
 func normalizeProviderID(providerID string) string {
 	return strings.ToLower(strings.TrimSpace(providerID))
+}
+
+func normalizeCountryCode(country string) string {
+	return strings.ToUpper(strings.TrimSpace(country))
+}
+
+func isCountryCode(country string) bool {
+	country = normalizeCountryCode(country)
+	if len(country) != 2 {
+		return false
+	}
+	for _, character := range country {
+		if character < 'A' || character > 'Z' {
+			return false
+		}
+	}
+	return true
 }
