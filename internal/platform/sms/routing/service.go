@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
 )
 
 var (
@@ -78,7 +80,7 @@ func (service *Service) Route(
 		return nil, err
 	}
 
-	country := normalizeCountryCode(request.RoutingCountry())
+	country := destination.NormalizeCountryCode(request.RoutingCountry())
 	eligibleRoutes := make([]Route, 0, len(service.routes))
 	for _, route := range service.routes {
 		if route.DestinationCountry == country {
@@ -145,25 +147,4 @@ func (service *Service) ShouldFallback(
 		return false
 	}
 	return service.strategy.ShouldFallback(ctx, providerID, err)
-}
-
-func normalizeCountryCode(value string) string {
-	if len(value) == 0 {
-		return ""
-	}
-	return string([]byte{
-		toUpperASCII(value, 0),
-		toUpperASCII(value, 1),
-	})
-}
-
-func toUpperASCII(value string, index int) byte {
-	if index >= len(value) {
-		return 0
-	}
-	character := value[index]
-	if character >= 'a' && character <= 'z' {
-		return character - ('a' - 'A')
-	}
-	return character
 }
