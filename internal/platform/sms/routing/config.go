@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
 )
 
 var (
@@ -34,25 +34,25 @@ func DefaultConfig() Config {
 	return Config{Routes: []Route{
 		{
 			ProviderID:         "mnotify",
-			DestinationCountry: platformsms.CountryGhana,
+			DestinationCountry: destination.CountryGhana,
 			Priority:           1,
 			Enabled:            true,
 		},
 		{
 			ProviderID:         "moolre",
-			DestinationCountry: platformsms.CountryGhana,
+			DestinationCountry: destination.CountryGhana,
 			Priority:           2,
-			Enabled:            true,
+			Enabled:            false,
 		},
 		{
 			ProviderID:         "celcom",
-			DestinationCountry: platformsms.CountryKenya,
+			DestinationCountry: destination.CountryKenya,
 			Priority:           1,
 			Enabled:            true,
 		},
 		{
 			ProviderID:         "arkesel",
-			DestinationCountry: platformsms.CountryNigeria,
+			DestinationCountry: destination.CountryNigeria,
 			Priority:           1,
 			Enabled:            true,
 		},
@@ -74,8 +74,8 @@ func (config Config) Validate() error {
 			return ErrInvalidProviderID
 		}
 
-		country := platformsms.NormalizeCountryCode(route.DestinationCountry)
-		if !platformsms.IsSupportedDestinationCountry(country) {
+		country := destination.NormalizeCountryCode(route.DestinationCountry)
+		if !destination.IsSupportedCountry(country) {
 			return fmt.Errorf("%w for provider %q: %q", ErrInvalidCountryCode, providerID, route.DestinationCountry)
 		}
 		if route.Priority < 1 {
@@ -112,8 +112,6 @@ func (config Config) Validate() error {
 	return nil
 }
 
-// enabledRoutes returns a normalized, sorted copy. Callers can retain or
-// modify the returned slice without mutating Config.
 func (config Config) enabledRoutes() []Route {
 	routes := make([]Route, 0, len(config.Routes))
 	for _, route := range config.Routes {
@@ -121,7 +119,7 @@ func (config Config) enabledRoutes() []Route {
 			continue
 		}
 		route.ProviderID = normalizeProviderID(route.ProviderID)
-		route.DestinationCountry = platformsms.NormalizeCountryCode(route.DestinationCountry)
+		route.DestinationCountry = destination.NormalizeCountryCode(route.DestinationCountry)
 		routes = append(routes, route)
 	}
 
