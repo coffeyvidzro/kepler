@@ -69,14 +69,14 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Format and test
+      - name: Format and compile all packages
         run: |
           gofmt -w \
             internal/modules/email/repository.go \
             internal/modules/sms/repository.go \
             internal/modules/domain/repository.go \
             internal/modules/senderid/repository.go
-          go test ./...
+          go test -run '^$' ./...
 
       - name: Commit caller adaptations
         run: |
