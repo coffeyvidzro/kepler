@@ -43,6 +43,10 @@ func (request SendRequest) Normalize() SendRequest {
 	return request
 }
 
+func (request SendRequest) RoutingCountry() string {
+	return NormalizeCountryCode(request.DestinationCountry)
+}
+
 func (request SendRequest) Validate() error {
 	request = request.Normalize()
 	if request.To == "" {
