@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,7 +39,6 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
@@ -300,61 +298,22 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		webhookWorkerID,
 	)
 
-	healthServer := &http.Server{
-		Addr:              ":8082",
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      5 * time.Second,
-		IdleTimeout:       30 * time.Second,
-	}
-	healthComponent := Component{
-		Name: "health server",
-		Run: func(componentCtx context.Context) error {
-			go func() {
-				<-componentCtx.Done()
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if shutdownErr := healthServer.Shutdown(shutdownCtx); shutdownErr != nil {
-					slog.Warn("worker health server shutdown failed", "error", shutdownErr)
-				}
-			}()
-			err := healthServer.ListenAndServe()
-			if errors.Is(err, http.ErrServerClosed) {
-				return nil
-			}
-			return err
-		},
-	}
-
-	components := []Component{
-		healthComponent,
-		{Name: "outbox relay", Run: outboxRelay.Run},
-		{Name: "email JetStream consumer", Run: emailConsumer.Run},
-		{Name: "system email JetStream consumer", Run: systemEmailConsumer.Run},
-		{Name: "email tenant provisioning consumer", Run: emailTenantConsumer.Run},
-		{Name: "email feedback JetStream consumer", Run: emailFeedbackConsumer.Run},
-		{Name: "email feedback database reconciler", Run: emailFeedbackReconciler.Run},
-		{Name: "email feedback metrics collector", Run: emailFeedbackMetricsCollector.Run},
-		{Name: "SMS JetStream consumer", Run: smsConsumer.Run},
-		{Name: "SMS feedback reconciler", Run: smsFeedbackConsumer.Run},
-		{Name: "Verify dispatch JetStream consumer", Run: verifyConsumer.Run},
-		{Name: "Verify expiry scanner", Run: verifyExpiryScanner.Run},
-		{Name: "Verify cleanup worker", Run: verifyCleanupWorker.Run},
-		{Name: "webhook delivery consumer", Run: webhookConsumer.Run},
-		{Name: "sender domain reconciliation consumer", Run: domainConsumer.Run},
-	}
-	supervisor, err := NewSupervisor(FailFast, components...)
-	if err != nil {
-		return fail(fmt.Errorf("create worker supervisor: %w", err))
-	}
-
-	healthMux := http.NewServeMux()
-	healthMux.Handle("/", NewHealthHandler(db, messagingClient, supervisor))
-	healthMux.Handle("GET /metrics", feedbackMetrics)
-	healthMux.Handle("GET /metrics/verify", verifymetrics.Default)
-	healthServer.Handler = healthMux
-
-	application, err := New(supervisor, healthServer.Addr, "/metrics")
+	application, err := New(
+		job{name: "outbox relay", run: outboxRelay.Run},
+		job{name: "email delivery consumer", run: emailConsumer.Run},
+		job{name: "system email consumer", run: systemEmailConsumer.Run},
+		job{name: "email tenant provisioning consumer", run: emailTenantConsumer.Run},
+		job{name: "email feedback consumer", run: emailFeedbackConsumer.Run},
+		job{name: "email feedback reconciler", run: emailFeedbackReconciler.Run},
+		job{name: "email feedback metrics collector", run: emailFeedbackMetricsCollector.Run},
+		job{name: "SMS delivery consumer", run: smsConsumer.Run},
+		job{name: "SMS feedback reconciler", run: smsFeedbackConsumer.Run},
+		job{name: "verification dispatch consumer", run: verifyConsumer.Run},
+		job{name: "verification expiry scanner", run: verifyExpiryScanner.Run},
+		job{name: "verification cleanup worker", run: verifyCleanupWorker.Run},
+		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
+		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
+	)
 	if err != nil {
 		return fail(fmt.Errorf("create worker application: %w", err))
 	}
