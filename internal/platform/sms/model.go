@@ -43,10 +43,6 @@ func (request SendRequest) Normalize() SendRequest {
 	return request
 }
 
-func (request SendRequest) RoutingCountry() string {
-	return NormalizeCountryCode(request.DestinationCountry)
-}
-
 func (request SendRequest) Validate() error {
 	request = request.Normalize()
 	if request.To == "" {
@@ -94,8 +90,7 @@ type Provider interface {
 }
 
 type Router interface {
-	Route(context.Context, SendRequest) ([]Provider, error)
-	Provider(string) (Provider, bool)
+	Route(context.Context, string) ([]string, error)
 	ShouldFallback(context.Context, string, error) bool
 }
 

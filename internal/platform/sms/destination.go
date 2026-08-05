@@ -1,35 +1,74 @@
 package sms
 
-import "github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
+import (
+	"errors"
+	"regexp"
+	"strings"
+)
 
 const (
-	CountryGhana   = destination.CountryGhana
-	CountryNigeria = destination.CountryNigeria
+	CountryGhana   = "GH"
+	CountryNigeria = "NG"
 )
 
 var (
-	ErrInvalidE164            = destination.ErrInvalidE164
-	ErrUnsupportedDestination = destination.ErrUnsupportedDestination
+	ErrInvalidE164            = errors.New("invalid E.164 phone number")
+	ErrUnsupportedDestination = errors.New("unsupported SMS destination country")
+	e164Pattern               = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
 )
 
-type Destination = destination.Destination
+type Destination struct {
+	CallingCode string
+	CountryCode string
+}
+
+var supportedDestinations = []Destination{
+	{CallingCode: "+233", CountryCode: CountryGhana},
+	{CallingCode: "+234", CountryCode: CountryNigeria},
+}
 
 func SupportedDestinations() []Destination {
-	return destination.Supported()
+	result := make([]Destination, len(supportedDestinations))
+	copy(result, supportedDestinations)
+	return result
 }
 
 func ResolveDestinationCountry(number string) (string, error) {
-	return destination.ResolveCountry(number)
+	number = strings.TrimSpace(number)
+	if !e164Pattern.MatchString(number) {
+		return "", ErrInvalidE164
+	}
+	for _, destination := range supportedDestinations {
+		if strings.HasPrefix(number, destination.CallingCode) {
+			return destination.CountryCode, nil
+		}
+	}
+	return "", ErrUnsupportedDestination
 }
 
 func NormalizeCountryCode(value string) string {
-	return destination.NormalizeCountryCode(value)
+	return strings.ToUpper(strings.TrimSpace(value))
 }
 
 func IsCountryCode(value string) bool {
-	return destination.IsCountryCode(value)
+	value = NormalizeCountryCode(value)
+	if len(value) != 2 {
+		return false
+	}
+	for _, character := range value {
+		if character < 'A' || character > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func IsSupportedDestinationCountry(value string) bool {
-	return destination.IsSupportedCountry(value)
+	value = NormalizeCountryCode(value)
+	for _, destination := range supportedDestinations {
+		if destination.CountryCode == value {
+			return true
+		}
+	}
+	return false
 }
