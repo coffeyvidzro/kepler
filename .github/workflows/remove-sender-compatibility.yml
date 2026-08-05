@@ -8,6 +8,7 @@ on:
       - ".github/workflows/remove-sender-compatibility.yml"
       - ".github/scripts/remove_sender_compatibility.py"
       - ".github/scripts/finalize_sender_canonical.py"
+      - ".github/scripts/fix_canonical_sender_compile.py"
 
 permissions:
   contents: write
@@ -27,6 +28,7 @@ jobs:
         run: |
           python .github/scripts/remove_sender_compatibility.py
           python .github/scripts/finalize_sender_canonical.py
+          python .github/scripts/fix_canonical_sender_compile.py
 
       - name: Set up Go
         uses: actions/setup-go@v7
