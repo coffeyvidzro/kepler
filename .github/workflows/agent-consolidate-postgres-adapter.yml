@@ -1,0 +1,59 @@
+name: Agent consolidate PostgreSQL adapter
+
+on:
+  push:
+    branches:
+      - agent/consolidate-postgres-adapter
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/consolidate-postgres-adapter
+          fetch-depth: 0
+
+      - name: Migrate database helpers to PostgreSQL adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          old_import='github.com/coffeyvidzro/dugble/server/internal/database'
+          new_import='github.com/coffeyvidzro/dugble/server/internal/adapters/postgres'
+
+          while IFS= read -r -d '' file; do
+            sed -i "s#${old_import}\"#${new_import}\"#g" "$file"
+            sed -i 's/database\.NewPostgres/postgres.New/g' "$file"
+            sed -i 's/database\.InTransactionWithOptions/postgres.InTransactionWithOptions/g' "$file"
+            sed -i 's/database\.InTransactionResult/postgres.InTransactionResult/g' "$file"
+            sed -i 's/database\.InTransaction/postgres.InTransaction/g' "$file"
+          done < <(git grep -lz "${old_import}\"" -- '*.go' || true)
+
+          rm -f internal/database/postgres.go
+          rm -f internal/database/transaction.go
+
+          git diff --name-only --diff-filter=ACM -- '*.go' | xargs -r gofmt -w
+
+          if git grep -n "${old_import}\"" -- '*.go'; then
+            echo 'stale internal/database package import remains' >&2
+            exit 1
+          fi
+          if git grep -n 'database\.NewPostgres\|database\.InTransaction' -- '*.go'; then
+            echo 'stale database helper reference remains' >&2
+            exit 1
+          fi
+          test ! -e internal/database/postgres.go
+          test ! -e internal/database/transaction.go
+
+          rm -f .github/workflows/agent-consolidate-postgres-adapter.yml
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Consolidate PostgreSQL helpers in adapter'
+          git push origin HEAD:agent/consolidate-postgres-adapter
