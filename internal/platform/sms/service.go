@@ -33,16 +33,16 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 		return nil, err
 	}
 
-	candidates, err := service.routeCandidates(ctx, request)
+	providers, err := service.router.Route(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("route SMS request: %w", err)
 	}
-	if len(candidates) == 0 {
+	if len(providers) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
 
-	attempts := make([]ProviderAttempt, 0, len(candidates))
-	for _, upstream := range candidates {
+	attempts := make([]ProviderAttempt, 0, len(providers))
+	for _, upstream := range providers {
 		if upstream == nil {
 			attempts = append(attempts, ProviderAttempt{
 				ProviderID: "unknown",
@@ -72,36 +72,12 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 			ProviderID: providerID,
 			Err:        attemptErr,
 		})
-		if !safeToFallback(attemptErr) {
+		if !service.router.ShouldFallback(ctx, providerID, attemptErr) {
 			break
 		}
 	}
 
 	return nil, &SendError{Attempts: attempts}
-}
-
-func (service *Service) routeCandidates(ctx context.Context, request SendRequest) ([]Provider, error) {
-	if router, ok := service.router.(CandidateRouter); ok {
-		return router.Candidates(ctx, request)
-	}
-	upstream, err := service.router.Route(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if upstream == nil {
-		return nil, ErrNoProviderAvailable
-	}
-	return []Provider{upstream}, nil
-}
-
-func safeToFallback(err error) bool {
-	if err == nil {
-		return false
-	}
-	var classifier interface {
-		SafeToFallback() bool
-	}
-	return errors.As(err, &classifier) && classifier.SafeToFallback()
 }
 
 func (service *Service) CheckStatus(ctx context.Context, providerID, providerMessageID string) (*StatusResponse, error) {
