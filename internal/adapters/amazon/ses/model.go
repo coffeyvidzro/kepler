@@ -12,7 +12,7 @@ import (
 	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 const (

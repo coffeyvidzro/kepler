@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 func buildMIME(message platformemail.Message) ([]byte, error) {
