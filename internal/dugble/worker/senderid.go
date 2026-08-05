@@ -30,7 +30,7 @@ func newSenderIDReconciliationJob(db *pgxpool.Pool, cfg *config.Config) (job, er
 		}, nil
 	}
 
-	provider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.BaseURL, cfg.Moolre.VASKey))
+	provider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.VASKey))
 	consumer, err := senderidreconciliation.NewConsumer(
 		senderidmodule.NewRepository(db),
 		senderidreconciliation.DefaultConfig(),
