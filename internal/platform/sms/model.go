@@ -90,13 +90,9 @@ type Provider interface {
 }
 
 type Router interface {
-	Route(context.Context, SendRequest) (Provider, error)
+	Route(context.Context, SendRequest) ([]Provider, error)
 	Provider(string) (Provider, bool)
-}
-
-type CandidateRouter interface {
-	Router
-	Candidates(context.Context, SendRequest) ([]Provider, error)
+	ShouldFallback(context.Context, string, error) bool
 }
 
 type ValidationError struct {
