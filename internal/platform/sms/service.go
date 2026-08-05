@@ -8,14 +8,47 @@ import (
 )
 
 type Service struct {
-	router Router
+	router    Router
+	providers map[string]Provider
 }
 
-func NewService(router Router) (*Service, error) {
+type routedProviderSource interface {
+	ProviderIDs() []string
+}
+
+func NewService(router Router, providers ...Provider) (*Service, error) {
 	if router == nil {
 		return nil, ErrRouterRequired
 	}
-	return &Service{router: router}, nil
+	if len(providers) == 0 {
+		return nil, ErrProviderRequired
+	}
+
+	registry := make(map[string]Provider, len(providers))
+	for _, upstream := range providers {
+		if upstream == nil {
+			return nil, ErrProviderRequired
+		}
+		providerID := normalizeProviderID(upstream.ID())
+		if providerID == "" {
+			return nil, ErrInvalidProviderID
+		}
+		if _, exists := registry[providerID]; exists {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateProvider, providerID)
+		}
+		registry[providerID] = upstream
+	}
+
+	if source, ok := router.(routedProviderSource); ok {
+		for _, providerID := range source.ProviderIDs() {
+			providerID = normalizeProviderID(providerID)
+			if _, exists := registry[providerID]; !exists {
+				return nil, fmt.Errorf("%w: %s", ErrProviderNotRegistered, providerID)
+			}
+		}
+	}
+
+	return &Service{router: router, providers: registry}, nil
 }
 
 func (service *Service) Send(ctx context.Context, request SendRequest) (*SendResponse, error) {
@@ -33,29 +66,22 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 		return nil, err
 	}
 
-	providers, err := service.router.Route(ctx, request)
+	providerIDs, err := service.router.Route(ctx, request.DestinationCountry)
 	if err != nil {
 		return nil, fmt.Errorf("route SMS request: %w", err)
 	}
-	if len(providers) == 0 {
+	if len(providerIDs) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
 
-	attempts := make([]ProviderAttempt, 0, len(providers))
-	for _, upstream := range providers {
-		if upstream == nil {
+	attempts := make([]ProviderAttempt, 0, len(providerIDs))
+	for _, rawProviderID := range providerIDs {
+		providerID := normalizeProviderID(rawProviderID)
+		upstream, exists := service.providers[providerID]
+		if providerID == "" || !exists || upstream == nil {
 			attempts = append(attempts, ProviderAttempt{
-				ProviderID: "unknown",
-				Err:        errors.New("routed SMS provider is nil"),
-			})
-			break
-		}
-
-		providerID := normalizeProviderID(upstream.ID())
-		if providerID == "" {
-			attempts = append(attempts, ProviderAttempt{
-				ProviderID: "unknown",
-				Err:        errors.New("routed SMS provider has an empty ID"),
+				ProviderID: providerID,
+				Err:        fmt.Errorf("%w: %s", ErrProviderNotFound, providerID),
 			})
 			break
 		}
@@ -98,7 +124,7 @@ func (service *Service) CheckStatus(ctx context.Context, providerID, providerMes
 	if providerMessageID == "" {
 		return nil, &ValidationError{Field: "provider_message_id", Reason: "provider message ID is required"}
 	}
-	upstream, ok := service.router.Provider(providerID)
+	upstream, ok := service.providers[providerID]
 	if !ok || upstream == nil {
 		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerID)
 	}
@@ -154,4 +180,8 @@ func validateStatusResponse(expectedProviderID, expectedProviderMessageID string
 		return fmt.Errorf("%w: unsupported delivery status %q", ErrInvalidProviderReply, response.Status)
 	}
 	return nil
+}
+
+func normalizeProviderID(providerID string) string {
+	return strings.ToLower(strings.TrimSpace(providerID))
 }
