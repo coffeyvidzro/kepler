@@ -2,11 +2,9 @@ name: Agent rename Verify to Argus
 
 on:
   push:
-    branches:
-      - agent/rename-verify-to-argus
+    branches: [agent/rename-verify-to-argus]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
@@ -35,21 +33,11 @@ jobs:
           from pathlib import Path
           import re
 
-          root = Path('.')
-          text_suffixes = {
-              '.go', '.md', '.yaml', '.yml', '.json', '.toml', '.env',
-              '.txt', '.html', '.sql', '.sh'
-          }
-
           replacements = [
-              ('github.com/coffeyvidzro/dugble/server/internal/modules/verify',
-               'github.com/coffeyvidzro/dugble/server/internal/modules/argus'),
-              ('github.com/coffeyvidzro/dugble/server/internal/transport/http/verify',
-               'github.com/coffeyvidzro/dugble/server/internal/transport/http/argus'),
-              ('github.com/coffeyvidzro/dugble/server/internal/delivery/verify',
-               'github.com/coffeyvidzro/dugble/server/internal/delivery/argus'),
-              ('github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics',
-               'github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics'),
+              ('github.com/coffeyvidzro/dugble/server/internal/modules/verify', 'github.com/coffeyvidzro/dugble/server/internal/modules/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/transport/http/verify', 'github.com/coffeyvidzro/dugble/server/internal/transport/http/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/delivery/verify', 'github.com/coffeyvidzro/dugble/server/internal/delivery/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics', 'github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics'),
               ('verifymodule', 'argusmodule'),
               ('verifyhttp', 'argushttp'),
               ('verifydispatch', 'argusdispatch'),
@@ -67,46 +55,46 @@ jobs:
               ('verify metrics are not configured', 'Argus metrics are not configured'),
           ]
 
-          for path in root.rglob('*'):
+          suffixes = {'.go', '.md', '.yaml', '.yml', '.json', '.toml', '.env', '.txt', '.html', '.sql', '.sh'}
+          for path in Path('.').rglob('*'):
               if not path.is_file() or '.git' in path.parts:
                   continue
-              if path.suffix not in text_suffixes and path.name not in {'.env.example'}:
+              if path.suffix not in suffixes and path.name != '.env.example':
                   continue
               try:
                   text = path.read_text()
               except UnicodeDecodeError:
                   continue
-              updated = text
               for old, new in replacements:
-                  updated = updated.replace(old, new)
-              if updated != text:
-                  path.write_text(updated)
+                  text = text.replace(old, new)
+              path.write_text(text)
 
-          for directory in (Path('internal/modules/argus'), Path('internal/transport/http/argus')):
-              for path in directory.rglob('*.go'):
-                  text = path.read_text()
-                  updated = re.sub(r'^package verify$', 'package argus', text, count=1, flags=re.MULTILINE)
-                  if updated != text:
-                      path.write_text(updated)
+          for directory in ('internal/modules/argus', 'internal/transport/http/argus'):
+              for path in Path(directory).rglob('*.go'):
+                  path.write_text(re.sub(r'^package verify$', 'package argus', path.read_text(), count=1, flags=re.MULTILINE))
 
           metrics = Path('internal/platform/monitoring/argusmetrics/metrics.go')
-          text = metrics.read_text()
-          text = re.sub(r'^package verifymetrics$', 'package argusmetrics', text, count=1, flags=re.MULTILINE)
-          metrics.write_text(text)
+          metrics.write_text(re.sub(r'^package verifymetrics$', 'package argusmetrics', metrics.read_text(), count=1, flags=re.MULTILINE))
 
           config = Path('internal/config/config.go')
-          text = config.read_text()
-          text = re.sub(
+          config.write_text(re.sub(
               r'\bVerify\s+ArgusConfig\s+`envPrefix:"ARGUS_"`',
               'Argus          ArgusConfig   `envPrefix:"ARGUS_"`',
-              text,
+              config.read_text(),
               count=1,
-          )
-          config.write_text(text)
+          ))
 
           for path in (Path('internal/dugble/server/wire.go'), Path('internal/dugble/worker/wire.go')):
+              path.write_text(re.sub(r'\bverify([A-Z][A-Za-z0-9_]*)', r'argus\1', path.read_text()))
+
+          generic_verbs = {
+              Path('internal/modules/auth/repository.go'): [('ArgusEmailWithToken', 'VerifyEmailWithToken')],
+              Path('internal/modules/mfa/repository.go'): [('ArgusTOTPAndElevateSession', 'VerifyTOTPAndElevateSession')],
+          }
+          for path, values in generic_verbs.items():
               text = path.read_text()
-              text = re.sub(r'\bverify([A-Z][A-Za-z0-9_]*)', r'argus\1', text)
+              for old, new in values:
+                  text = text.replace(old, new)
               path.write_text(text)
           PY
 
