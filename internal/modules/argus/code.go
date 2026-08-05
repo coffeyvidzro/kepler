@@ -1,4 +1,4 @@
-package verify
+package argus
 
 import (
 	"crypto/hmac"

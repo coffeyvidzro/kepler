@@ -17,15 +17,15 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	arguscleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/cleanup"
+	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
+	argusexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/expiry"
 	domainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	smsfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/feedback"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
-	verifycleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/cleanup"
-	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
-	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
@@ -224,7 +224,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		smsfeedback.ConsumerConfig{PollInterval: 30 * time.Second},
 	)
 
-	verifyCipher, err := authnz.NewSecretCipherKeyring(cfg.EncryptionKeys)
+	argusCipher, err := authnz.NewSecretCipherKeyring(cfg.EncryptionKeys)
 	if err != nil {
 		return fail(fmt.Errorf("initialize verification code cipher: %w", err))
 	}
@@ -244,24 +244,24 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		smsdelivery.NewQueue(outboxRepository),
 		billingService,
 	)
-	verifyProcessor := verifydispatch.NewProcessor(
-		verifydispatch.NewRepository(db),
-		verifyCipher,
-		verifydispatch.NewEmailChannel(emailAPIService),
-		verifydispatch.NewSMSChannel(smsAPIService, "Dugble"),
+	argusProcessor := argusdispatch.NewProcessor(
+		argusdispatch.NewRepository(db),
+		argusCipher,
+		argusdispatch.NewEmailChannel(emailAPIService),
+		argusdispatch.NewSMSChannel(smsAPIService, "Dugble"),
 		events,
 	)
-	verifyConsumer := verifydispatch.NewConsumer(
+	argusConsumer := argusdispatch.NewConsumer(
 		messagingClient,
 		processedEvents,
-		verifyProcessor,
-		verifydispatch.DefaultConsumerConfig(),
+		argusProcessor,
+		argusdispatch.DefaultConsumerConfig(),
 	)
-	verifyExpiryScanner := verifyexpiry.NewScanner(
-		verifyexpiry.NewProcessor(db, events),
-		verifyexpiry.DefaultConfig(),
+	argusExpiryScanner := argusexpiry.NewScanner(
+		argusexpiry.NewProcessor(db, events),
+		argusexpiry.DefaultConfig(),
 	)
-	verifyCleanupWorker := verifycleanup.NewWorker(db, verifycleanup.DefaultConfig())
+	argusCleanupWorker := arguscleanup.NewWorker(db, arguscleanup.DefaultConfig())
 
 	outboxRelay := outbox.NewRelay(
 		outboxRepository,
@@ -306,9 +306,9 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		job{name: "email feedback metrics collector", run: emailFeedbackMetricsCollector.Run},
 		job{name: "SMS delivery consumer", run: smsConsumer.Run},
 		job{name: "SMS feedback reconciler", run: smsFeedbackConsumer.Run},
-		job{name: "verification dispatch consumer", run: verifyConsumer.Run},
-		job{name: "verification expiry scanner", run: verifyExpiryScanner.Run},
-		job{name: "verification cleanup worker", run: verifyCleanupWorker.Run},
+		job{name: "verification dispatch consumer", run: argusConsumer.Run},
+		job{name: "verification expiry scanner", run: argusExpiryScanner.Run},
+		job{name: "verification cleanup worker", run: argusCleanupWorker.Run},
 		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
 		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
 	)

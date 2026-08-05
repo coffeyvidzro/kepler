@@ -1,4 +1,4 @@
-package verify
+package argus
 
 import (
 	"github.com/labstack/echo/v5"

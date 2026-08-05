@@ -20,11 +20,12 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
 	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
-	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
+	argusmodule "github.com/coffeyvidzro/dugble/server/internal/modules/argus"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
@@ -38,7 +39,6 @@ import (
 	teammodule "github.com/coffeyvidzro/dugble/server/internal/modules/team"
 	teamtokenmodule "github.com/coffeyvidzro/dugble/server/internal/modules/teamtoken"
 	usermodule "github.com/coffeyvidzro/dugble/server/internal/modules/user"
-	verifymodule "github.com/coffeyvidzro/dugble/server/internal/modules/verify"
 	walletmodule "github.com/coffeyvidzro/dugble/server/internal/modules/wallet"
 	webhooksmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
@@ -53,6 +53,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
+	argushttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/argus"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
 	authhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auth"
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
@@ -66,7 +67,6 @@ import (
 	teamhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/team"
 	teamtokenhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/teamtoken"
 	userhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/user"
-	verifyhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/verify"
 	wallethttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/wallet"
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
 	providersns "github.com/coffeyvidzro/dugble/server/internal/transport/provider/aws/sns"
@@ -237,15 +237,15 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		billingService,
 	)
 
-	verifySecret := []byte(cfg.Verify.HMACSecret)
-	verifyCodes, err := verifymodule.NewCodeManager(verifySecret, mfaCipher)
+	argusSecret := []byte(cfg.Argus.HMACSecret)
+	argusCodes, err := argusmodule.NewCodeManager(argusSecret, mfaCipher)
 	if err != nil {
 		return fail(fmt.Errorf("initialize verify code manager: %w", err))
 	}
-	verifyService := verifymodule.NewService(
-		verifymodule.NewRepository(db),
-		verifyCodes,
-		verifydispatch.NewQueue(outboxRepository),
+	argusService := argusmodule.NewService(
+		argusmodule.NewRepository(db),
+		argusCodes,
+		argusdispatch.NewQueue(outboxRepository),
 		productRuntime.Events,
 	)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
@@ -357,7 +357,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		)
 		smshttp.RegisterRoutes(router, smshttp.NewHandler(smsService), tenantAccess)
 		emailhttp.RegisterRoutes(router, emailhttp.NewHandler(emailAPIService), tenantAccess)
-		verifyhttp.RegisterRoutes(router, verifyhttp.NewHandler(verifyService), tenantAccess)
+		argushttp.RegisterRoutes(router, argushttp.NewHandler(argusService), tenantAccess)
 		webhookshttp.RegisterRoutes(
 			router,
 			webhookshttp.NewHandler(webhookService),

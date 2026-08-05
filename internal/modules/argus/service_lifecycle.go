@@ -1,4 +1,4 @@
-package verify
+package argus
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
-	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
+	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
@@ -184,7 +184,7 @@ func (service *Service) Resend(ctx context.Context, value string) (Verification,
 		if createErr != nil {
 			return Verification{}, createErr
 		}
-		if queueErr := service.dispatch.EnqueueVerificationDispatchTx(ctx, tx, verifydispatch.Command{
+		if queueErr := service.dispatch.EnqueueVerificationDispatchTx(ctx, tx, argusdispatch.Command{
 			VerificationID: id, ChallengeID: createdChallenge.ID, TeamID: access.Scope.TeamID,
 			EncryptedCode: generated.SealedCode, SchemaVersion: 1,
 		}); queueErr != nil {
