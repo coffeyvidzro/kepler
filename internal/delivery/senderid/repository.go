@@ -1,4 +1,4 @@
-package senderid
+package senderidreconciliation
 
 import (
 	"context"
@@ -9,9 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-var ErrRegistrationClaimLost = errors.New("sender ID registration claim was lost")
 
 type RegistrationClaim struct {
 	ID                  uuid.UUID
@@ -23,14 +22,29 @@ type RegistrationClaim struct {
 	Attempt             int32
 }
 
-func (r *Repository) ClaimPendingRegistrations(
+type registrationRepository interface {
+	ClaimPendingRegistrations(context.Context, string, string, int32, time.Time) ([]RegistrationClaim, error)
+	CompleteSubmission(context.Context, uuid.UUID, string, string, time.Time) error
+	CompleteStatus(context.Context, uuid.UUID, string, string, string, bool, *string, time.Time) error
+	RecordProviderFailure(context.Context, uuid.UUID, string, string, error, time.Time) error
+}
+
+type Repository struct {
+	db *pgxpool.Pool
+}
+
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{db: db}
+}
+
+func (repository *Repository) ClaimPendingRegistrations(
 	ctx context.Context,
 	workerID string,
 	providerID string,
 	limit int32,
 	staleBefore time.Time,
 ) ([]RegistrationClaim, error) {
-	if r == nil || r.db == nil {
+	if repository == nil || repository.db == nil {
 		return nil, errors.New("sender ID repository is not configured")
 	}
 	workerID = strings.TrimSpace(workerID)
@@ -42,7 +56,7 @@ func (r *Repository) ClaimPendingRegistrations(
 		limit = 25
 	}
 
-	rows, err := r.db.Query(ctx, `
+	rows, err := repository.db.Query(ctx, `
 		WITH candidates AS (
 			SELECT id
 			FROM sender_ids
@@ -105,14 +119,14 @@ func (r *Repository) ClaimPendingRegistrations(
 	return claims, nil
 }
 
-func (r *Repository) CompleteSubmission(
+func (repository *Repository) CompleteSubmission(
 	ctx context.Context,
 	id uuid.UUID,
 	workerID string,
 	providerStatus string,
 	nextCheckAt time.Time,
 ) error {
-	return r.completeClaim(ctx, id, workerID, `
+	return repository.completeClaim(ctx, id, workerID, `
 		UPDATE sender_ids
 		SET provider_status = $3,
 			provider_submitted_at = COALESCE(provider_submitted_at, now()),
@@ -128,7 +142,7 @@ func (r *Repository) CompleteSubmission(
 	`, strings.TrimSpace(providerStatus), nextCheckAt)
 }
 
-func (r *Repository) CompleteStatus(
+func (repository *Repository) CompleteStatus(
 	ctx context.Context,
 	id uuid.UUID,
 	workerID string,
@@ -138,10 +152,10 @@ func (r *Repository) CompleteStatus(
 	rejectionReason *string,
 	nextCheckAt time.Time,
 ) error {
-	if r == nil || r.db == nil {
+	if repository == nil || repository.db == nil {
 		return errors.New("sender ID repository is not configured")
 	}
-	result, err := r.db.Exec(ctx, `
+	result, err := repository.db.Exec(ctx, `
 		UPDATE sender_ids
 		SET status = $3,
 			provider_status = $4,
@@ -176,7 +190,7 @@ func (r *Repository) CompleteStatus(
 	return nil
 }
 
-func (r *Repository) RecordProviderFailure(
+func (repository *Repository) RecordProviderFailure(
 	ctx context.Context,
 	id uuid.UUID,
 	workerID string,
@@ -184,14 +198,14 @@ func (r *Repository) RecordProviderFailure(
 	providerError error,
 	nextCheckAt time.Time,
 ) error {
-	if r == nil || r.db == nil {
+	if repository == nil || repository.db == nil {
 		return errors.New("sender ID repository is not configured")
 	}
 	message := "Sender ID provider operation failed"
 	if providerError != nil {
 		message = providerError.Error()
 	}
-	result, err := r.db.Exec(ctx, `
+	result, err := repository.db.Exec(ctx, `
 		UPDATE sender_ids
 		SET provider_status = COALESCE(NULLIF($3, ''), provider_status),
 			provider_last_checked_at = now(),
@@ -212,7 +226,7 @@ func (r *Repository) RecordProviderFailure(
 	return nil
 }
 
-func (r *Repository) completeClaim(
+func (repository *Repository) completeClaim(
 	ctx context.Context,
 	id uuid.UUID,
 	workerID string,
@@ -220,10 +234,10 @@ func (r *Repository) completeClaim(
 	value any,
 	nextCheckAt time.Time,
 ) error {
-	if r == nil || r.db == nil {
+	if repository == nil || repository.db == nil {
 		return errors.New("sender ID repository is not configured")
 	}
-	result, err := r.db.Exec(ctx, query, id, strings.TrimSpace(workerID), value, nextCheckAt)
+	result, err := repository.db.Exec(ctx, query, id, strings.TrimSpace(workerID), value, nextCheckAt)
 	if err != nil {
 		return fmt.Errorf("complete Sender ID registration claim: %w", err)
 	}

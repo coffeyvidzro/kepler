@@ -15,6 +15,7 @@ import (
 	mnotifyadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
 	mnotifysms "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	moolresender "github.com/coffeyvidzro/dugble/server/internal/adapters/moolre/sender"
 	moolresms "github.com/coffeyvidzro/dugble/server/internal/adapters/moolre/sms"
 	natsadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
@@ -27,6 +28,7 @@ import (
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
+	senderidreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/senderid"
 	smsfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/feedback"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
@@ -184,9 +186,29 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		},
 		domainWorkerID,
 	)
-	senderIDReconciliationJob, err := newSenderIDReconciliationJob(db, cfg)
-	if err != nil {
-		return fail(fmt.Errorf("initialize Sender ID reconciliation: %w", err))
+
+	var senderIDReconciliationJob job
+	if cfg.Moolre.VASKey == "" {
+		slog.Warn("Moolre Sender ID reconciliation is disabled because MOOLRE_VAS_KEY is empty")
+		senderIDReconciliationJob = job{
+			name: "Sender ID reconciliation",
+			run: func(ctx context.Context) error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+		}
+	} else {
+		senderIDProvider := moolresender.NewProvider(moolre.NewClient(cfg.Moolre.VASKey))
+		senderIDConsumer, consumerErr := senderidreconciliation.NewConsumer(
+			senderidreconciliation.NewRepository(db),
+			senderidreconciliation.DefaultConfig(),
+			"sender-id-reconciliation-"+uuid.NewString(),
+			senderIDProvider,
+		)
+		if consumerErr != nil {
+			return fail(fmt.Errorf("initialize Sender ID reconciliation: %w", consumerErr))
+		}
+		senderIDReconciliationJob = job{name: "Sender ID reconciliation", run: senderIDConsumer.Run}
 	}
 
 	smsRouter, err := platformsms.NewRoutingService(
