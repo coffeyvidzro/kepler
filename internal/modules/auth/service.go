@@ -110,8 +110,8 @@ func (s *Service) Login(
 	}
 
 	user, err := s.repository.GetUserByEmail(ctx, email)
-	if err != nil || user.PasswordHash == nil ||
-		!authnz.CheckPassword(*user.PasswordHash, password) {
+	passwordValid := authnz.VerifyPassword(user.PasswordHash, password)
+	if err != nil || !passwordValid {
 		return LoginResponse{}, "", time.Time{}, apperrors.NewUnauthorized(
 			"Invalid email or password",
 		)
