@@ -9,14 +9,20 @@ import (
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
+// SubscribableEventTypes delegates to the canonical platform event catalog.
+// Deprecated: use event.SubscribableTypes directly in new code.
 func SubscribableEventTypes() []string {
 	return platformevent.SubscribableTypes()
 }
 
+// IsSubscribableEventType delegates to the canonical platform event catalog.
+// Deprecated: use event.IsSubscribable directly in new code.
 func IsSubscribableEventType(eventType string) bool {
 	return platformevent.IsSubscribable(platformevent.Type(eventType))
 }
 
+// These string aliases remain temporarily for existing webhook producers. New
+// code should use the typed constants from internal/platform/event.
 const (
 	EventSMSSubmitted   = string(platformevent.TypeSMSSubmitted)
 	EventSMSSent        = string(platformevent.TypeSMSSent)
@@ -38,6 +44,9 @@ const (
 	EventTest = string(platformevent.TypeWebhookTest)
 )
 
+// Event is the compatibility input used by existing webhook producers. The
+// emitter converts it into event.Envelope before validation or persistence.
+// Deprecated: new producers should emit event.Envelope through event.Emitter.
 type Event struct {
 	ID         uuid.UUID
 	TeamID     uuid.UUID
