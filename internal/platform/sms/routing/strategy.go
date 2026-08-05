@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"sort"
-
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
+type Request interface {
+	RoutingCountry() string
+}
+
 type Strategy interface {
-	Order(context.Context, platformsms.SendRequest, []Route) []Route
+	Order(context.Context, Request, []Route) []Route
 	ShouldFallback(context.Context, string, error) bool
 }
 
@@ -28,7 +30,7 @@ func NewPriorityStrategy() *PriorityStrategy {
 
 func (*PriorityStrategy) Order(
 	_ context.Context,
-	_ platformsms.SendRequest,
+	_ Request,
 	routes []Route,
 ) []Route {
 	ordered := make([]Route, len(routes))
