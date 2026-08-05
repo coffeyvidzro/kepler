@@ -292,10 +292,10 @@ type SenderDomain struct {
 	ID                        uuid.UUID          `db:"id" json:"id"`
 	TeamID                    *uuid.UUID         `db:"team_id" json:"team_id"`
 	Domain                    string             `db:"domain" json:"domain"`
-	Provider                  interface{}        `db:"provider" json:"provider"`
+	Provider                  string             `db:"provider" json:"provider"`
 	ProviderRegion            string             `db:"provider_region" json:"provider_region"`
-	Status                    interface{}        `db:"status" json:"status"`
-	VerificationRecords       interface{}        `db:"verification_records" json:"verification_records"`
+	Status                    string             `db:"status" json:"status"`
+	VerificationRecords       []byte             `db:"verification_records" json:"verification_records"`
 	FailureReason             *string            `db:"failure_reason" json:"failure_reason"`
 	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
 	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
@@ -319,7 +319,7 @@ type SenderID struct {
 	Name                  string             `db:"name" json:"name"`
 	CountryCode           string             `db:"country_code" json:"country_code"`
 	Purpose               string             `db:"purpose" json:"purpose"`
-	Status                interface{}        `db:"status" json:"status"`
+	Status                string             `db:"status" json:"status"`
 	Provider              *string            `db:"provider" json:"provider"`
 	ProviderStatus        *string            `db:"provider_status" json:"provider_status"`
 	ProviderWhitelisted   bool               `db:"provider_whitelisted" json:"provider_whitelisted"`

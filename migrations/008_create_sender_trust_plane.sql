@@ -198,7 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_sender_asset_grants_asset_status
 CREATE OR REPLACE VIEW sender_ids AS
 SELECT
     binding.id,
-    asset.team_id,
+    COALESCE(asset.team_id, '00000000-0000-0000-0000-000000000000'::uuid) AS team_id,
     asset.identity::VARCHAR(11) AS name,
     binding.country_code::TEXT AS country_code,
     COALESCE(asset.purpose, '') AS purpose,
@@ -207,7 +207,7 @@ SELECT
         WHEN 'disabled' THEN 'inactive'
         WHEN 'failed' THEN 'rejected'
         ELSE binding.status
-    END AS status,
+    END::TEXT AS status,
     binding.provider,
     binding.provider_status,
     binding.provider_whitelisted,
@@ -227,7 +227,9 @@ SELECT
     binding.updated_at
 FROM sender_provider_bindings AS binding
 JOIN sender_assets AS asset ON asset.id = binding.sender_asset_id
-WHERE asset.channel = 'sms';
+WHERE asset.channel = 'sms'
+  AND asset.owner_type = 'team'
+  AND asset.team_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION write_sender_ids_compatibility()
 RETURNS TRIGGER
@@ -405,16 +407,16 @@ EXECUTE FUNCTION write_sender_ids_compatibility();
 CREATE OR REPLACE VIEW sender_domains AS
 SELECT
     binding.id,
-    asset.team_id,
+    COALESCE(asset.team_id, '00000000-0000-0000-0000-000000000000'::uuid) AS team_id,
     asset.normalized_identity AS domain,
-    CASE binding.provider WHEN 'ses' THEN 'aws_ses' ELSE binding.provider END AS provider,
+    CASE binding.provider WHEN 'ses' THEN 'aws_ses' ELSE binding.provider END::TEXT AS provider,
     COALESCE(binding.region, '') AS provider_region,
     CASE binding.status
         WHEN 'active' THEN 'verified'
         WHEN 'rejected' THEN 'failed'
         ELSE binding.status
-    END AS status,
-    COALESCE(binding.verification_data -> 'records', '[]'::jsonb) AS verification_records,
+    END::TEXT AS status,
+    COALESCE(binding.verification_data -> 'records', '[]'::jsonb)::JSONB AS verification_records,
     COALESCE(binding.rejection_reason, binding.last_error) AS failure_reason,
     binding.last_checked_at,
     binding.next_check_at,
@@ -432,7 +434,9 @@ SELECT
     binding.updated_at
 FROM sender_provider_bindings AS binding
 JOIN sender_assets AS asset ON asset.id = binding.sender_asset_id
-WHERE asset.channel = 'email';
+WHERE asset.channel = 'email'
+  AND asset.owner_type = 'team'
+  AND asset.team_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION write_sender_domains_compatibility()
 RETURNS TRIGGER
