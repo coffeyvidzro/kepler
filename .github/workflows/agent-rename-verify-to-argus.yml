@@ -1,0 +1,142 @@
+name: Agent rename Verify to Argus
+
+on:
+  push:
+    branches:
+      - agent/rename-verify-to-argus
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/rename-verify-to-argus
+          fetch-depth: 0
+
+      - name: Rename Dugble Verify to Dugble Argus
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git mv internal/modules/verify internal/modules/argus
+          git mv internal/transport/http/verify internal/transport/http/argus
+          git mv internal/delivery/verify internal/delivery/argus
+          git mv internal/platform/monitoring/verifymetrics internal/platform/monitoring/argusmetrics
+
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          text_suffixes = {
+              '.go', '.md', '.yaml', '.yml', '.json', '.toml', '.env',
+              '.txt', '.html', '.sql', '.sh'
+          }
+
+          replacements = [
+              ('github.com/coffeyvidzro/dugble/server/internal/modules/verify',
+               'github.com/coffeyvidzro/dugble/server/internal/modules/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/transport/http/verify',
+               'github.com/coffeyvidzro/dugble/server/internal/transport/http/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/delivery/verify',
+               'github.com/coffeyvidzro/dugble/server/internal/delivery/argus'),
+              ('github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics',
+               'github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics'),
+              ('verifymodule', 'argusmodule'),
+              ('verifyhttp', 'argushttp'),
+              ('verifydispatch', 'argusdispatch'),
+              ('verifycleanup', 'arguscleanup'),
+              ('verifyexpiry', 'argusexpiry'),
+              ('verifymetrics', 'argusmetrics'),
+              ('VerifyConfig', 'ArgusConfig'),
+              ('cfg.Verify', 'cfg.Argus'),
+              ('c.Verify', 'c.Argus'),
+              ('envPrefix:"VERIFY_"', 'envPrefix:"ARGUS_"'),
+              ('VERIFY_HMAC_SECRET', 'ARGUS_HMAC_SECRET'),
+              ('Dugble Verify', 'Dugble Argus'),
+              ('dugble_verify_', 'dugble_argus_'),
+              ('Verify operations', 'Argus operations'),
+              ('verify metrics are not configured', 'Argus metrics are not configured'),
+          ]
+
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path.suffix not in text_suffixes and path.name not in {'.env.example'}:
+                  continue
+              try:
+                  text = path.read_text()
+              except UnicodeDecodeError:
+                  continue
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated)
+
+          for directory in (Path('internal/modules/argus'), Path('internal/transport/http/argus')):
+              for path in directory.rglob('*.go'):
+                  text = path.read_text()
+                  updated = re.sub(r'^package verify$', 'package argus', text, count=1, flags=re.MULTILINE)
+                  if updated != text:
+                      path.write_text(updated)
+
+          metrics = Path('internal/platform/monitoring/argusmetrics/metrics.go')
+          text = metrics.read_text()
+          text = re.sub(r'^package verifymetrics$', 'package argusmetrics', text, count=1, flags=re.MULTILINE)
+          metrics.write_text(text)
+
+          config = Path('internal/config/config.go')
+          text = config.read_text()
+          text = re.sub(
+              r'\bVerify\s+ArgusConfig\s+`envPrefix:"ARGUS_"`',
+              'Argus          ArgusConfig   `envPrefix:"ARGUS_"`',
+              text,
+              count=1,
+          )
+          config.write_text(text)
+
+          for path in (Path('internal/dugble/server/wire.go'), Path('internal/dugble/worker/wire.go')):
+              text = path.read_text()
+              text = re.sub(r'\bverify([A-Z][A-Za-z0-9_]*)', r'argus\1', text)
+              path.write_text(text)
+          PY
+
+          git diff --name-only --diff-filter=ACM -- '*.go' | xargs -r gofmt -w
+
+          test ! -e internal/modules/verify
+          test ! -e internal/transport/http/verify
+          test ! -e internal/delivery/verify
+          test ! -e internal/platform/monitoring/verifymetrics
+
+          if git grep -nE 'internal/(modules|transport/http|delivery)/verify|internal/platform/monitoring/verifymetrics' -- ':!internal/database/sqlc'; then
+            echo 'legacy Verify package path remains' >&2
+            exit 1
+          fi
+          if git grep -nE '\b(verifymodule|verifyhttp|verifydispatch|verifycleanup|verifyexpiry|verifymetrics)\b' -- '*.go'; then
+            echo 'legacy Verify package alias remains' >&2
+            exit 1
+          fi
+          if git grep -nE '^package verify$' -- internal/modules/argus internal/transport/http/argus; then
+            echo 'legacy Verify package declaration remains' >&2
+            exit 1
+          fi
+          if git grep -nE '\bVerifyConfig\b|cfg\.Verify\b|c\.Verify\b|VERIFY_HMAC_SECRET|envPrefix:"VERIFY_"' -- '*.go' '*.md' '*.yml' '*.yaml' '.env*'; then
+            echo 'legacy Verify configuration branding remains' >&2
+            exit 1
+          fi
+
+          go test ./...
+
+          rm -f .github/workflows/agent-rename-verify-to-argus.yml
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Rename Dugble Verify to Dugble Argus'
+          git push origin HEAD:agent/rename-verify-to-argus
