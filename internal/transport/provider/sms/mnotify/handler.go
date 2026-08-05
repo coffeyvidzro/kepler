@@ -33,7 +33,9 @@ func NewHandler(ingestor Ingestor) *Handler { return &Handler{ingestor: ingestor
 
 func (handler *Handler) Receive(c *echo.Context) error {
 	body, err := httptransport.ReadBody(c, 256*1024)
-	if err != nil { return httptransport.Error(c, err) }
+	if err != nil {
+		return httptransport.Error(c, err)
+	}
 	var report DeliveryReport
 	if err := json.Unmarshal(body, &report); err != nil {
 		return httptransport.Error(c, apperrors.NewBadRequest("Invalid mNotify delivery report"))

@@ -58,9 +58,8 @@ import (
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
 	emailhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/email"
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
-	providersns "github.com/coffeyvidzro/dugble/server/internal/transport/http/provider/aws/sns"
+	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
@@ -70,6 +69,7 @@ import (
 	verifyhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/verify"
 	wallethttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/wallet"
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
+	providersns "github.com/coffeyvidzro/dugble/server/internal/transport/provider/aws/sns"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )
 
