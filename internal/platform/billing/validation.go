@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/phone"
+	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
 var (
@@ -24,7 +24,7 @@ func validateSMSAuthorization(input SMSAuthorizationInput) (SMSAuthorizationInpu
 		return SMSAuthorizationInput{}, ErrInvalidMessageID
 	}
 	input.DestinationNumber = strings.TrimSpace(input.DestinationNumber)
-	destinationCountry, err := phone.ResolveDestinationCountry(input.DestinationNumber)
+	destinationCountry, err := platformsms.ResolveDestinationCountry(input.DestinationNumber)
 	if err != nil {
 		return SMSAuthorizationInput{}, ErrInvalidDestination
 	}
