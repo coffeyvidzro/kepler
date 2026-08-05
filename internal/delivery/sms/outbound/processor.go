@@ -90,6 +90,7 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 	}
 
 	response, err := processor.sender.Send(ctx, smsapi.SendRequest{
+		Reference:          message.ID,
 		To:                 message.To,
 		From:               message.From,
 		Message:            message.Body,

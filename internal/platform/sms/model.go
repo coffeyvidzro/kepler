@@ -22,6 +22,7 @@ const (
 )
 
 type SendRequest struct {
+	Reference          string
 	To                 string
 	From               string
 	Message            string
@@ -29,6 +30,7 @@ type SendRequest struct {
 }
 
 func (request SendRequest) Normalize() SendRequest {
+	request.Reference = strings.TrimSpace(request.Reference)
 	request.To = strings.TrimSpace(request.To)
 	request.From = strings.TrimSpace(request.From)
 	request.DestinationCountry = NormalizeCountryCode(request.DestinationCountry)
@@ -75,9 +77,10 @@ type SendResponse struct {
 }
 
 type StatusResponse struct {
-	ProviderID    string
-	ProviderMsgID string
-	Status        string
+	ProviderID     string
+	ProviderMsgID  string
+	Status         string
+	ProviderStatus string
 }
 
 type Provider interface {
