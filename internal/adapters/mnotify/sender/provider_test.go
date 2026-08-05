@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
@@ -44,7 +45,7 @@ func TestProviderCreatesAndChecksSenderID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewProvider(mnotify.NewClientWithHTTP(server.URL, "api-key", server.Client()))
+	provider := NewProvider(mnotify.NewClientWithHTTP("api-key", testHTTPClient(t, server)))
 	created, err := provider.Create(context.Background(), platformsenderid.CreateRequest{
 		SenderID: "Dugble1",
 		Purpose:  "Transactional alerts",
@@ -68,9 +69,30 @@ func TestProviderCreatesAndChecksSenderID(t *testing.T) {
 func TestProviderRequiresPurpose(t *testing.T) {
 	t.Parallel()
 
-	provider := NewProvider(mnotify.NewClient("https://api.mnotify.com", "api-key"))
+	provider := NewProvider(mnotify.NewClient("api-key"))
 	_, err := provider.Create(context.Background(), platformsenderid.CreateRequest{SenderID: "Dugble1"})
 	if err == nil {
 		t.Fatal("Create() error = nil")
 	}
+}
+
+func testHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	transport := server.Client().Transport
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		return transport.RoundTrip(clone)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
