@@ -15,9 +15,14 @@ import (
 
 var ErrSenderIDAlreadyExists = errors.New("sender id already exists")
 
-type Repository struct{ queries *dbsqlc.Queries }
+type Repository struct {
+	db      *pgxpool.Pool
+	queries *dbsqlc.Queries
+}
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{queries: dbsqlc.New(db)} }
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{db: db, queries: dbsqlc.New(db)}
+}
 
 func (r *Repository) Create(
 	ctx context.Context,
