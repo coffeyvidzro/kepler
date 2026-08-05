@@ -1,4 +1,4 @@
-package httptransport
+package httputil
 
 import (
 	"bytes"
@@ -66,6 +66,9 @@ func QueryInt32(c *echo.Context, name string) int32 {
 	if c == nil {
 		return 0
 	}
-	value, _ := strconv.ParseInt(c.QueryParam(name), 10, 32)
+	value, err := strconv.ParseInt(c.QueryParam(name), 10, 32)
+	if err != nil {
+		return 0
+	}
 	return int32(value)
 }

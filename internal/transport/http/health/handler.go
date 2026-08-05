@@ -9,7 +9,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/redis/go-redis/v9"
 
-	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
+	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
 type Handler struct {
@@ -22,7 +22,7 @@ func NewHandler(db *pgxpool.Pool, redisClient *redis.Client) *Handler {
 }
 
 func (handler *Handler) Live(c *echo.Context) error {
-	return httptransport.OK(c, map[string]string{"status": "ok", "service": "dugble-server"})
+	return httputil.OK(c, map[string]string{"status": "ok", "service": "dugble-server"})
 }
 
 func (handler *Handler) Ready(c *echo.Context) error {
@@ -48,5 +48,8 @@ func (handler *Handler) Ready(c *echo.Context) error {
 	if status != http.StatusOK {
 		readiness = "not_ready"
 	}
-	return c.JSON(status, httptransport.Response{Success: status == http.StatusOK, Data: map[string]any{"status": readiness, "checks": checks}})
+	return c.JSON(status, httputil.Response{
+		Success: status == http.StatusOK,
+		Data:    map[string]any{"status": readiness, "checks": checks},
+	})
 }

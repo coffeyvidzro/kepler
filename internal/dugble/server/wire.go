@@ -74,6 +74,7 @@ import (
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
 	providersns "github.com/coffeyvidzro/dugble/server/internal/transport/provider/aws/sns"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
 // Wire builds the server and returns a cleanup function for all initialized resources.
@@ -288,12 +289,12 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		router.GET("/csrf", func(c *echo.Context) error {
 			token, ok := c.Get(httpmiddleware.CSRFContextKey).(string)
 			if !ok || token == "" {
-				return httptransport.Error(
+				return httputil.Error(
 					c,
 					apperrors.NewInternal("CSRF token is not available", nil),
 				)
 			}
-			return httptransport.OK(c, map[string]string{"csrf_token": token})
+			return httputil.OK(c, map[string]string{"csrf_token": token})
 		}, csrfMiddleware)
 
 		authhttp.RegisterRoutes(

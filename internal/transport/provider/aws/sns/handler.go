@@ -12,8 +12,8 @@ import (
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
-	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
 const maxRequestBodyBytes int64 = 256 * 1024
@@ -40,38 +40,38 @@ func (handler *Handler) ReceiveSES(c *echo.Context) error {
 	envelope, err := parseEnvelopeRequest(c)
 	if err != nil {
 		slog.WarnContext(c.Request().Context(), "rejected AWS SNS request", "error", err)
-		return httptransport.Error(c, err)
+		return httputil.Error(c, err)
 	}
 	if handler == nil || handler.verifier == nil {
-		return httptransport.Error(c, apperrors.NewServiceUnavailable("SNS verification is not configured", nil))
+		return httputil.Error(c, apperrors.NewServiceUnavailable("SNS verification is not configured", nil))
 	}
 	if err := handler.verifier.Verify(c.Request().Context(), envelope); err != nil {
-		return httptransport.Error(c, mapIntegrationError(err))
+		return httputil.Error(c, mapIntegrationError(err))
 	}
 	switch envelope.Type {
 	case awssns.TypeSubscriptionConfirmation:
 		if handler.confirmer == nil {
-			return httptransport.Error(c, apperrors.NewServiceUnavailable("SNS subscription confirmation is not configured", nil))
+			return httputil.Error(c, apperrors.NewServiceUnavailable("SNS subscription confirmation is not configured", nil))
 		}
 		if err := handler.confirmer.Confirm(c.Request().Context(), envelope); err != nil {
-			return httptransport.Error(c, mapIntegrationError(err))
+			return httputil.Error(c, mapIntegrationError(err))
 		}
-		return httptransport.NoContent(c)
+		return httputil.NoContent(c)
 	case awssns.TypeNotification:
 		if handler.ingestor == nil {
-			return httptransport.Error(c, apperrors.NewServiceUnavailable("SNS notification ingestion is not configured", nil))
+			return httputil.Error(c, apperrors.NewServiceUnavailable("SNS notification ingestion is not configured", nil))
 		}
 		if err := handler.ingestor.IngestSNS(c.Request().Context(), envelope); err != nil {
 			if errors.Is(err, awsses.ErrInvalidEvent) {
-				return httptransport.Error(c, apperrors.NewBadRequest("SNS notification does not contain a valid SES event"))
+				return httputil.Error(c, apperrors.NewBadRequest("SNS notification does not contain a valid SES event"))
 			}
-			return httptransport.Error(c, apperrors.NewServiceUnavailable("Unable to accept SNS notification", err))
+			return httputil.Error(c, apperrors.NewServiceUnavailable("Unable to accept SNS notification", err))
 		}
-		return httptransport.NoContent(c)
+		return httputil.NoContent(c)
 	case awssns.TypeUnsubscribeConfirmation:
-		return httptransport.NoContent(c)
+		return httputil.NoContent(c)
 	default:
-		return httptransport.Error(c, apperrors.NewBadRequest("Unsupported SNS message type"))
+		return httputil.Error(c, apperrors.NewBadRequest("Unsupported SNS message type"))
 	}
 }
 
@@ -80,7 +80,7 @@ func parseEnvelopeRequest(c *echo.Context) (awssns.Envelope, error) {
 	if err != nil || mediaType != "text/plain" {
 		return awssns.Envelope{}, apperrors.NewBadRequest("SNS requests must use text/plain content type")
 	}
-	body, err := httptransport.ReadBody(c, maxRequestBodyBytes)
+	body, err := httputil.ReadBody(c, maxRequestBodyBytes)
 	if err != nil {
 		return awssns.Envelope{}, err
 	}
