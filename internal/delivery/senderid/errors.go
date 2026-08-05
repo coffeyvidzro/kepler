@@ -10,6 +10,7 @@ const (
 var (
 	ErrConsumerNotConfigured = errors.New("Sender ID reconciliation consumer is not configured")
 	ErrInvalidConfig         = errors.New("invalid Sender ID reconciliation configuration")
+	ErrRegistrationClaimLost = errors.New("sender ID registration claim was lost")
 	ErrWorkerIDRequired      = errors.New("Sender ID reconciliation worker ID is required")
 )
 
