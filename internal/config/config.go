@@ -12,6 +12,11 @@ type ProviderConfig struct {
 	APIKey  string `env:"API_KEY"`
 }
 
+type MoolreConfig struct {
+	BaseURL string `env:"BASE_URL"`
+	VASKey  string `env:"VAS_KEY"`
+}
+
 type CelcomConfig struct {
 	BaseURL   string `env:"BASE_URL"`
 	APIKey    string `env:"API_KEY"`
@@ -63,6 +68,7 @@ type Config struct {
 	NATSURL        string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
 	Arkesel        ProviderConfig `envPrefix:"ARKESEL_"`
 	MNotify        ProviderConfig `envPrefix:"MNOTIFY_"`
+	Moolre         MoolreConfig   `envPrefix:"MOOLRE_"`
 	Celcom         CelcomConfig   `envPrefix:"CELCOM_"`
 	NewRelic       NewRelicConfig `envPrefix:"NEW_RELIC_"`
 	Sentry         SentryConfig   `envPrefix:"SENTRY_"`
@@ -105,6 +111,8 @@ func (c *Config) normalize() {
 	c.Arkesel.BaseURL = strings.TrimRight(strings.TrimSpace(c.Arkesel.BaseURL), "/")
 	c.MNotify.APIKey = strings.TrimSpace(c.MNotify.APIKey)
 	c.MNotify.BaseURL = strings.TrimRight(strings.TrimSpace(c.MNotify.BaseURL), "/")
+	c.Moolre.VASKey = strings.TrimSpace(c.Moolre.VASKey)
+	c.Moolre.BaseURL = strings.TrimRight(strings.TrimSpace(c.Moolre.BaseURL), "/")
 	c.Celcom.APIKey = strings.TrimSpace(c.Celcom.APIKey)
 	c.Celcom.PartnerID = strings.TrimSpace(c.Celcom.PartnerID)
 	c.Celcom.BaseURL = strings.TrimRight(strings.TrimSpace(c.Celcom.BaseURL), "/")
