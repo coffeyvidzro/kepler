@@ -77,10 +77,8 @@ func describeError(err error) (int, *ErrorObj) {
 			status = http.StatusInternalServerError
 		}
 		message := http.StatusText(status)
-		if status < http.StatusInternalServerError {
-			if value, ok := httpErr.Message.(string); ok && strings.TrimSpace(value) != "" {
-				message = strings.TrimSpace(value)
-			}
+		if status < http.StatusInternalServerError && strings.TrimSpace(httpErr.Message) != "" {
+			message = strings.TrimSpace(httpErr.Message)
 		}
 		return status, &ErrorObj{Code: codeForStatus(status), Message: message}
 	}

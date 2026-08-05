@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
+	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )

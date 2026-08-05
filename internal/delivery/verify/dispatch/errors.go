@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	ErrNotFound              = errors.New("verification dispatch resource not found")
-	ErrConsumerNotConfigured = errors.New("verification dispatch consumer is not fully configured")
+	ErrNotFound               = errors.New("verification dispatch resource not found")
+	ErrConsumerNotConfigured  = errors.New("verification dispatch consumer is not fully configured")
 	ErrProcessorNotConfigured = errors.New("verification dispatch processor is not configured")
 )
 
@@ -31,7 +31,7 @@ type ConsumerConfig struct {
 func DefaultConsumerConfig() ConsumerConfig {
 	return ConsumerConfig{
 		Concurrency: 5, AckWait: 2 * time.Minute, HandlerTimeout: 45 * time.Second,
-		MaxDeliver: len(defaultRetryDelays),
+		MaxDeliver:  len(defaultRetryDelays),
 		RetryDelays: append([]time.Duration(nil), defaultRetryDelays...),
 	}
 }

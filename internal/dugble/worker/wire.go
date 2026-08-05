@@ -27,10 +27,7 @@ import (
 	verifycleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/cleanup"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
-	verifyfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/feedback"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/processed"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
@@ -39,6 +36,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
@@ -82,12 +80,12 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		return fail(fmt.Errorf("provision JetStream topology: %w", err))
 	}
 
-	processedEvents := processed.NewRepository(db)
 	outboxRepository := outbox.NewRepository(db)
+	processedEvents := outboxRepository
 	webhookModuleRepository := webhookmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)
 	events := platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter))
-	lifecycleEmitter := verifyfeedback.NewEmitter(webhookEmitter, events)
+	lifecycleEmitter := webhookEmitter
 	billingService := platformbilling.NewService(platformbilling.NewRepository(db))
 
 	emailSender, err := awsses.NewSESSender(

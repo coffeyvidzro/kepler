@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	ProviderSES                       = "ses"
-	TransactionalConfigurationSet     = "dugble-transactional"
-	MarketingConfigurationSet         = "dugble-marketing"
+	ProviderSES                   = "ses"
+	TransactionalConfigurationSet = "dugble-transactional"
+	MarketingConfigurationSet     = "dugble-marketing"
 )
 
 type sesV2SendAPI interface {

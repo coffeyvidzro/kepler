@@ -12,11 +12,17 @@ import (
 
 // New creates and verifies a Redis client.
 func New(ctx context.Context, redisURL string) (*goredis.Client, error) {
-	if ctx == nil { return nil, fmt.Errorf("Redis context is required") }
+	if ctx == nil {
+		return nil, fmt.Errorf("Redis context is required")
+	}
 	redisURL = strings.TrimSpace(redisURL)
-	if redisURL == "" { return nil, fmt.Errorf("REDIS_URL is required") }
+	if redisURL == "" {
+		return nil, fmt.Errorf("REDIS_URL is required")
+	}
 	options, err := goredis.ParseURL(redisURL)
-	if err != nil { return nil, fmt.Errorf("parse REDIS_URL: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("parse REDIS_URL: %w", err)
+	}
 	options.MaxRetries = 3
 	options.DialTimeout = 5 * time.Second
 	options.ReadTimeout = 3 * time.Second
@@ -28,6 +34,9 @@ func New(ctx context.Context, redisURL string) (*goredis.Client, error) {
 	client.AddHook(nrredis.NewHook(options))
 	pingContext, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := client.Ping(pingContext).Err(); err != nil { _ = client.Close(); return nil, fmt.Errorf("ping Redis: %w", err) }
+	if err := client.Ping(pingContext).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("ping Redis: %w", err)
+	}
 	return client, nil
 }

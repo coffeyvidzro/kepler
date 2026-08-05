@@ -13,7 +13,7 @@ const ProviderID = "celcom"
 type Provider struct{ client *Client }
 
 func NewProvider(client *Client) *Provider { return &Provider{client: client} }
-func (provider *Provider) ID() string       { return ProviderID }
+func (provider *Provider) ID() string      { return ProviderID }
 
 func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequest) (*platformsms.SendResponse, error) {
 	if provider == nil || provider.client == nil {
