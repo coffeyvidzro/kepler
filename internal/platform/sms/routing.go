@@ -2,120 +2,86 @@ package sms
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+
+	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
 
-type Route struct {
-	ProviderID         string
-	DestinationCountry string
-	Enabled            bool
-}
-
-type RoutingConfig struct {
-	Routes []Route
-}
+type Route = platformrouting.Route
+type RoutingConfig = platformrouting.Config
 
 func DefaultRoutingConfig() RoutingConfig {
-	return RoutingConfig{Routes: []Route{
-		{ProviderID: "mnotify", DestinationCountry: CountryGhana, Enabled: true},
-		{ProviderID: "celcom", DestinationCountry: CountryKenya, Enabled: true},
-		{ProviderID: "arkesel", DestinationCountry: CountryNigeria, Enabled: true},
-	}}
-}
-
-func (config RoutingConfig) Validate() error {
-	if len(config.Routes) == 0 {
-		return ErrNoRoutesConfigured
-	}
-	providers := make(map[string]string, len(config.Routes))
-	countries := make(map[string]string, len(config.Routes))
-	enabled := 0
-	for _, route := range config.Routes {
-		providerID := normalizeProviderID(route.ProviderID)
-		if providerID == "" {
-			return ErrInvalidProviderID
-		}
-		country := NormalizeCountryCode(route.DestinationCountry)
-		if !IsCountryCode(country) {
-			return fmt.Errorf("%w for provider %q: %q", ErrInvalidCountryCode, providerID, route.DestinationCountry)
-		}
-		if existingCountry, exists := providers[providerID]; exists {
-			return fmt.Errorf("%w: %s is configured for %s and %s", ErrDuplicateProvider, providerID, existingCountry, country)
-		}
-		providers[providerID] = country
-		if existingProvider, exists := countries[country]; exists {
-			return fmt.Errorf("%w %q: providers %q and %q", ErrDuplicateCountry, country, existingProvider, providerID)
-		}
-		countries[country] = providerID
-		if route.Enabled {
-			enabled++
-		}
-	}
-	if enabled == 0 {
-		return ErrNoEnabledRoutes
-	}
-	return nil
+	return platformrouting.DefaultConfig()
 }
 
 type RoutingService struct {
-	routes    map[string]string
+	service   *platformrouting.Service
 	providers map[string]Provider
 }
 
-func NewRoutingService(config RoutingConfig, providers ...Provider) (*RoutingService, error) {
-	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("validate SMS routing config: %w", err)
-	}
+var _ Router = (*RoutingService)(nil)
+
+func NewRoutingService(
+	config RoutingConfig,
+	providers ...Provider,
+) (*RoutingService, error) {
 	registry := make(map[string]Provider, len(providers))
+	providerIDs := make([]string, 0, len(providers))
 	for _, upstream := range providers {
 		if upstream == nil {
-			return nil, ErrProviderRequired
+			return nil, platformrouting.ErrProviderRequired
 		}
 		providerID := normalizeProviderID(upstream.ID())
 		if providerID == "" {
-			return nil, ErrInvalidProviderID
+			return nil, platformrouting.ErrInvalidProviderID
 		}
 		if _, exists := registry[providerID]; exists {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateProvider, providerID)
+			return nil, fmt.Errorf("%w: %s", platformrouting.ErrDuplicateProvider, providerID)
 		}
 		registry[providerID] = upstream
+		providerIDs = append(providerIDs, providerID)
 	}
-	routes := make(map[string]string)
-	for _, route := range config.Routes {
-		if !route.Enabled {
-			continue
-		}
-		providerID := normalizeProviderID(route.ProviderID)
-		country := NormalizeCountryCode(route.DestinationCountry)
-		if _, exists := registry[providerID]; !exists {
-			return nil, fmt.Errorf("%w: %s", ErrProviderNotRegistered, providerID)
-		}
-		routes[country] = providerID
-	}
-	return &RoutingService{routes: routes, providers: registry}, nil
-}
 
-func (service *RoutingService) Route(ctx context.Context, request SendRequest) (Provider, error) {
-	if service == nil {
-		return nil, ErrRoutingServiceNil
-	}
-	if ctx == nil {
-		return nil, fmt.Errorf("SMS routing context is required")
-	}
-	if err := ctx.Err(); err != nil {
+	service, err := platformrouting.NewService(
+		config,
+		platformrouting.NewPriorityStrategy(),
+		providerIDs...,
+	)
+	if err != nil {
 		return nil, err
 	}
-	request = request.Normalize()
-	providerID, exists := service.routes[request.DestinationCountry]
-	if !exists {
+	return &RoutingService{service: service, providers: registry}, nil
+}
+
+func (service *RoutingService) Route(
+	ctx context.Context,
+	request SendRequest,
+) ([]Provider, error) {
+	if service == nil || service.service == nil {
+		return nil, platformrouting.ErrRoutingServiceNil
+	}
+	providerIDs, err := service.service.Route(ctx, request.Normalize())
+	if err != nil {
+		if errors.Is(err, platformrouting.ErrNoProviderAvailable) {
+			return nil, ErrNoProviderAvailable
+		}
+		return nil, err
+	}
+
+	providers := make([]Provider, 0, len(providerIDs))
+	for _, providerID := range providerIDs {
+		upstream, exists := service.providers[providerID]
+		if !exists || upstream == nil {
+			continue
+		}
+		providers = append(providers, upstream)
+	}
+	if len(providers) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
-	upstream, exists := service.providers[providerID]
-	if !exists || upstream == nil {
-		return nil, ErrNoProviderAvailable
-	}
-	return upstream, nil
+	return providers, nil
 }
 
 func (service *RoutingService) Provider(providerID string) (Provider, bool) {
@@ -124,6 +90,17 @@ func (service *RoutingService) Provider(providerID string) (Provider, bool) {
 	}
 	upstream, exists := service.providers[normalizeProviderID(providerID)]
 	return upstream, exists
+}
+
+func (service *RoutingService) ShouldFallback(
+	ctx context.Context,
+	providerID string,
+	err error,
+) bool {
+	if service == nil || service.service == nil {
+		return false
+	}
+	return service.service.ShouldFallback(ctx, providerID, err)
 }
 
 func normalizeProviderID(providerID string) string {

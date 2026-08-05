@@ -1,60 +1,35 @@
 package sms
 
-import (
-	"errors"
-	"regexp"
-	"strings"
-)
+import "github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
 
 const (
-	CountryGhana   = "GH"
-	CountryKenya   = "KE"
-	CountryNigeria = "NG"
+	CountryGhana   = destination.CountryGhana
+	CountryNigeria = destination.CountryNigeria
 )
 
 var (
-	ErrInvalidE164            = errors.New("invalid E.164 phone number")
-	ErrUnsupportedDestination = errors.New("unsupported SMS destination country")
-	e164Pattern               = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
+	ErrInvalidE164            = destination.ErrInvalidE164
+	ErrUnsupportedDestination = destination.ErrUnsupportedDestination
 )
 
-type destinationPrefix struct {
-	prefix      string
-	countryCode string
-}
+type Destination = destination.Destination
 
-var destinationPrefixes = []destinationPrefix{
-	{prefix: "+233", countryCode: CountryGhana},
-	{prefix: "+234", countryCode: CountryNigeria},
-	{prefix: "+254", countryCode: CountryKenya},
+func SupportedDestinations() []Destination {
+	return destination.Supported()
 }
 
 func ResolveDestinationCountry(number string) (string, error) {
-	number = strings.TrimSpace(number)
-	if !e164Pattern.MatchString(number) {
-		return "", ErrInvalidE164
-	}
-	for _, candidate := range destinationPrefixes {
-		if strings.HasPrefix(number, candidate.prefix) {
-			return candidate.countryCode, nil
-		}
-	}
-	return "", ErrUnsupportedDestination
+	return destination.ResolveCountry(number)
 }
 
 func NormalizeCountryCode(value string) string {
-	return strings.ToUpper(strings.TrimSpace(value))
+	return destination.NormalizeCountryCode(value)
 }
 
 func IsCountryCode(value string) bool {
-	value = NormalizeCountryCode(value)
-	if len(value) != 2 {
-		return false
-	}
-	for _, character := range value {
-		if character < 'A' || character > 'Z' {
-			return false
-		}
-	}
-	return true
+	return destination.IsCountryCode(value)
+}
+
+func IsSupportedDestinationCountry(value string) bool {
+	return destination.IsSupportedCountry(value)
 }

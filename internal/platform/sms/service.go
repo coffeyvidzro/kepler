@@ -32,25 +32,52 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	upstream, err := service.router.Route(ctx, request)
+
+	providers, err := service.router.Route(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("route SMS request: %w", err)
 	}
-	if upstream == nil {
+	if len(providers) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
-	providerID := normalizeProviderID(upstream.ID())
-	if providerID == "" {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: "unknown", Err: errors.New("routed SMS provider has an empty ID")}}}
+
+	attempts := make([]ProviderAttempt, 0, len(providers))
+	for _, upstream := range providers {
+		if upstream == nil {
+			attempts = append(attempts, ProviderAttempt{
+				ProviderID: "unknown",
+				Err:        errors.New("routed SMS provider is nil"),
+			})
+			break
+		}
+
+		providerID := normalizeProviderID(upstream.ID())
+		if providerID == "" {
+			attempts = append(attempts, ProviderAttempt{
+				ProviderID: "unknown",
+				Err:        errors.New("routed SMS provider has an empty ID"),
+			})
+			break
+		}
+
+		response, attemptErr := upstream.Send(ctx, request)
+		if attemptErr == nil {
+			attemptErr = validateSendResponse(providerID, response)
+			if attemptErr == nil {
+				return response, nil
+			}
+		}
+
+		attempts = append(attempts, ProviderAttempt{
+			ProviderID: providerID,
+			Err:        attemptErr,
+		})
+		if !service.router.ShouldFallback(ctx, providerID, attemptErr) {
+			break
+		}
 	}
-	response, err := upstream.Send(ctx, request)
-	if err != nil {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: providerID, Err: err}}}
-	}
-	if err := validateSendResponse(providerID, response); err != nil {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: providerID, Err: err}}}
-	}
-	return response, nil
+
+	return nil, &SendError{Attempts: attempts}
 }
 
 func (service *Service) CheckStatus(ctx context.Context, providerID, providerMessageID string) (*StatusResponse, error) {

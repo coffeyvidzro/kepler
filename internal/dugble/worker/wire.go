@@ -11,11 +11,14 @@ import (
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/dns/netdns"
+	leamoutsms "github.com/coffeyvidzro/dugble/server/internal/adapters/leamout/sms"
+	mnotifyadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
+	mnotifysms "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify/sms"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	moolresms "github.com/coffeyvidzro/dugble/server/internal/adapters/moolre/sms"
 	natsadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/arkesel"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
+	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	arguscleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/cleanup"
 	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
@@ -188,9 +191,10 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 
 	smsRouter, err := platformsms.NewRoutingService(
 		platformsms.DefaultRoutingConfig(),
-		arkesel.NewProvider(arkesel.NewClient(cfg.Arkesel)),
-		celcom.NewProvider(celcom.NewClient(cfg.Celcom)),
-		mnotify.NewProvider(mnotify.NewClient(cfg.MNotify)),
+		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.BaseURL, cfg.MNotify.APIKey)),
+		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.BaseURL, cfg.Moolre.VASKey)),
+		leamoutsms.NewProvider(),
+		runnagesms.NewProvider(),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS router: %w", err))
