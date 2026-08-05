@@ -6,24 +6,21 @@ import (
 	"strings"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
 )
 
 const (
-	StatusPending  = "pending"
-	StatusApproved = "approved"
-	StatusRejected = "rejected"
-	StatusUnknown  = "unknown"
+	StatusPending  = platformsenderid.StatusPending
+	StatusApproved = platformsenderid.StatusApproved
+	StatusRejected = platformsenderid.StatusRejected
+	StatusUnknown  = platformsenderid.StatusUnknown
 )
 
-type CreateResponse struct {
-	ProviderID string
-	SenderID   string
-	Status     string
-}
+type CreateResponse = platformsenderid.CreateResponse
 
 type createResponse = moolre.Envelope[json.RawMessage]
 
-func mapCreateResponse(senderID string, response *createResponse) (*CreateResponse, error) {
+func mapCreateResponse(senderID string, response *createResponse) (*platformsenderid.CreateResponse, error) {
 	if response == nil {
 		return nil, fmt.Errorf("%w: Sender ID creation response is nil", moolre.ErrInvalidResponse)
 	}
@@ -38,9 +35,9 @@ func mapCreateResponse(senderID string, response *createResponse) (*CreateRespon
 	if !strings.EqualFold(strings.TrimSpace(response.Code), "ASMQ12") {
 		return nil, fmt.Errorf("%w: successful Sender ID creation response has code %q", moolre.ErrInvalidResponse, response.Code)
 	}
-	return &CreateResponse{
+	return &platformsenderid.CreateResponse{
 		ProviderID: ProviderID,
 		SenderID:   strings.TrimSpace(senderID),
-		Status:     StatusPending,
+		Status:     platformsenderid.StatusPending,
 	}, nil
 }
