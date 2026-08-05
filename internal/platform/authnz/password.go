@@ -31,7 +31,8 @@ func VerifyPassword(hash *string, password string) bool {
 	hasUsableHash := false
 	if hash != nil {
 		candidateHash = *hash
-		if _, err := bcrypt.Cost([]byte(candidateHash)); err == nil {
+		if _, err := bcrypt.Cost([]byte(candidateHash)); err == nil &&
+			candidateHash != dummyPasswordHash {
 			hasUsableHash = true
 		} else {
 			candidateHash = dummyPasswordHash
