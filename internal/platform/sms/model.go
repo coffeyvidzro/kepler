@@ -94,6 +94,11 @@ type Router interface {
 	Provider(string) (Provider, bool)
 }
 
+type CandidateRouter interface {
+	Router
+	Candidates(context.Context, SendRequest) ([]Provider, error)
+}
+
 type ValidationError struct {
 	Field  string
 	Reason string
