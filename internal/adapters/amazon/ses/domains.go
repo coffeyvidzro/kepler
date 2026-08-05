@@ -174,3 +174,8 @@ func generateBYODKIMMaterial() (selector, privateKey, publicKey string, err erro
 	selector = "dugble" + hex.EncodeToString(random)
 	return selector, base64.StdEncoding.EncodeToString(privateDER), base64.StdEncoding.EncodeToString(publicDER), nil
 }
+
+func isAlreadyExists(err error) bool {
+	var apiError smithy.APIError
+	return errors.As(err, &apiError) && strings.EqualFold(apiError.ErrorCode(), "AlreadyExistsException")
+}
