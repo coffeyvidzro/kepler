@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ErrClientUnavailable = errors.New("Moolre client is unavailable")
+	ErrClientUnavailable = errors.New("moolre client is unavailable")
 	ErrInvalidResponse   = errors.New("invalid Moolre response")
 )
 
@@ -23,17 +23,17 @@ type APIError struct {
 
 func (err *APIError) Error() string {
 	if err == nil {
-		return "Moolre API error"
+		return "moolre API error"
 	}
 	code := strings.TrimSpace(err.Code)
 	message := strings.TrimSpace(err.Message)
 	if code != "" || message != "" {
-		return fmt.Sprintf("Moolre API error: status %d code %q message %q", err.Status, code, message)
+		return fmt.Sprintf("moolre API error: status %d code %q message %q", err.Status, code, message)
 	}
 	if strings.TrimSpace(err.Body) != "" {
-		return fmt.Sprintf("Moolre API returned HTTP status %d: %s", err.StatusCode, strings.TrimSpace(err.Body))
+		return fmt.Sprintf("moolre API returned HTTP status %d: %s", err.StatusCode, strings.TrimSpace(err.Body))
 	}
-	return fmt.Sprintf("Moolre API returned HTTP status %d", err.StatusCode)
+	return fmt.Sprintf("moolre API returned HTTP status %d", err.StatusCode)
 }
 
 func (err *APIError) SafeToFallback() bool {
