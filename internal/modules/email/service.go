@@ -107,13 +107,12 @@ func (s *Service) Cancel(ctx context.Context, value string) (MutationResponse, e
 }
 
 type Service struct {
-	repository        *Repository
-	delivery          DeliveryQueue
-	config            ServiceConfig
-	senderDomains     senderDomainResolver
-	routes            customerRouteResolver
-	sandboxRecipients sandboxRecipientAuthorizer
-	billing           platformbilling.EmailBilling
+	repository    *Repository
+	delivery      DeliveryQueue
+	config        ServiceConfig
+	senderDomains senderDomainResolver
+	routes        customerRouteResolver
+	billing       platformbilling.EmailBilling
 }
 
 type senderDomainResolver interface {
@@ -122,10 +121,6 @@ type senderDomainResolver interface {
 
 type customerRouteResolver interface {
 	ResolveActiveCustomerRouteTx(context.Context, pgx.Tx, uuid.UUID, string, string, string) (platformemail.DeliveryRoute, error)
-}
-
-type sandboxRecipientAuthorizer interface {
-	AuthorizeSandboxRecipients(context.Context, uuid.UUID, []EmailAddress, []EmailAddress, []EmailAddress) error
 }
 
 type ServiceConfig struct {
@@ -144,7 +139,7 @@ func NewService(
 ) *Service {
 	service := &Service{
 		repository: repository, delivery: delivery, config: config,
-		senderDomains: repository, routes: repository, sandboxRecipients: repository, billing: billing,
+		senderDomains: repository, routes: repository, billing: billing,
 	}
 	for _, dependency := range dependencies {
 		if resolver, ok := dependency.(senderDomainResolver); ok {
@@ -152,9 +147,6 @@ func NewService(
 		}
 		if resolver, ok := dependency.(customerRouteResolver); ok {
 			service.routes = resolver
-		}
-		if authorizer, ok := dependency.(sandboxRecipientAuthorizer); ok {
-			service.sandboxRecipients = authorizer
 		}
 	}
 	return service
@@ -377,30 +369,6 @@ func (s *Service) authorizeSender(ctx context.Context, teamID uuid.UUID, message
 	if provider == "" || region == "" {
 		return apperrors.NewInternal("Email delivery route is not configured", nil)
 	}
-	if strings.EqualFold(message.FromEmail, platformemail.CustomerOnboardingIdentity) {
-		if message.MessageType != MessageTypeTransactional {
-			return apperrors.NewBadRequest("The onboarding identity supports transactional email only")
-		}
-		if s.sandboxRecipients == nil {
-			return apperrors.NewInternal("Sandbox recipient authorization is not configured", nil)
-		}
-		if err := s.sandboxRecipients.AuthorizeSandboxRecipients(ctx, teamID, message.To, message.CC, message.BCC); err != nil {
-			switch {
-			case errors.Is(err, ErrSandboxTeamEmailNotVerified):
-				return apperrors.NewForbidden("Verify the team email before using the runnage.dev test sender")
-			case errors.Is(err, ErrSandboxRecipientRestricted):
-				return apperrors.NewForbidden("The runnage.dev test sender can only deliver to the verified team email")
-			default:
-				return apperrors.NewInternal("Unable to authorize sandbox recipient", err)
-			}
-		}
-		message.Provider = provider
-		message.ProviderRegion = region
-		message.SenderDomainID = nil
-		message.DeliveryRoute = platformemail.CustomerSandboxDeliveryRoute()
-		return nil
-	}
-
 	separator := strings.LastIndexByte(message.FromEmail, '@')
 	if separator < 0 || separator == len(message.FromEmail)-1 {
 		return apperrors.NewBadRequest("Email sender is invalid")

@@ -8,7 +8,6 @@ import (
 
 const (
 	DefaultProvider         = "aws_ses"
-	DefaultRegion           = "eu-north-1"
 	DefaultCustomReturnPath = "send"
 
 	StatusPending  = "pending"

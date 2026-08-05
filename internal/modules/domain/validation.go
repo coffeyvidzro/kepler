@@ -22,7 +22,7 @@ func validateCreate(req CreateRequest) (string, string, string, error) {
 	region := strings.ToLower(strings.TrimSpace(req.Region))
 	returnPath := strings.ToLower(strings.TrimSpace(req.CustomReturnPath))
 	if region == "" {
-		region = DefaultRegion
+		return "", "", "", apperrors.NewBadRequest("Sender domain region is required")
 	}
 	if returnPath == "" {
 		returnPath = DefaultCustomReturnPath

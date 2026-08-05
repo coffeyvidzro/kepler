@@ -12,7 +12,6 @@ import (
 	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 const (
@@ -110,15 +109,6 @@ func (client *Client) ProvisionTenant(ctx context.Context, request emailtenant.P
 			arn   string
 		}{label: "configuration set " + configurationSet, arn: resourceARN})
 	}
-	onboardingARN, err := identityARN(tenantARN, platformemail.CustomerOnboardingSESIdentity)
-	if err != nil {
-		return emailtenant.ProvisionResult{}, err
-	}
-	resources = append(resources, struct {
-		label string
-		arn   string
-	}{label: "onboarding domain identity", arn: onboardingARN})
-
 	for _, resource := range resources {
 		_, associationErr := tenantClient.CreateTenantResourceAssociation(ctx, &sesv2.CreateTenantResourceAssociationInput{
 			TenantName:  aws.String(name),
