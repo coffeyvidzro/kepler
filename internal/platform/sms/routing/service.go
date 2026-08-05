@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
 var (
@@ -13,20 +11,19 @@ var (
 	ErrStrategyRequired      = errors.New("SMS routing strategy is required")
 	ErrProviderRequired      = errors.New("SMS provider is required")
 	ErrProviderNotRegistered = errors.New("SMS provider is not registered")
+	ErrNoProviderAvailable   = errors.New("no SMS provider is available")
 )
 
 type Service struct {
 	routes    []Route
 	strategy  Strategy
-	providers map[string]platformsms.Provider
+	providers map[string]struct{}
 }
-
-var _ platformsms.Router = (*Service)(nil)
 
 func NewService(
 	config Config,
 	strategy Strategy,
-	providers ...platformsms.Provider,
+	providerIDs ...string,
 ) (*Service, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("validate SMS routing config: %w", err)
@@ -36,19 +33,16 @@ func NewService(
 	}
 
 	routes := config.enabledRoutes()
-	registry := make(map[string]platformsms.Provider, len(providers))
-	for _, upstream := range providers {
-		if upstream == nil {
-			return nil, ErrProviderRequired
-		}
-		providerID := normalizeProviderID(upstream.ID())
+	registry := make(map[string]struct{}, len(providerIDs))
+	for _, rawProviderID := range providerIDs {
+		providerID := normalizeProviderID(rawProviderID)
 		if providerID == "" {
-			return nil, ErrInvalidProviderID
+			return nil, ErrProviderRequired
 		}
 		if _, exists := registry[providerID]; exists {
 			return nil, fmt.Errorf("%w: %s", ErrDuplicateProvider, providerID)
 		}
-		registry[providerID] = upstream
+		registry[providerID] = struct{}{}
 	}
 
 	for _, route := range routes {
@@ -66,8 +60,8 @@ func NewService(
 
 func (service *Service) Route(
 	ctx context.Context,
-	request platformsms.SendRequest,
-) ([]platformsms.Provider, error) {
+	request Request,
+) ([]string, error) {
 	if service == nil {
 		return nil, ErrRoutingServiceNil
 	}
@@ -77,19 +71,22 @@ func (service *Service) Route(
 	if ctx == nil {
 		return nil, errors.New("SMS routing context is required")
 	}
+	if request == nil {
+		return nil, errors.New("SMS routing request is required")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	request = request.Normalize()
+	country := normalizeCountryCode(request.RoutingCountry())
 	eligibleRoutes := make([]Route, 0, len(service.routes))
 	for _, route := range service.routes {
-		if route.DestinationCountry == request.DestinationCountry {
+		if route.DestinationCountry == country {
 			eligibleRoutes = append(eligibleRoutes, route)
 		}
 	}
 	if len(eligibleRoutes) == 0 {
-		return nil, platformsms.ErrNoProviderAvailable
+		return nil, ErrNoProviderAvailable
 	}
 
 	orderedRoutes := service.strategy.Order(ctx, request, eligibleRoutes)
@@ -102,7 +99,7 @@ func (service *Service) Route(
 		enabledProviders[route.ProviderID] = struct{}{}
 	}
 
-	result := make([]platformsms.Provider, 0, len(orderedRoutes))
+	result := make([]string, 0, len(orderedRoutes))
 	seen := make(map[string]struct{}, len(orderedRoutes))
 	for _, route := range orderedRoutes {
 		providerID := normalizeProviderID(route.ProviderID)
@@ -112,34 +109,27 @@ func (service *Service) Route(
 		if _, allowed := enabledProviders[providerID]; !allowed {
 			continue
 		}
+		if _, registered := service.providers[providerID]; !registered {
+			continue
+		}
 		if _, exists := seen[providerID]; exists {
 			continue
 		}
-		upstream, exists := service.providers[providerID]
-		if !exists || upstream == nil {
-			continue
-		}
 		seen[providerID] = struct{}{}
-		result = append(result, upstream)
+		result = append(result, providerID)
 	}
 	if len(result) == 0 {
-		return nil, platformsms.ErrNoProviderAvailable
+		return nil, ErrNoProviderAvailable
 	}
 	return result, nil
 }
 
-// Provider returns registered providers even if their routes are disabled, so
-// delivery-status checks continue for messages accepted before a route change.
-func (service *Service) Provider(providerID string) (platformsms.Provider, bool) {
+func (service *Service) HasProvider(providerID string) bool {
 	if service == nil {
-		return nil, false
+		return false
 	}
-	providerID = normalizeProviderID(providerID)
-	if providerID == "" {
-		return nil, false
-	}
-	upstream, exists := service.providers[providerID]
-	return upstream, exists
+	_, exists := service.providers[normalizeProviderID(providerID)]
+	return exists
 }
 
 func (service *Service) ShouldFallback(
@@ -155,4 +145,25 @@ func (service *Service) ShouldFallback(
 		return false
 	}
 	return service.strategy.ShouldFallback(ctx, providerID, err)
+}
+
+func normalizeCountryCode(value string) string {
+	if len(value) == 0 {
+		return ""
+	}
+	return string([]byte{
+		toUpperASCII(value, 0),
+		toUpperASCII(value, 1),
+	})
+}
+
+func toUpperASCII(value string, index int) byte {
+	if index >= len(value) {
+		return 0
+	}
+	character := value[index]
+	if character >= 'a' && character <= 'z' {
+		return character - ('a' - 'A')
+	}
+	return character
 }
