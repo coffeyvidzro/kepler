@@ -8,6 +8,7 @@ import (
 	echomiddleware "github.com/labstack/echo/v5/middleware"
 
 	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
+	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
 // Registrar adds one cohesive set of routes to an Echo router.
@@ -39,7 +40,7 @@ func NewRouter(config RouterConfig, registrars ...Registrar) (*echo.Echo, error)
 	router.Use(echomiddleware.Recover())
 	bodyLimit := config.BodyLimit
 	if bodyLimit <= 0 {
-		bodyLimit = DefaultMaxRequestBodyBytes
+		bodyLimit = httputil.DefaultMaxRequestBodyBytes
 	}
 	router.Use(echomiddleware.BodyLimit(bodyLimit))
 	router.Use(httpmiddleware.CORS(config.CORSOrigins))
