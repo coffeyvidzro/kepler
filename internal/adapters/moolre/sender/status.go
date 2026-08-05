@@ -5,15 +5,10 @@ import (
 	"strings"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
+	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
 )
 
-type StatusResponse struct {
-	ProviderID     string
-	SenderID       string
-	Status         string
-	ProviderStatus string
-	Whitelisted    bool
-}
+type StatusResponse = platformsenderid.StatusResponse
 
 type statusData struct {
 	SenderID    string `json:"senderid"`
@@ -23,7 +18,7 @@ type statusData struct {
 
 type statusResponse = moolre.Envelope[statusData]
 
-func mapStatusResponse(senderID string, response *statusResponse) (*StatusResponse, error) {
+func mapStatusResponse(senderID string, response *statusResponse) (*platformsenderid.StatusResponse, error) {
 	if response == nil {
 		return nil, fmt.Errorf("%w: Sender ID status response is nil", moolre.ErrInvalidResponse)
 	}
@@ -48,7 +43,7 @@ func mapStatusResponse(senderID string, response *statusResponse) (*StatusRespon
 		return nil, fmt.Errorf("%w: Sender ID %q does not match %q", moolre.ErrInvalidResponse, actual, expected)
 	}
 	providerStatus := strings.TrimSpace(response.Data.Approval)
-	return &StatusResponse{
+	return &platformsenderid.StatusResponse{
 		ProviderID:     ProviderID,
 		SenderID:       expected,
 		Status:         normalizeStatus(providerStatus),
@@ -60,12 +55,12 @@ func mapStatusResponse(senderID string, response *statusResponse) (*StatusRespon
 func normalizeStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "pending":
-		return StatusPending
+		return platformsenderid.StatusPending
 	case "approved":
-		return StatusApproved
+		return platformsenderid.StatusApproved
 	case "rejected":
-		return StatusRejected
+		return platformsenderid.StatusRejected
 	default:
-		return StatusUnknown
+		return platformsenderid.StatusUnknown
 	}
 }

@@ -181,6 +181,10 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		},
 		domainWorkerID,
 	)
+	senderIDReconciliationJob, err := newSenderIDReconciliationJob(db, cfg)
+	if err != nil {
+		return fail(fmt.Errorf("initialize Sender ID reconciliation: %w", err))
+	}
 
 	smsRouter, err := platformsms.NewRoutingService(
 		platformsms.DefaultRoutingConfig(),
@@ -311,6 +315,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		job{name: "verification cleanup worker", run: argusCleanupWorker.Run},
 		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
 		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
+		senderIDReconciliationJob,
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create worker application: %w", err))

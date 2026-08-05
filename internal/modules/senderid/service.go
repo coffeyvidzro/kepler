@@ -8,12 +8,12 @@ import (
 
 	"github.com/google/uuid"
 
+	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )
 
 const (
-	maxSenderIDLength = 11
 	maxPurposeLength  = 500
 	maxProviderLength = 120
 )
@@ -98,16 +98,13 @@ func (s *Service) Delete(ctx context.Context, senderID string) (SenderID, error)
 }
 
 func validateCreate(req CreateRequest) (string, string, string, *string, error) {
-	name := strings.TrimSpace(req.Name)
+	name := platformsenderid.NormalizeName(req.Name)
 	countryCode := strings.ToUpper(strings.TrimSpace(req.CountryCode))
 	purpose := strings.TrimSpace(req.Purpose)
 	provider := normalizeOptional(req.Provider)
 
-	if name == "" {
-		return "", "", "", nil, apperrors.NewBadRequest("Sender ID name is required")
-	}
-	if len(name) > maxSenderIDLength {
-		return "", "", "", nil, apperrors.NewBadRequest("Sender ID name must be at most 11 characters")
+	if err := platformsenderid.ValidateName(name); err != nil {
+		return "", "", "", nil, apperrors.NewBadRequest(err.Error())
 	}
 	if !countryCodePattern.MatchString(countryCode) {
 		return "", "", "", nil, apperrors.NewBadRequest("Country code must be a valid ISO 3166-1 alpha-2 code")
@@ -121,6 +118,17 @@ func validateCreate(req CreateRequest) (string, string, string, *string, error) 
 	if provider != nil && len(*provider) > maxProviderLength {
 		return "", "", "", nil, apperrors.NewBadRequest("Sender ID provider must be at most 120 characters")
 	}
+
+	if countryCode == "GH" {
+		if provider != nil && !strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
+			return "", "", "", nil, apperrors.NewBadRequest("Ghana Sender IDs are registered through Moolre")
+		}
+		value := platformsenderid.ProviderMoolre
+		provider = &value
+	} else if provider != nil && strings.EqualFold(*provider, platformsenderid.ProviderMoolre) {
+		return "", "", "", nil, apperrors.NewBadRequest("Moolre Sender ID registration is currently available only for Ghana")
+	}
+
 	return name, countryCode, purpose, provider, nil
 }
 
