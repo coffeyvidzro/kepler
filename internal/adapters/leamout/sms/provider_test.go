@@ -13,10 +13,10 @@ func TestProviderProgressesToDelivered(t *testing.T) {
 	provider := NewProvider()
 	created, err := provider.Send(context.Background(), platformsms.SendRequest{
 		Reference:          "message-1",
-		To:                 "+254700000001",
+		To:                 "+2348000000000",
 		From:               "Dugble",
 		Message:            "Hello",
-		DestinationCountry: platformsms.CountryKenya,
+		DestinationCountry: platformsms.CountryNigeria,
 	})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
