@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/database"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
@@ -26,7 +26,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) InTransaction(ctx context.Context, operation func(pgx.Tx) error) error {
-	return database.InTransaction(ctx, r.db, operation)
+	return postgres.InTransaction(ctx, r.db, operation)
 }
 
 func (r *Repository) CreateEndpoint(ctx context.Context, teamID uuid.UUID, endpoint validatedEndpoint, secret []byte) (Endpoint, error) {

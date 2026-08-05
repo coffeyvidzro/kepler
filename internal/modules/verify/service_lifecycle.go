@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/coffeyvidzro/dugble/server/internal/database"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
@@ -32,7 +32,7 @@ func (service *Service) Check(ctx context.Context, value string, req CheckReques
 	if err != nil {
 		return CheckResponse{}, err
 	}
-	response, err := database.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (CheckResponse, error) {
+	response, err := postgres.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (CheckResponse, error) {
 		repository := service.repository.WithTx(tx)
 		locked, lockErr := repository.GetVerificationForUpdate(ctx, id, access.Scope.TeamID)
 		if lockErr != nil {
@@ -137,7 +137,7 @@ func (service *Service) Resend(ctx context.Context, value string) (Verification,
 	if err != nil {
 		return Verification{}, err
 	}
-	result, err := database.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (Verification, error) {
+	result, err := postgres.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (Verification, error) {
 		repository := service.repository.WithTx(tx)
 		locked, lockErr := repository.GetVerificationForUpdate(ctx, id, access.Scope.TeamID)
 		if lockErr != nil {
@@ -221,7 +221,7 @@ func (service *Service) Cancel(ctx context.Context, value string) (Verification,
 	if err != nil {
 		return Verification{}, err
 	}
-	result, err := database.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (Verification, error) {
+	result, err := postgres.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (Verification, error) {
 		repository := service.repository.WithTx(tx)
 		locked, lockErr := repository.GetVerificationForUpdate(ctx, id, access.Scope.TeamID)
 		if lockErr != nil {

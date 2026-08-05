@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/database"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
@@ -239,7 +239,7 @@ func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, teamID uuid
 }
 
 func withSMSLifecycleTx(ctx context.Context, repository *Repository, operation func(*Repository) (Message, error)) (Message, error) {
-	return database.InTransactionResult(ctx, repository.db, func(tx pgx.Tx) (Message, error) {
+	return postgres.InTransactionResult(ctx, repository.db, func(tx pgx.Tx) (Message, error) {
 		return operation(repository.WithTx(tx))
 	})
 }
