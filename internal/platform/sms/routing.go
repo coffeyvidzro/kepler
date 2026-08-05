@@ -3,12 +3,14 @@ package sms
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
 type Route struct {
 	ProviderID         string
 	DestinationCountry string
+	Priority           int
 	Enabled            bool
 }
 
@@ -18,9 +20,9 @@ type RoutingConfig struct {
 
 func DefaultRoutingConfig() RoutingConfig {
 	return RoutingConfig{Routes: []Route{
-		{ProviderID: "mnotify", DestinationCountry: CountryGhana, Enabled: true},
-		{ProviderID: "celcom", DestinationCountry: CountryKenya, Enabled: true},
-		{ProviderID: "arkesel", DestinationCountry: CountryNigeria, Enabled: true},
+		{ProviderID: "mnotify", DestinationCountry: CountryGhana, Priority: 1, Enabled: true},
+		{ProviderID: "celcom", DestinationCountry: CountryKenya, Priority: 1, Enabled: true},
+		{ProviderID: "arkesel", DestinationCountry: CountryNigeria, Priority: 1, Enabled: true},
 	}}
 }
 
@@ -28,45 +30,65 @@ func (config RoutingConfig) Validate() error {
 	if len(config.Routes) == 0 {
 		return ErrNoRoutesConfigured
 	}
-	providers := make(map[string]string, len(config.Routes))
-	countries := make(map[string]string, len(config.Routes))
+
+	providerRoutes := make(map[string]struct{}, len(config.Routes))
+	countryPriorities := make(map[string]struct{}, len(config.Routes))
 	enabled := 0
+
 	for _, route := range config.Routes {
 		providerID := normalizeProviderID(route.ProviderID)
 		if providerID == "" {
 			return ErrInvalidProviderID
 		}
+
 		country := NormalizeCountryCode(route.DestinationCountry)
-		if !IsCountryCode(country) {
+		if !IsSupportedDestinationCountry(country) {
 			return fmt.Errorf("%w for provider %q: %q", ErrInvalidCountryCode, providerID, route.DestinationCountry)
 		}
-		if existingCountry, exists := providers[providerID]; exists {
-			return fmt.Errorf("%w: %s is configured for %s and %s", ErrDuplicateProvider, providerID, existingCountry, country)
+		if route.Priority <= 0 {
+			return fmt.Errorf("%w for provider %q in %s: %d", ErrInvalidRoutePriority, providerID, country, route.Priority)
 		}
-		providers[providerID] = country
-		if existingProvider, exists := countries[country]; exists {
-			return fmt.Errorf("%w %q: providers %q and %q", ErrDuplicateCountry, country, existingProvider, providerID)
+
+		providerRouteKey := country + "\x00" + providerID
+		if _, exists := providerRoutes[providerRouteKey]; exists {
+			return fmt.Errorf("%w: provider %q for country %q", ErrDuplicateRoute, providerID, country)
 		}
-		countries[country] = providerID
+		providerRoutes[providerRouteKey] = struct{}{}
+
+		priorityKey := fmt.Sprintf("%s\x00%d", country, route.Priority)
+		if _, exists := countryPriorities[priorityKey]; exists {
+			return fmt.Errorf("%w: country %q priority %d", ErrDuplicateRoutePriority, country, route.Priority)
+		}
+		countryPriorities[priorityKey] = struct{}{}
+
 		if route.Enabled {
 			enabled++
 		}
 	}
+
 	if enabled == 0 {
 		return ErrNoEnabledRoutes
 	}
 	return nil
 }
 
+type registeredRoute struct {
+	providerID string
+	priority   int
+}
+
 type RoutingService struct {
-	routes    map[string]string
+	routes    map[string][]registeredRoute
 	providers map[string]Provider
 }
+
+var _ CandidateRouter = (*RoutingService)(nil)
 
 func NewRoutingService(config RoutingConfig, providers ...Provider) (*RoutingService, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("validate SMS routing config: %w", err)
 	}
+
 	registry := make(map[string]Provider, len(providers))
 	for _, upstream := range providers {
 		if upstream == nil {
@@ -81,7 +103,8 @@ func NewRoutingService(config RoutingConfig, providers ...Provider) (*RoutingSer
 		}
 		registry[providerID] = upstream
 	}
-	routes := make(map[string]string)
+
+	routes := make(map[string][]registeredRoute)
 	for _, route := range config.Routes {
 		if !route.Enabled {
 			continue
@@ -91,12 +114,30 @@ func NewRoutingService(config RoutingConfig, providers ...Provider) (*RoutingSer
 		if _, exists := registry[providerID]; !exists {
 			return nil, fmt.Errorf("%w: %s", ErrProviderNotRegistered, providerID)
 		}
-		routes[country] = providerID
+		routes[country] = append(routes[country], registeredRoute{
+			providerID: providerID,
+			priority:   route.Priority,
+		})
 	}
+
+	for country := range routes {
+		sort.Slice(routes[country], func(left, right int) bool {
+			return routes[country][left].priority < routes[country][right].priority
+		})
+	}
+
 	return &RoutingService{routes: routes, providers: registry}, nil
 }
 
 func (service *RoutingService) Route(ctx context.Context, request SendRequest) (Provider, error) {
+	candidates, err := service.Candidates(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return candidates[0], nil
+}
+
+func (service *RoutingService) Candidates(ctx context.Context, request SendRequest) ([]Provider, error) {
 	if service == nil {
 		return nil, ErrRoutingServiceNil
 	}
@@ -106,16 +147,25 @@ func (service *RoutingService) Route(ctx context.Context, request SendRequest) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	request = request.Normalize()
-	providerID, exists := service.routes[request.DestinationCountry]
-	if !exists {
+	configuredRoutes := service.routes[request.DestinationCountry]
+	if len(configuredRoutes) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
-	upstream, exists := service.providers[providerID]
-	if !exists || upstream == nil {
+
+	candidates := make([]Provider, 0, len(configuredRoutes))
+	for _, route := range configuredRoutes {
+		upstream, exists := service.providers[route.providerID]
+		if !exists || upstream == nil {
+			continue
+		}
+		candidates = append(candidates, upstream)
+	}
+	if len(candidates) == 0 {
 		return nil, ErrNoProviderAvailable
 	}
-	return upstream, nil
+	return candidates, nil
 }
 
 func (service *RoutingService) Provider(providerID string) (Provider, bool) {
