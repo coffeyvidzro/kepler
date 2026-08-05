@@ -6,12 +6,8 @@ import (
 	"sort"
 )
 
-type Request interface {
-	RoutingCountry() string
-}
-
 type Strategy interface {
-	Order(context.Context, Request, []Route) []Route
+	Order(context.Context, string, []Route) []Route
 	ShouldFallback(context.Context, string, error) bool
 }
 
@@ -30,7 +26,7 @@ func NewPriorityStrategy() *PriorityStrategy {
 
 func (*PriorityStrategy) Order(
 	_ context.Context,
-	_ Request,
+	_ string,
 	routes []Route,
 ) []Route {
 	ordered := make([]Route, len(routes))
