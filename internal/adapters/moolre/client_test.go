@@ -18,7 +18,7 @@ func TestNewClientUsesProductionEndpoint(t *testing.T) {
 func TestClientPostSetsVASKeyAndDecodesEnvelope(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", request.Method)
 		}
@@ -46,7 +46,7 @@ func TestClientPostSetsVASKeyAndDecodesEnvelope(t *testing.T) {
 func TestClientPostReturnsStructuredHTTPError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusUnauthorized)
 		_, _ = response.Write([]byte(`{"status":0,"code":"AIN01","message":"Authentication Error","data":null,"go":null}`))
