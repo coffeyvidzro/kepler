@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )

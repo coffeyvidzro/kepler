@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
 )
 

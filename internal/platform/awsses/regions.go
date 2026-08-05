@@ -1,4 +1,4 @@
-package email
+package awsses
 
 import (
 	"slices"

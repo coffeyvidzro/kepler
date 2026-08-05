@@ -16,7 +16,7 @@ import (
 	sesv2types "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/aws/smithy-go"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 func (c *Client) ProvisionDomain(ctx context.Context, req platformemail.DomainProvisionRequest) ([]platformemail.VerificationRecord, error) {

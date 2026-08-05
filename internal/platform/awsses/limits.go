@@ -1,4 +1,4 @@
-package email
+package awsses
 
 const (
 	// MaxRawMessageBytes is the authoritative provider limit for the fully

@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 const (

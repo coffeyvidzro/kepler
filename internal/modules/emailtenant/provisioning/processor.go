@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 )
 
 type tenantStore interface {
@@ -17,22 +16,18 @@ type tenantStore interface {
 	MarkFailed(context.Context, uuid.UUID, error) (emailtenant.Tenant, error)
 }
 
-type tenantProvider interface {
-	ProvisionTenant(context.Context, platformemail.TenantProvisionRequest) (platformemail.TenantProvisionResult, error)
-}
-
 type Processor struct {
 	store    tenantStore
-	provider tenantProvider
+	provider emailtenant.Provisioner
 }
 
 type Handler = Processor
 
-func NewProcessor(store tenantStore, provider tenantProvider) *Processor {
+func NewProcessor(store tenantStore, provider emailtenant.Provisioner) *Processor {
 	return &Processor{store: store, provider: provider}
 }
 
-func NewHandler(store tenantStore, provider tenantProvider) *Processor {
+func NewHandler(store tenantStore, provider emailtenant.Provisioner) *Processor {
 	return NewProcessor(store, provider)
 }
 
@@ -57,7 +52,7 @@ func (processor *Processor) Handle(ctx context.Context, command Command) error {
 		return fmt.Errorf("email tenant is %s, expected provisioning", current.Status)
 	}
 
-	result, err := processor.provider.ProvisionTenant(ctx, platformemail.TenantProvisionRequest{
+	result, err := processor.provider.ProvisionTenant(ctx, emailtenant.ProvisionRequest{
 		Region:           current.Region,
 		ExternalName:     current.ExternalName,
 		SuppressionScope: current.SuppressionScope,

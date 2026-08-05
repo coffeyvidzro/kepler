@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 )
 
 func NewClient(region, defaultFrom, accessKey, secretKey string, _ ...string) (*Client, error) {
