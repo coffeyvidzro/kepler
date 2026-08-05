@@ -67,7 +67,6 @@ func (handler *Handler) Create(c *echo.Context) error {
 	if err := decodeJSON(c, &req); err != nil {
 		return err
 	}
-	req.IPHash = requestIPHash(c)
 	result, err := handler.service.Create(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
@@ -105,13 +104,6 @@ func (handler *Handler) Check(c *echo.Context) error {
 		req.UserAgent = &userAgent
 	}
 	req.IPHash = requestIPHash(c)
-	if err := handler.service.EnforceCheckAbuse(
-		c.Request().Context(),
-		c.Param("verification_id"),
-		AbuseContext{IPHash: req.IPHash},
-	); err != nil {
-		return httputil.Error(c, err)
-	}
 	result, err := handler.service.Check(c.Request().Context(), c.Param("verification_id"), req)
 	if err != nil {
 		return httputil.Error(c, err)
@@ -122,13 +114,6 @@ func (handler *Handler) Check(c *echo.Context) error {
 func (handler *Handler) Resend(c *echo.Context) error {
 	if err := requireIdempotencyKey(c); err != nil {
 		return err
-	}
-	if err := handler.service.EnforceResendAbuse(
-		c.Request().Context(),
-		c.Param("verification_id"),
-		AbuseContext{IPHash: requestIPHash(c)},
-	); err != nil {
-		return httputil.Error(c, err)
 	}
 	result, err := handler.service.Resend(c.Request().Context(), c.Param("verification_id"))
 	if err != nil {

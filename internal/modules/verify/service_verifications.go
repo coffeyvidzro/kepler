@@ -39,17 +39,6 @@ func (service *Service) Create(ctx context.Context, req CreateVerificationReques
 			return Verification{}, validationErr
 		}
 		serviceID := uuid.MustParse(configured.ID)
-		if service.abuse != nil {
-			if abuseErr := service.abuse.AllowCreate(
-				ctx,
-				access.Scope.TeamID,
-				serviceID,
-				validated.RecipientNormalized,
-				req.IPHash,
-			); abuseErr != nil {
-				return Verification{}, abuseErr
-			}
-		}
 		now := service.now().UTC()
 		expiresAt := now.Add(time.Duration(configured.TTLSeconds) * time.Second)
 		created, createErr := repository.CreateVerification(

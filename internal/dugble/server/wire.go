@@ -242,20 +242,12 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("initialize verify code manager: %w", err))
 	}
-	verifyAbuse, err := verifymodule.NewRedisAbuseControls(
-		redisClient,
-		verifySecret,
-		verifymodule.DefaultAbusePolicy(),
-	)
-	if err != nil {
-		return fail(fmt.Errorf("initialize verify abuse controls: %w", err))
-	}
 	verifyService := verifymodule.NewService(
 		verifymodule.NewRepository(db),
 		verifyCodes,
 		verifydispatch.NewQueue(outboxRepository),
 		productRuntime.Events,
-	).WithAbuseControls(verifyAbuse)
+	)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
 
 	authMiddleware := httpmiddleware.SessionAuth(httpmiddleware.SessionAuthConfig{
