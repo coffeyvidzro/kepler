@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
@@ -34,7 +35,7 @@ func TestProviderSendUsesDugbleReference(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewProvider(moolre.NewClientWithHTTP(server.URL, "vas-key", server.Client()))
+	provider := NewProvider(moolre.NewClientWithHTTP("vas-key", testHTTPClient(t, server)))
 	result, err := provider.Send(context.Background(), platformsms.SendRequest{
 		Reference:          "message-uuid",
 		To:                 "+233201234567",
@@ -62,7 +63,7 @@ func TestProviderCheckStatusPreservesUndocumentedNumericStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewProvider(moolre.NewClientWithHTTP(server.URL, "vas-key", server.Client()))
+	provider := NewProvider(moolre.NewClientWithHTTP("vas-key", testHTTPClient(t, server)))
 	result, err := provider.CheckStatus(context.Background(), "message-uuid")
 	if err != nil {
 		t.Fatalf("CheckStatus() error = %v", err)
@@ -70,4 +71,25 @@ func TestProviderCheckStatusPreservesUndocumentedNumericStatus(t *testing.T) {
 	if result.Status != platformsms.StatusUnknown || result.ProviderStatus != "3" {
 		t.Fatalf("result = %#v", result)
 	}
+}
+
+func testHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	transport := server.Client().Transport
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		return transport.RoundTrip(clone)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
