@@ -8,7 +8,6 @@ import (
 
 const (
 	CountryGhana   = "GH"
-	CountryKenya   = "KE"
 	CountryNigeria = "NG"
 )
 
@@ -26,7 +25,6 @@ type Destination struct {
 var supported = []Destination{
 	{CallingCode: "+233", CountryCode: CountryGhana},
 	{CallingCode: "+234", CountryCode: CountryNigeria},
-	{CallingCode: "+254", CountryCode: CountryKenya},
 }
 
 func Supported() []Destination {
