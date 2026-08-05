@@ -18,15 +18,21 @@ var (
 	e164Pattern               = regexp.MustCompile(`^\+[1-9]\d{7,14}$`)
 )
 
-type destinationPrefix struct {
-	prefix      string
-	countryCode string
+type Destination struct {
+	CallingCode string
+	CountryCode string
 }
 
-var destinationPrefixes = []destinationPrefix{
-	{prefix: "+233", countryCode: CountryGhana},
-	{prefix: "+234", countryCode: CountryNigeria},
-	{prefix: "+254", countryCode: CountryKenya},
+var supportedDestinations = []Destination{
+	{CallingCode: "+233", CountryCode: CountryGhana},
+	{CallingCode: "+234", CountryCode: CountryNigeria},
+	{CallingCode: "+254", CountryCode: CountryKenya},
+}
+
+func SupportedDestinations() []Destination {
+	result := make([]Destination, len(supportedDestinations))
+	copy(result, supportedDestinations)
+	return result
 }
 
 func ResolveDestinationCountry(number string) (string, error) {
@@ -34,9 +40,9 @@ func ResolveDestinationCountry(number string) (string, error) {
 	if !e164Pattern.MatchString(number) {
 		return "", ErrInvalidE164
 	}
-	for _, candidate := range destinationPrefixes {
-		if strings.HasPrefix(number, candidate.prefix) {
-			return candidate.countryCode, nil
+	for _, destination := range supportedDestinations {
+		if strings.HasPrefix(number, destination.CallingCode) {
+			return destination.CountryCode, nil
 		}
 	}
 	return "", ErrUnsupportedDestination
@@ -57,4 +63,14 @@ func IsCountryCode(value string) bool {
 		}
 	}
 	return true
+}
+
+func IsSupportedDestinationCountry(value string) bool {
+	value = NormalizeCountryCode(value)
+	for _, destination := range supportedDestinations {
+		if destination.CountryCode == value {
+			return true
+		}
+	}
+	return false
 }
