@@ -16,17 +16,15 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/redis"
 	arcjetadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/security/arcjet"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/arkesel"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/send"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
-	smsintegration "github.com/coffeyvidzro/dugble/server/internal/integration/sms"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/arkesel"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/celcom"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/mnotify"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/routing"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
@@ -49,6 +47,7 @@ import (
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
+	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
@@ -156,8 +155,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		snsHandler = providersns.NewHandler(verifier, confirmer, ingestor)
 	}
 
-	smsRouter, err := routing.NewService(
-		routing.DefaultConfig(),
+	smsRouter, err := platformsms.NewRoutingService(
+		platformsms.DefaultRoutingConfig(),
 		arkesel.NewProvider(arkesel.NewClient(cfg.Arkesel)),
 		celcom.NewProvider(celcom.NewClient(cfg.Celcom)),
 		mnotify.NewProvider(mnotify.NewClient(cfg.MNotify)),
@@ -165,7 +164,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS router: %w", err))
 	}
-	smsSender, err := smsintegration.NewService(smsRouter)
+	smsSender, err := platformsms.NewService(smsRouter)
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS sender: %w", err))
 	}
