@@ -16,12 +16,12 @@ func TestServiceOrdersProvidersByPriority(t *testing.T) {
 
 	leamout := leamoutsms.NewProvider()
 	runnage := runnagesms.NewProvider()
-	router, err := routing.NewService(routing.Config{Routes: []routing.Route{
+	router, err := platformsms.NewRoutingService(routing.Config{Routes: []routing.Route{
 		{ProviderID: leamout.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 2, Enabled: true},
 		{ProviderID: runnage.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 1, Enabled: true},
-	}}, routing.NewPriorityStrategy(), leamout, runnage)
+	}}, leamout, runnage)
 	if err != nil {
-		t.Fatalf("NewService() error = %v", err)
+		t.Fatalf("NewRoutingService() error = %v", err)
 	}
 
 	providers, err := router.Route(context.Background(), validKenyaRequest())
@@ -94,14 +94,14 @@ func newTestRouter(
 	t *testing.T,
 	primary platformsms.Provider,
 	secondary platformsms.Provider,
-) *routing.Service {
+) *platformsms.RoutingService {
 	t.Helper()
-	router, err := routing.NewService(routing.Config{Routes: []routing.Route{
+	router, err := platformsms.NewRoutingService(routing.Config{Routes: []routing.Route{
 		{ProviderID: primary.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 1, Enabled: true},
 		{ProviderID: secondary.ID(), DestinationCountry: platformsms.CountryKenya, Priority: 2, Enabled: true},
-	}}, routing.NewPriorityStrategy(), primary, secondary)
+	}}, primary, secondary)
 	if err != nil {
-		t.Fatalf("routing.NewService() error = %v", err)
+		t.Fatalf("NewRoutingService() error = %v", err)
 	}
 	return router
 }
