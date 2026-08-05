@@ -1,0 +1,57 @@
+name: Fix email attempt cutover guard
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fix-email-attempt-cutover-guard.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Move legacy reference check after generation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path(".github/workflows/cutover-email-delivery-attempts.yml")
+          source = path.read_text()
+          start = source.index("          remaining = []\n")
+          end = source.index("\n      - name: Set up Go", start)
+          source = source[:start] + source[end:]
+
+          needle = '''          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          go test -run '^$' ./...
+          '''
+          replacement = '''          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          if grep -R "email_delivery_attempts" \\
+            --exclude='atlas.sum' \\
+            --exclude='cutover-email-delivery-attempts.yml' \\
+            --exclude-dir='.git' .; then
+            echo "legacy email delivery attempt references remain"
+            exit 1
+          fi
+          go test -run '^$' ./...
+          '''
+          if source.count(needle) != 1:
+              raise SystemExit("could not move legacy reference guard")
+          path.write_text(source.replace(needle, replacement))
+
+      - name: Commit guard fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/cutover-email-delivery-attempts.yml
+          git commit -m "chore: validate attempt references after generation"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
