@@ -188,10 +188,5 @@ func stringPtr(value string) *string {
 }
 
 func clientIP(c *echo.Context) string {
-	if forwarded := strings.TrimSpace(
-		c.Request().Header.Get(echo.HeaderXForwardedFor),
-	); forwarded != "" {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
-	return c.Request().RemoteAddr
+	return strings.TrimSpace(c.RealIP())
 }
