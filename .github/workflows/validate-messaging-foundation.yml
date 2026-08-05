@@ -8,10 +8,11 @@ on:
       - ".github/workflows/validate-messaging-foundation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -33,3 +34,12 @@ jobs:
 
       - name: Test messaging foundation with race detector
         run: go test -race ./internal/platform/messaging/...
+
+      - name: Record validation success
+        run: |
+          printf 'go vet ./internal/platform/messaging/...\ngo test -race ./internal/platform/messaging/...\n' > .messaging-validation.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .messaging-validation.txt
+          git commit -m "chore: record messaging validation success"
+          git push origin HEAD:feat/messaging-trust-delivery-attempts
