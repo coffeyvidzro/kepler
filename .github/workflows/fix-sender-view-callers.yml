@@ -25,20 +25,40 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
-          paths = [
-              Path("internal/modules/email/repository.go"),
-              Path("internal/modules/sms/repository.go"),
-              Path("internal/modules/domain/repository.go"),
-              Path("internal/modules/senderid/repository.go"),
-          ]
+          targets = {
+              Path("internal/modules/email/repository.go"): [
+                  "GetSenderDomainByDomainParams",
+              ],
+              Path("internal/modules/sms/repository.go"): [
+                  "FindApprovedSMSSenderParams",
+              ],
+              Path("internal/modules/domain/repository.go"): [
+                  "CreateSenderDomainParams",
+                  "ListSenderDomainsParams",
+                  "GetSenderDomainParams",
+                  "UpdateSenderDomainVerificationParams",
+                  "DeleteSenderDomainParams",
+              ],
+              Path("internal/modules/senderid/repository.go"): [
+                  "ListSenderIDsParams",
+                  "GetSenderIDParams",
+                  "DeleteSenderIDParams",
+              ],
+          }
+
           changed = 0
-          for path in paths:
+          for path, names in targets.items():
               source = path.read_text()
-              updated = source.replace("TeamID: teamID", "TeamID: &teamID")
-              if updated != source:
-                  path.write_text(updated)
-                  changed += source.count("TeamID: teamID")
+              for name in names:
+                  pattern = rf"({name}\{{[^}}]*?\bTeamID:\s*)teamID"
+                  source, count = re.subn(pattern, r"\1&teamID", source, count=1, flags=re.DOTALL)
+                  if count != 1:
+                      raise SystemExit(f"expected one {name} TeamID adaptation in {path}, found {count}")
+                  changed += count
+              path.write_text(source)
+
           if changed != 10:
               raise SystemExit(f"expected 10 TeamID adaptations, found {changed}")
 
