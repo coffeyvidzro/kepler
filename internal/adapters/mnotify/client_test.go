@@ -18,7 +18,7 @@ func TestNewClientUsesProductionEndpoint(t *testing.T) {
 func TestClientPostsWithAPIKey(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost {
 			t.Fatalf("method = %q", request.Method)
 		}
@@ -56,7 +56,7 @@ func TestClientPostsWithAPIKey(t *testing.T) {
 func TestClientReturnsStructuredHTTPError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusUnauthorized)
 		_, _ = response.Write([]byte(`{"status":"error","code":4010,"message":"invalid key"}`))
 	}))
