@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	platformhttp "github.com/coffeyvidzro/dugble/server/internal/platform/httpclient"
 )
 
 const (
-	defaultBaseURL       = "https://api.mnotify.com"
+	productionBaseURL    = "https://api.mnotify.com"
 	defaultClientTimeout = 30 * time.Second
 	maxResponseBodyBytes = 1 << 20
 )
@@ -29,14 +30,16 @@ type Client struct {
 func NewClient(config config.ProviderConfig) *Client { return NewClientWithHTTP(config, nil) }
 
 func NewClientWithHTTP(config config.ProviderConfig, httpClient *http.Client) *Client {
-	baseURL := strings.TrimSpace(config.BaseURL)
-	if baseURL == "" {
-		baseURL = defaultBaseURL
+	return newClient(productionBaseURL, config, httpClient)
+}
+
+func newClient(baseURL string, config config.ProviderConfig, httpClient *http.Client) *Client {
+	httpClient = platformhttp.ForFixedEndpoint(baseURL, httpClient, defaultClientTimeout)
+	return &Client{
+		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		apiKey:     strings.TrimSpace(config.APIKey),
+		httpClient: httpClient,
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultClientTimeout}
-	}
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: strings.TrimSpace(config.APIKey), httpClient: httpClient}
 }
 
 func (client *Client) do(ctx context.Context, method, path string, payload, result any) error {
@@ -45,9 +48,6 @@ func (client *Client) do(ctx context.Context, method, path string, payload, resu
 	}
 	if ctx == nil {
 		return fmt.Errorf("mNotify request context is required")
-	}
-	if client.baseURL == "" {
-		return fmt.Errorf("mNotify base URL is required")
 	}
 	if client.apiKey == "" {
 		return fmt.Errorf("mNotify API key is required")

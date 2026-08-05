@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+func TestNewClientUsesProductionEndpoint(t *testing.T) {
+	client := NewClient("api-key")
+	if client.baseURL != productionBaseURL {
+		t.Fatalf("base URL = %q, want %q", client.baseURL, productionBaseURL)
+	}
+}
+
 func TestClientPostsWithAPIKey(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +43,7 @@ func TestClientPostsWithAPIKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTP(server.URL, "api-key", server.Client())
+	client := newClient(server.URL, "api-key", server.Client())
 	var result Response
 	if err := client.Post(context.Background(), "/api/test", map[string]string{"value": "test"}, &result); err != nil {
 		t.Fatalf("Post() error = %v", err)
@@ -55,7 +62,7 @@ func TestClientReturnsStructuredHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTP(server.URL, "api-key", server.Client())
+	client := newClient(server.URL, "api-key", server.Client())
 	err := client.Get(context.Background(), "/api/test", &Response{})
 	apiErr, ok := err.(*APIError)
 	if !ok {

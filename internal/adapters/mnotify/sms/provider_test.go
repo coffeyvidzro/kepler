@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
@@ -40,7 +41,7 @@ func TestProviderSendsAndChecksStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewProvider(mnotify.NewClientWithHTTP(server.URL, "api-key", server.Client()))
+	provider := NewProvider(mnotify.NewClientWithHTTP("api-key", testHTTPClient(t, server)))
 	sent, err := provider.Send(context.Background(), platformsms.SendRequest{
 		To:                 "+233201234567",
 		From:               "Dugble",
@@ -61,4 +62,25 @@ func TestProviderSendsAndChecksStatus(t *testing.T) {
 	if status.Status != platformsms.StatusDelivered || status.ProviderStatus != "DELIVRD" {
 		t.Fatalf("status = %#v", status)
 	}
+}
+
+func testHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	transport := server.Client().Transport
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		return transport.RoundTrip(clone)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }

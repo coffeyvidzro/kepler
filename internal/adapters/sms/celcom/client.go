@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	platformhttp "github.com/coffeyvidzro/dugble/server/internal/platform/httpclient"
 )
 
 const (
-	defaultBaseURL       = "https://isms.celcomafrica.com"
+	productionBaseURL    = "https://isms.celcomafrica.com"
 	defaultClientTimeout = 30 * time.Second
 	maxResponseBodyBytes = 1 << 20
 )
@@ -29,15 +30,13 @@ type Client struct {
 func NewClient(config config.CelcomConfig) *Client { return NewClientWithHTTP(config, nil) }
 
 func NewClientWithHTTP(config config.CelcomConfig, httpClient *http.Client) *Client {
-	baseURL := strings.TrimSpace(config.BaseURL)
-	if baseURL == "" {
-		baseURL = defaultBaseURL
-	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultClientTimeout}
-	}
+	return newClient(productionBaseURL, config, httpClient)
+}
+
+func newClient(baseURL string, config config.CelcomConfig, httpClient *http.Client) *Client {
+	httpClient = platformhttp.ForFixedEndpoint(baseURL, httpClient, defaultClientTimeout)
 	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
+		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:     strings.TrimSpace(config.APIKey),
 		partnerID:  strings.TrimSpace(config.PartnerID),
 		httpClient: httpClient,
@@ -50,9 +49,6 @@ func (client *Client) do(ctx context.Context, path string, payload, result any) 
 	}
 	if ctx == nil {
 		return fmt.Errorf("Celcom request context is required")
-	}
-	if client.baseURL == "" {
-		return fmt.Errorf("Celcom base URL is required")
 	}
 	if client.apiKey == "" {
 		return fmt.Errorf("Celcom API key is required")

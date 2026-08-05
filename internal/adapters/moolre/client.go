@@ -10,10 +10,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	platformhttp "github.com/coffeyvidzro/dugble/server/internal/platform/httpclient"
 )
 
 const (
-	DefaultBaseURL       = "https://api.moolre.com"
+	productionBaseURL    = "https://api.moolre.com"
 	defaultClientTimeout = 30 * time.Second
 	maxResponseBodyBytes = 1 << 20
 )
@@ -24,20 +26,20 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(baseURL, vasKey string) *Client {
-	return NewClientWithHTTP(baseURL, vasKey, nil)
+func NewClient(vasKey string) *Client {
+	return newClient(productionBaseURL, vasKey, nil)
 }
 
-func NewClientWithHTTP(baseURL, vasKey string, httpClient *http.Client) *Client {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultClientTimeout}
-	}
+// NewClientWithHTTP keeps the production endpoint fixed while allowing tests
+// and instrumented deployments to provide their own HTTP transport.
+func NewClientWithHTTP(vasKey string, httpClient *http.Client) *Client {
+	return newClient(productionBaseURL, vasKey, httpClient)
+}
+
+func newClient(baseURL, vasKey string, httpClient *http.Client) *Client {
+	httpClient = platformhttp.ForFixedEndpoint(baseURL, httpClient, defaultClientTimeout)
 	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
+		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		vasKey:     strings.TrimSpace(vasKey),
 		httpClient: httpClient,
 	}

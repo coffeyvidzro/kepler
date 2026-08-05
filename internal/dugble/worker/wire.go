@@ -191,8 +191,8 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 
 	smsRouter, err := platformsms.NewRoutingService(
 		platformsms.DefaultRoutingConfig(),
-		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.BaseURL, cfg.MNotify.APIKey)),
-		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.BaseURL, cfg.Moolre.VASKey)),
+		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)),
+		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)),
 		leamoutsms.NewProvider(),
 		runnagesms.NewProvider(),
 	)

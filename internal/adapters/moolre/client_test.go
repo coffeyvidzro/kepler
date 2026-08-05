@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+func TestNewClientUsesProductionEndpoint(t *testing.T) {
+	client := NewClient("vas-secret")
+	if client.baseURL != productionBaseURL {
+		t.Fatalf("base URL = %q, want %q", client.baseURL, productionBaseURL)
+	}
+}
+
 func TestClientPostSetsVASKeyAndDecodesEnvelope(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +33,7 @@ func TestClientPostSetsVASKeyAndDecodesEnvelope(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTP(server.URL, "vas-secret", server.Client())
+	client := newClient(server.URL, "vas-secret", server.Client())
 	var result Envelope[any]
 	if err := client.Post(context.Background(), "/open/sms/send", map[string]int{"type": 1}, &result); err != nil {
 		t.Fatalf("Post() error = %v", err)
@@ -46,7 +53,7 @@ func TestClientPostReturnsStructuredHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTP(server.URL, "invalid", server.Client())
+	client := newClient(server.URL, "invalid", server.Client())
 	err := client.Post(context.Background(), "/open/sms/send", map[string]int{"type": 1}, &Envelope[any]{})
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
