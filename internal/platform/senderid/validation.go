@@ -36,6 +36,7 @@ func ValidateName(name string) error {
 
 func (request CreateRequest) Normalize() CreateRequest {
 	request.SenderID = NormalizeName(request.SenderID)
+	request.Purpose = strings.TrimSpace(request.Purpose)
 	return request
 }
 
