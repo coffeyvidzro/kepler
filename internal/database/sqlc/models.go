@@ -52,7 +52,7 @@ type Currency struct {
 type EmailMessage struct {
 	ID                       uuid.UUID          `db:"id" json:"id"`
 	TeamID                   uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderDomainID           *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
+	SenderProviderBindingID  *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
 	DeliveryProvider         string             `db:"delivery_provider" json:"delivery_provider"`
 	ProviderRegion           string             `db:"provider_region" json:"provider_region"`
 	MessageType              string             `db:"message_type" json:"message_type"`
@@ -271,57 +271,6 @@ type SenderAssetGrant struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-type SenderDomain struct {
-	ID                        uuid.UUID          `db:"id" json:"id"`
-	TeamID                    *uuid.UUID         `db:"team_id" json:"team_id"`
-	Domain                    string             `db:"domain" json:"domain"`
-	Provider                  string             `db:"provider" json:"provider"`
-	ProviderRegion            string             `db:"provider_region" json:"provider_region"`
-	Status                    string             `db:"status" json:"status"`
-	VerificationRecords       []byte             `db:"verification_records" json:"verification_records"`
-	FailureReason             *string            `db:"failure_reason" json:"failure_reason"`
-	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
-	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
-	VerificationAttempts      int32              `db:"verification_attempts" json:"verification_attempts"`
-	ReconcileLockedAt         pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
-	ReconcileLockedBy         *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
-	HealthStatus              string             `db:"health_status" json:"health_status"`
-	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
-	LastHealthCheckedAt       pgtype.Timestamptz `db:"last_health_checked_at" json:"last_health_checked_at"`
-	LastHealthFailureAt       pgtype.Timestamptz `db:"last_health_failure_at" json:"last_health_failure_at"`
-	VerifiedAt                pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
-	DisabledAt                pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
-	CreatedBy                 *uuid.UUID         `db:"created_by" json:"created_by"`
-	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type SenderID struct {
-	ID                    uuid.UUID          `db:"id" json:"id"`
-	TeamID                *uuid.UUID         `db:"team_id" json:"team_id"`
-	Name                  string             `db:"name" json:"name"`
-	CountryCode           string             `db:"country_code" json:"country_code"`
-	Purpose               string             `db:"purpose" json:"purpose"`
-	Status                string             `db:"status" json:"status"`
-	Provider              *string            `db:"provider" json:"provider"`
-	ProviderStatus        *string            `db:"provider_status" json:"provider_status"`
-	ProviderWhitelisted   bool               `db:"provider_whitelisted" json:"provider_whitelisted"`
-	ProviderSubmittedAt   pgtype.Timestamptz `db:"provider_submitted_at" json:"provider_submitted_at"`
-	ProviderLastCheckedAt pgtype.Timestamptz `db:"provider_last_checked_at" json:"provider_last_checked_at"`
-	NextStatusCheckAt     pgtype.Timestamptz `db:"next_status_check_at" json:"next_status_check_at"`
-	ProviderAttempts      int32              `db:"provider_attempts" json:"provider_attempts"`
-	ProviderError         *string            `db:"provider_error" json:"provider_error"`
-	RegistrationLockedAt  pgtype.Timestamptz `db:"registration_locked_at" json:"registration_locked_at"`
-	RegistrationLockedBy  *string            `db:"registration_locked_by" json:"registration_locked_by"`
-	RejectionReason       *string            `db:"rejection_reason" json:"rejection_reason"`
-	ApprovedAt            pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
-	RejectedAt            pgtype.Timestamptz `db:"rejected_at" json:"rejected_at"`
-	SuspendedAt           pgtype.Timestamptz `db:"suspended_at" json:"suspended_at"`
-	CreatedBy             *uuid.UUID         `db:"created_by" json:"created_by"`
-	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
 type SenderProviderBinding struct {
 	ID                        uuid.UUID          `db:"id" json:"id"`
 	SenderAssetID             uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
@@ -374,25 +323,25 @@ type Session struct {
 }
 
 type SmsMessage struct {
-	ID                 uuid.UUID          `db:"id" json:"id"`
-	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderID           *uuid.UUID         `db:"sender_id" json:"sender_id"`
-	ToNumber           string             `db:"to_number" json:"to_number"`
-	FromName           string             `db:"from_name" json:"from_name"`
-	Body               string             `db:"body" json:"body"`
-	Status             string             `db:"status" json:"status"`
-	ProviderID         *string            `db:"provider_id" json:"provider_id"`
-	ProviderMessageID  *string            `db:"provider_message_id" json:"provider_message_id"`
-	Segments           int32              `db:"segments" json:"segments"`
-	ErrorMessage       *string            `db:"error_message" json:"error_message"`
-	Metadata           []byte             `db:"metadata" json:"metadata"`
-	Tags               []byte             `db:"tags" json:"tags"`
-	ScheduledAt        pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	SubmittedAt        pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
-	DeliveredAt        pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	DestinationCountry string             `db:"destination_country" json:"destination_country"`
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	TeamID                  uuid.UUID          `db:"team_id" json:"team_id"`
+	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
+	ToNumber                string             `db:"to_number" json:"to_number"`
+	FromName                string             `db:"from_name" json:"from_name"`
+	Body                    string             `db:"body" json:"body"`
+	Status                  string             `db:"status" json:"status"`
+	ProviderID              *string            `db:"provider_id" json:"provider_id"`
+	ProviderMessageID       *string            `db:"provider_message_id" json:"provider_message_id"`
+	Segments                int32              `db:"segments" json:"segments"`
+	ErrorMessage            *string            `db:"error_message" json:"error_message"`
+	Metadata                []byte             `db:"metadata" json:"metadata"`
+	Tags                    []byte             `db:"tags" json:"tags"`
+	ScheduledAt             pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	SubmittedAt             pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	DeliveredAt             pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DestinationCountry      string             `db:"destination_country" json:"destination_country"`
 }
 
 type SmsRate struct {

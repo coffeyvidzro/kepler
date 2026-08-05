@@ -15,7 +15,7 @@ import (
 const createSMSMessage = `-- name: CreateSMSMessage :one
 INSERT INTO sms_messages (
     team_id,
-    sender_id,
+    sender_provider_binding_id,
     to_number,
     from_name,
     body,
@@ -38,27 +38,27 @@ INSERT INTO sms_messages (
     $10,
     $11
 )
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type CreateSMSMessageParams struct {
-	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderID           *uuid.UUID         `db:"sender_id" json:"sender_id"`
-	ToNumber           string             `db:"to_number" json:"to_number"`
-	FromName           string             `db:"from_name" json:"from_name"`
-	Body               string             `db:"body" json:"body"`
-	Status             string             `db:"status" json:"status"`
-	Segments           int32              `db:"segments" json:"segments"`
-	Metadata           []byte             `db:"metadata" json:"metadata"`
-	Tags               []byte             `db:"tags" json:"tags"`
-	ScheduledAt        pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	DestinationCountry string             `db:"destination_country" json:"destination_country"`
+	TeamID                  uuid.UUID          `db:"team_id" json:"team_id"`
+	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
+	ToNumber                string             `db:"to_number" json:"to_number"`
+	FromName                string             `db:"from_name" json:"from_name"`
+	Body                    string             `db:"body" json:"body"`
+	Status                  string             `db:"status" json:"status"`
+	Segments                int32              `db:"segments" json:"segments"`
+	Metadata                []byte             `db:"metadata" json:"metadata"`
+	Tags                    []byte             `db:"tags" json:"tags"`
+	ScheduledAt             pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	DestinationCountry      string             `db:"destination_country" json:"destination_country"`
 }
 
 func (q *Queries) CreateSMSMessage(ctx context.Context, arg CreateSMSMessageParams) (SmsMessage, error) {
 	row := q.db.QueryRow(ctx, createSMSMessage,
 		arg.TeamID,
-		arg.SenderID,
+		arg.SenderProviderBindingID,
 		arg.ToNumber,
 		arg.FromName,
 		arg.Body,
@@ -73,7 +73,7 @@ func (q *Queries) CreateSMSMessage(ctx context.Context, arg CreateSMSMessagePara
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -95,18 +95,27 @@ func (q *Queries) CreateSMSMessage(ctx context.Context, arg CreateSMSMessagePara
 }
 
 const findApprovedSMSSender = `-- name: FindApprovedSMSSender :one
-SELECT id
-FROM sender_ids
-WHERE team_id = $1
-  AND lower(name) = lower($2)
-  AND status = 'approved'
-ORDER BY created_at DESC
+SELECT binding.id
+FROM sender_provider_bindings AS binding
+JOIN sender_assets AS asset
+  ON asset.id = binding.sender_asset_id
+JOIN sender_asset_grants AS grant_record
+  ON grant_record.sender_asset_id = asset.id
+ AND grant_record.team_id = $1
+ AND grant_record.channel = 'sms'
+ AND grant_record.status = 'active'
+WHERE asset.channel = 'sms'
+  AND asset.normalized_identity = lower(trim($2))
+  AND asset.status = 'active'
+  AND binding.status = 'active'
+  AND binding.verified
+ORDER BY binding.created_at DESC
 LIMIT 1
 `
 
 type FindApprovedSMSSenderParams struct {
-	TeamID *uuid.UUID `db:"team_id" json:"team_id"`
-	Name   string     `db:"name" json:"name"`
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	Name   string    `db:"name" json:"name"`
 }
 
 func (q *Queries) FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMSSenderParams) (uuid.UUID, error) {
@@ -117,7 +126,7 @@ func (q *Queries) FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMS
 }
 
 const getSMSMessage = `-- name: GetSMSMessage :one
-SELECT id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+SELECT id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 FROM sms_messages
 WHERE id = $1
   AND team_id = $2
@@ -134,7 +143,7 @@ func (q *Queries) GetSMSMessage(ctx context.Context, arg GetSMSMessageParams) (S
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -156,7 +165,7 @@ func (q *Queries) GetSMSMessage(ctx context.Context, arg GetSMSMessageParams) (S
 }
 
 const listSMSMessages = `-- name: ListSMSMessages :many
-SELECT id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+SELECT id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 FROM sms_messages
 WHERE team_id = $1
 ORDER BY created_at DESC
@@ -182,7 +191,7 @@ func (q *Queries) ListSMSMessages(ctx context.Context, arg ListSMSMessagesParams
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
-			&i.SenderID,
+			&i.SenderProviderBindingID,
 			&i.ToNumber,
 			&i.FromName,
 			&i.Body,
@@ -219,7 +228,7 @@ WHERE id = $2
   AND team_id = $3
   AND status = 'processing'
   AND provider_message_id IS NULL
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type MarkSMSMessageDeliveryUnknownParams struct {
@@ -234,7 +243,7 @@ func (q *Queries) MarkSMSMessageDeliveryUnknown(ctx context.Context, arg MarkSMS
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -262,7 +271,7 @@ SET status = 'failed',
     updated_at = now()
 WHERE id = $2
   AND team_id = $3
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type MarkSMSMessageFailedParams struct {
@@ -277,7 +286,7 @@ func (q *Queries) MarkSMSMessageFailed(ctx context.Context, arg MarkSMSMessageFa
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -307,7 +316,7 @@ WHERE id = $1
   AND team_id = $2
   AND status = 'queued'
   AND provider_message_id IS NULL
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type MarkSMSMessageProcessingParams struct {
@@ -321,7 +330,7 @@ func (q *Queries) MarkSMSMessageProcessing(ctx context.Context, arg MarkSMSMessa
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -352,7 +361,7 @@ SET provider_id = $1,
     updated_at = now()
 WHERE id = $4
   AND team_id = $5
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type MarkSMSMessageSubmittedParams struct {
@@ -375,7 +384,7 @@ func (q *Queries) MarkSMSMessageSubmitted(ctx context.Context, arg MarkSMSMessag
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,
@@ -425,7 +434,7 @@ WHERE id = $2
           ELSE -1
       END
   )
-RETURNING id, team_id, sender_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
+RETURNING id, team_id, sender_provider_binding_id, to_number, from_name, body, status, provider_id, provider_message_id, segments, error_message, metadata, tags, scheduled_at, submitted_at, delivered_at, created_at, updated_at, destination_country
 `
 
 type UpdateSMSMessageStatusParams struct {
@@ -440,7 +449,7 @@ func (q *Queries) UpdateSMSMessageStatus(ctx context.Context, arg UpdateSMSMessa
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderID,
+		&i.SenderProviderBindingID,
 		&i.ToNumber,
 		&i.FromName,
 		&i.Body,

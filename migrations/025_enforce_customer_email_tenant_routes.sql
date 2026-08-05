@@ -3,7 +3,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.sender_domain_id IS NULL THEN
+    IF NEW.sender_provider_binding_id IS NULL THEN
         RAISE EXCEPTION 'customer sender binding is required'
             USING ERRCODE = '23514';
     END IF;
@@ -18,7 +18,7 @@ BEGIN
          AND grant_record.team_id = NEW.team_id
          AND grant_record.channel = 'email'
          AND grant_record.status = 'active'
-        WHERE binding.id = NEW.sender_domain_id
+        WHERE binding.id = NEW.sender_provider_binding_id
           AND asset.channel = 'email'
           AND binding.provider = CASE lower(trim(NEW.delivery_provider))
               WHEN 'aws_ses' THEN 'ses'

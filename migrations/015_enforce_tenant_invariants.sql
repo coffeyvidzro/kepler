@@ -37,7 +37,7 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.sender_id IS NULL THEN
+    IF NEW.sender_provider_binding_id IS NULL THEN
         RETURN NEW;
     END IF;
 
@@ -51,7 +51,7 @@ BEGIN
          AND grant_record.team_id = NEW.team_id
          AND grant_record.channel = 'sms'
          AND grant_record.status = 'active'
-        WHERE binding.id = NEW.sender_id
+        WHERE binding.id = NEW.sender_provider_binding_id
           AND asset.channel = 'sms'
           AND binding.status = 'active'
           AND binding.verified
@@ -70,7 +70,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_enforce_sms_sender_binding ON sms_messages;
 CREATE TRIGGER trg_enforce_sms_sender_binding
-BEFORE INSERT OR UPDATE OF team_id, sender_id, destination_country ON sms_messages
+BEFORE INSERT OR UPDATE OF team_id, sender_provider_binding_id, destination_country ON sms_messages
 FOR EACH ROW
 EXECUTE FUNCTION enforce_sms_sender_binding();
 
@@ -79,7 +79,7 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.sender_domain_id IS NULL THEN
+    IF NEW.sender_provider_binding_id IS NULL THEN
         RETURN NEW;
     END IF;
 
@@ -93,7 +93,7 @@ BEGIN
          AND grant_record.team_id = NEW.team_id
          AND grant_record.channel = 'email'
          AND grant_record.status = 'active'
-        WHERE binding.id = NEW.sender_domain_id
+        WHERE binding.id = NEW.sender_provider_binding_id
           AND asset.channel = 'email'
           AND binding.provider = CASE lower(trim(NEW.delivery_provider))
               WHEN 'aws_ses' THEN 'ses'
@@ -111,7 +111,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_enforce_email_sender_binding ON email_messages;
 CREATE TRIGGER trg_enforce_email_sender_binding
-BEFORE INSERT OR UPDATE OF team_id, sender_domain_id, delivery_provider, provider_region ON email_messages
+BEFORE INSERT OR UPDATE OF team_id, sender_provider_binding_id, delivery_provider, provider_region ON email_messages
 FOR EACH ROW
 EXECUTE FUNCTION enforce_email_sender_binding();
 

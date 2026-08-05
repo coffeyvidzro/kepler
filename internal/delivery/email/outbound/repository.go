@@ -62,14 +62,22 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 		SELECT message.id, message.team_id, message.delivery_provider, message.provider_region,
 			message.from_email, message.from_name, message.subject, message.html_body, message.text_body,
 			message.recipients, message.headers, message.attachments,
-			message.sender_domain_id IS NULL OR EXISTS (
+			message.sender_provider_binding_id IS NULL OR EXISTS (
 				SELECT 1
-				FROM sender_domains AS domain
-				WHERE domain.id = message.sender_domain_id
-				  AND domain.team_id = message.team_id
-				  AND domain.status = 'verified'
-				  AND domain.disabled_at IS NULL
-				  AND domain.health_status <> 'degraded'
+				FROM sender_provider_bindings AS binding
+				JOIN sender_assets AS asset
+				  ON asset.id = binding.sender_asset_id
+				JOIN sender_asset_grants AS grant_record
+				  ON grant_record.sender_asset_id = asset.id
+				 AND grant_record.team_id = message.team_id
+				 AND grant_record.channel = 'email'
+				 AND grant_record.status = 'active'
+				WHERE binding.id = message.sender_provider_binding_id
+				  AND asset.channel = 'email'
+				  AND binding.status = 'active'
+				  AND binding.verified
+				  AND binding.disabled_at IS NULL
+				  AND binding.health_status <> 'degraded'
 			) AS authorized
 		FROM email_messages AS message
 		WHERE message.id = $1
@@ -144,10 +152,10 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 			sender_asset_id, sender_provider_binding_id
 		)
 		SELECT $1, $3, 'email', $2, $4, 'claimed', $5,
-			binding.sender_asset_id, message.sender_domain_id
+			binding.sender_asset_id, message.sender_provider_binding_id
 		FROM email_messages AS message
 		LEFT JOIN sender_provider_bindings AS binding
-		  ON binding.id = message.sender_domain_id
+		  ON binding.id = message.sender_provider_binding_id
 		WHERE message.id = $2
 		  AND message.team_id = $3
 	`, message.AttemptID, messageID, teamID, attemptNumber, message.Provider); err != nil {
