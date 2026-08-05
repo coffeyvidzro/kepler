@@ -1,0 +1,110 @@
+name: Agent remove Argus Prometheus metrics
+
+on:
+  push:
+    branches:
+      - agent/remove-argus-prometheus-metrics
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  remove-metrics:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remove-argus-prometheus-metrics
+          fetch-depth: 0
+
+      - name: Remove Argus Prometheus metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, expected: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrences, found {count}")
+              target.write_text(text.replace(old, new, expected))
+
+          metrics = Path("internal/platform/monitoring/argusmetrics/metrics.go")
+          if not metrics.exists():
+              raise SystemExit("Argus metrics implementation is missing")
+          metrics.unlink()
+
+          processor = "internal/delivery/argus/dispatch/processor.go"
+          replace(
+              processor,
+              '\t"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics"\n',
+              "",
+          )
+          replace(
+              processor,
+              '''func (processor *Processor) Handle(ctx context.Context, command Command) (err error) {
+\tstarted := time.Now()
+\tdefer func() {
+\t\targusmetrics.Default.Observe("dispatch", argusmetrics.Outcome(err), time.Since(started))
+\t\tif err != nil {
+''',
+              '''func (processor *Processor) Handle(ctx context.Context, command Command) (err error) {
+\tdefer func() {
+\t\tif err != nil {
+''',
+          )
+          replace(
+              processor,
+              '''func (processor *Processor) HandleExhausted(ctx context.Context, command Command, cause error) (err error) {
+\tstarted := time.Now()
+\tdefer func() {
+\t\targusmetrics.Default.Observe("dispatch_exhausted", argusmetrics.Outcome(err), time.Since(started))
+\t}()
+''',
+              '''func (processor *Processor) HandleExhausted(ctx context.Context, command Command, cause error) (err error) {
+''',
+          )
+
+          scanner = "internal/delivery/argus/expiry/scanner.go"
+          replace(
+              scanner,
+              '''\n\t"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/argusmetrics"\n''',
+              "",
+          )
+          replace(scanner, "\t\tstarted := time.Now()\n", "")
+          replace(
+              scanner,
+              '''\t\targusmetrics.Default.Observe("expiry_batch", argusmetrics.Outcome(err), time.Since(started))
+\t\targusmetrics.Default.AddExpired(expired)
+''',
+              "",
+          )
+          PY
+
+          git diff --name-only --diff-filter=ACM -- '*.go' | xargs -r gofmt -w
+
+          test ! -e internal/platform/monitoring/argusmetrics
+
+          if git grep -niE 'argusmetrics|dugble_argus_|metricsContentType|text/plain; version=0\.0\.4|prometheus' -- ':!.github/**'; then
+            echo 'Prometheus or Argus metrics references remain' >&2
+            exit 1
+          fi
+
+          go test ./...
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            rm -f .github/workflows/agent-remove-argus-prometheus-metrics.yml
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -A
+            git commit -m 'Remove Argus Prometheus metrics'
+            git push origin HEAD:agent/remove-argus-prometheus-metrics
+          fi
