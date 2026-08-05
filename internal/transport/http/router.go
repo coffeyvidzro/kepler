@@ -15,17 +15,24 @@ type Registrar func(*echo.Echo) error
 
 // RouterConfig contains cross-cutting HTTP transport configuration.
 type RouterConfig struct {
-	Development bool
-	CORSOrigins []string
-	Arcjet      *arcjet.Client
-	BodyLimit   int64
-	Idempotency httpmiddleware.IdempotencyConfig
-	Middleware  []echo.MiddlewareFunc
+	Development       bool
+	CORSOrigins       []string
+	TrustedProxyCIDRs []string
+	Arcjet            *arcjet.Client
+	BodyLimit         int64
+	Idempotency       httpmiddleware.IdempotencyConfig
+	Middleware        []echo.MiddlewareFunc
 }
 
 // NewRouter builds the shared HTTP stack and invokes each route registrar.
 func NewRouter(config RouterConfig, registrars ...Registrar) (*echo.Echo, error) {
+	ipExtractor, err := newClientIPExtractor(config.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("configure client IP extraction: %w", err)
+	}
+
 	router := echo.New()
+	router.IPExtractor = ipExtractor
 	router.Use(echomiddleware.RequestID())
 	router.Use(httpmiddleware.AuditRequestContext)
 	router.Use(echomiddleware.RequestLogger())
