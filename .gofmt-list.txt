@@ -1,5 +1,0 @@
-internal/delivery/email/outbound/processor.go
-internal/delivery/email/outbound/recovery.go
-internal/modules/emailtenant/provisioning/errors.go
-internal/platform/senderid/validation.go
-internal/platform/sms/routing/service.go
