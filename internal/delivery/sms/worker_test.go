@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	smsapi "github.com/coffeyvidzro/dugble/server/internal/integration/sms"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
+	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
 func TestHandlerSafeProviderRejectionMarksFailed(t *testing.T) {
