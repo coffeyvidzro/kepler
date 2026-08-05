@@ -8,4 +8,3 @@ type ListRequest = verifymodule.ListRequest
 type UpdateServiceRequest = verifymodule.UpdateServiceRequest
 type CreateVerificationRequest = verifymodule.CreateVerificationRequest
 type CheckRequest = verifymodule.CheckRequest
-type AbuseContext = verifymodule.AbuseContext

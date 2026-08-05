@@ -88,7 +88,6 @@ type CreateVerificationRequest struct {
 	Recipient string          `json:"recipient"`
 	Locale    *string         `json:"locale,omitempty"`
 	Metadata  json.RawMessage `json:"metadata,omitempty"`
-	IPHash    []byte          `json:"-"`
 }
 
 type CheckRequest struct {

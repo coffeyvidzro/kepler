@@ -23,15 +23,9 @@ type Service struct {
 	codes      *CodeManager
 	dispatch   dispatchQueue
 	events     eventEmitter
-	abuse      abuseControls
 	now        func() time.Time
 }
 
 func NewService(repository *Repository, codes *CodeManager, dispatch dispatchQueue, events eventEmitter) *Service {
 	return &Service{repository: repository, codes: codes, dispatch: dispatch, events: events, now: time.Now}
-}
-
-func (service *Service) WithAbuseControls(controls abuseControls) *Service {
-	service.abuse = controls
-	return service
 }
