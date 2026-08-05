@@ -3,8 +3,10 @@ package senderid
 import "context"
 
 const (
+	ProviderLeamout = "leamout"
 	ProviderMNotify = "mnotify"
 	ProviderMoolre  = "moolre"
+	ProviderRunnage = "runnage"
 
 	StatusPending  = "pending"
 	StatusApproved = "approved"
