@@ -78,7 +78,12 @@ func (c *Client) Send(ctx context.Context, message platformemail.Message) (platf
 		},
 		EmailTags: deliveryTags(message),
 	}
-	output, err := client.SendEmail(ctx, input)
+	output, err := client.SendEmail(ctx, input, func(options *sesv2.Options) {
+		// SendEmail has no idempotency token. Retrying inside the SDK can submit
+		// the same message twice when SES accepts a request but its response is
+		// lost. The durable delivery state machine owns all safe retry decisions.
+		options.Retryer = aws.NopRetryer{}
+	})
 	if err != nil {
 		return platformemail.Result{}, classifySESFailure(err)
 	}
@@ -139,7 +144,7 @@ func classifySESFailure(err error) error {
 	code := strings.ToLower(strings.TrimSpace(apiError.ErrorCode()))
 	retryable := false
 	switch code {
-	case "throttling", "throttlingexception", "serviceunavailable", "internalfailure", "internalservererror":
+	case "throttling", "throttlingexception", "toomanyrequestsexception", "serviceunavailable", "internalfailure", "internalservererror":
 		retryable = true
 	case "requesttimeout", "requesttimeoutexception":
 		return platformemail.NewSubmissionUnknownError(code, err)
