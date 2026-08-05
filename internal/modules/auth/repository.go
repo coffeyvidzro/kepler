@@ -5,14 +5,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 )
+
+const lockVerificationTokenIdentifierSQL = `
+SELECT pg_advisory_xact_lock(
+    hashtextextended('verification-token:' || $1, 0)
+)
+`
 
 type UserRecord struct {
 	ID                uuid.UUID
@@ -27,11 +33,12 @@ type UserRecord struct {
 }
 
 type Repository struct {
+	db      *pgxpool.Pool
 	queries *dbsqlc.Queries
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{queries: dbsqlc.New(db)}
+	return &Repository{db: db, queries: dbsqlc.New(db)}
 }
 
 func (r *Repository) CreateUser(
@@ -95,14 +102,27 @@ func (r *Repository) CreateVerificationToken(
 	tokenHash string,
 	expiresAt time.Time,
 ) error {
+	tx, queries, err := r.beginVerificationTokenTransaction(ctx, identifier)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
-	_, err := r.queries.CreateVerificationToken(ctx, dbsqlc.CreateVerificationTokenParams{
+	if err := queries.DeleteVerificationTokensByIdentifier(
+		ctx,
+		dbsqlc.DeleteVerificationTokensByIdentifierParams{Identifier: identifier},
+	); err != nil {
+		return fmt.Errorf("delete superseded verification tokens: %w", err)
+	}
+	if _, err := queries.CreateVerificationToken(ctx, dbsqlc.CreateVerificationTokenParams{
 		Identifier: identifier,
 		TokenHash:  tokenHash,
 		ExpiresAt:  pgtype.Timestamptz{Time: expiresAt, Valid: true},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("create verification token: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit verification token replacement: %w", err)
 	}
 	return nil
 }
@@ -122,13 +142,43 @@ func (r *Repository) ResetPasswordWithToken(
 	tokenHash string,
 	passwordHash string,
 ) (UserRecord, error) {
-	row, err := r.queries.ResetPasswordWithToken(ctx, dbsqlc.ResetPasswordWithTokenParams{
+	tx, queries, err := r.beginVerificationTokenTransaction(ctx, identifier)
+	if err != nil {
+		return UserRecord{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	row, err := queries.ResetPasswordWithToken(ctx, dbsqlc.ResetPasswordWithTokenParams{
 		Email: email, Identifier: identifier, TokenHash: tokenHash, PasswordHash: &passwordHash,
 	})
 	if err != nil {
 		return UserRecord{}, fmt.Errorf("reset password with token: %w", err)
 	}
+	if err := queries.DeleteVerificationTokensByIdentifier(
+		ctx,
+		dbsqlc.DeleteVerificationTokensByIdentifierParams{Identifier: identifier},
+	); err != nil {
+		return UserRecord{}, fmt.Errorf("delete remaining password reset tokens: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return UserRecord{}, fmt.Errorf("commit password reset: %w", err)
+	}
 	return userRecordFromValues(row.ID, row.Email, row.EmailVerified, row.Name, row.PasswordHash, row.CreatedAt.Time, row.UpdatedAt.Time, row.CredentialVersion, row.SecurityUpdatedAt.Time), nil
+}
+
+func (r *Repository) beginVerificationTokenTransaction(
+	ctx context.Context,
+	identifier string,
+) (pgx.Tx, *dbsqlc.Queries, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin verification token transaction: %w", err)
+	}
+	if _, err := tx.Exec(ctx, lockVerificationTokenIdentifierSQL, identifier); err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, nil, fmt.Errorf("lock verification token identifier: %w", err)
+	}
+	return tx, r.queries.WithTx(tx), nil
 }
 
 func userRecordFromSQLC(row dbsqlc.User) UserRecord {
