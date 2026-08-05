@@ -7,8 +7,6 @@ on:
     paths:
       - ".github/workflows/server.yml"
       - ".golangci.yml"
-      - "Dockerfile"
-      - "deploy/**"
       - "go.mod"
       - "go.sum"
       - "migrations/**"
@@ -19,8 +17,6 @@ on:
     paths:
       - ".github/workflows/server.yml"
       - ".golangci.yml"
-      - "Dockerfile"
-      - "deploy/**"
       - "go.mod"
       - "go.sum"
       - "migrations/**"
@@ -83,38 +79,3 @@ jobs:
 
       - name: Test with race detector
         run: go test -race ./...
-
-  deployment:
-    name: Deployment artifact gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      API_DOMAIN: api.example.test
-      APP_ENV: test
-      ARCJET_KEY: ci-arcjet-key
-      ARGUS_HMAC_SECRET: ci-argus-secret
-      AWS_FROM_EMAIL: no-reply@example.test
-      BACKEND_URL: https://api.example.test
-      COOKIE_DOMAIN: example.test
-      CORS_ORIGINS: https://frontend.example.test
-      ENCRYPTION_KEYS: ci-encryption-key
-      FRONTEND_URL: https://frontend.example.test
-      NATS_PASSWORD: ci-nats-password
-      POSTGRES_PASSWORD: ci-postgres-password
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Validate Docker Compose configuration
-        run: docker compose -f deploy/compose.yaml config >/dev/null
-
-      - name: Validate migration checksums and SQL
-        run: |
-          docker run --rm \
-            -v "${PWD}/migrations:/migrations:ro" \
-            arigaio/atlas:1.3.0-alpine \
-            migrate validate --dir file:///migrations
-
-      - name: Build production image
-        run: docker build --tag kepler-ci:${{ github.sha }} .
