@@ -1,0 +1,51 @@
+package feedback
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+)
+
+var (
+	ErrAttemptNotFound  = errors.New("delivery attempt was not found for provider feedback")
+	ErrConcurrentUpdate = errors.New("delivery attempt changed while applying provider feedback")
+)
+
+// Lookup identifies the attempt targeted by a normalized provider event.
+type Lookup struct {
+	Provider          string
+	ProviderMessageID string
+	Channel           messaging.Channel
+}
+
+// AttemptUpdate is the conditional state change persisted with an event.
+type AttemptUpdate struct {
+	AttemptID      uuid.UUID
+	ExpectedStatus delivery.AttemptStatus
+	Status         delivery.AttemptStatus
+	ProviderStatus string
+	ErrorCode      string
+	ErrorMessage   string
+	OccurredAt     time.Time
+	TerminalAt     *time.Time
+	ReconciledAt   time.Time
+}
+
+// ApplyResult reports whether an event changed state or had already been seen.
+type ApplyResult struct {
+	Applied   bool
+	Duplicate bool
+}
+
+// Repository provides the atomic persistence boundary for feedback processing.
+// ApplyEvent must deduplicate by Event.DedupeKey and conditionally update the
+// attempt from ExpectedStatus in the same transaction.
+type Repository interface {
+	FindAttempt(context.Context, Lookup) (delivery.Attempt, error)
+	ApplyEvent(context.Context, Event, AttemptUpdate) (ApplyResult, error)
+}
