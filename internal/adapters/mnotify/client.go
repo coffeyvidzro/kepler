@@ -10,10 +10,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	platformhttp "github.com/coffeyvidzro/dugble/server/internal/platform/httpclient"
 )
 
 const (
-	DefaultBaseURL       = "https://api.mnotify.com"
+	productionBaseURL    = "https://api.mnotify.com"
 	defaultClientTimeout = 30 * time.Second
 	maxResponseBodyBytes = 1 << 20
 )
@@ -24,20 +26,22 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(baseURL, apiKey string) *Client {
-	return NewClientWithHTTP(baseURL, apiKey, nil)
+func NewClient(apiKey string) *Client {
+	return newClient(productionBaseURL, apiKey, nil)
 }
 
-func NewClientWithHTTP(baseURL, apiKey string, httpClient *http.Client) *Client {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
+// NewClientWithHTTP keeps the production endpoint fixed while allowing tests
+// and instrumented deployments to provide their own HTTP transport.
+func NewClientWithHTTP(apiKey string, httpClient *http.Client) *Client {
+	return newClient(productionBaseURL, apiKey, httpClient)
+}
+
+func newClient(baseURL, apiKey string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultClientTimeout}
+		httpClient = platformhttp.NewFixedEndpointClient(baseURL, defaultClientTimeout)
 	}
 	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
+		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:     strings.TrimSpace(apiKey),
 		httpClient: httpClient,
 	}
