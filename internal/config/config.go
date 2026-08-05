@@ -15,11 +15,6 @@ type MoolreConfig struct {
 	VASKey string `env:"VAS_KEY"`
 }
 
-type CelcomConfig struct {
-	APIKey    string `env:"API_KEY"`
-	PartnerID string `env:"PARTNER_ID"`
-}
-
 type ArgusConfig struct {
 	HMACSecret string `env:"HMAC_SECRET"`
 }
@@ -63,10 +58,8 @@ type Config struct {
 	Argus          ArgusConfig    `envPrefix:"ARGUS_"`
 	AWS            AWSConfig      `envPrefix:"AWS_"`
 	NATSURL        string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
-	Arkesel        ProviderConfig `envPrefix:"ARKESEL_"`
 	MNotify        ProviderConfig `envPrefix:"MNOTIFY_"`
 	Moolre         MoolreConfig   `envPrefix:"MOOLRE_"`
-	Celcom         CelcomConfig   `envPrefix:"CELCOM_"`
 	NewRelic       NewRelicConfig `envPrefix:"NEW_RELIC_"`
 	Sentry         SentryConfig   `envPrefix:"SENTRY_"`
 }
@@ -104,11 +97,8 @@ func (c *Config) normalize() {
 	c.AWS.SESTenantName = "dugble-system"
 	c.AWS.SNSTopicARNs = normalizeStrings(c.AWS.SNSTopicARNs)
 	c.NATSURL = strings.TrimSpace(c.NATSURL)
-	c.Arkesel.APIKey = strings.TrimSpace(c.Arkesel.APIKey)
 	c.MNotify.APIKey = strings.TrimSpace(c.MNotify.APIKey)
 	c.Moolre.VASKey = strings.TrimSpace(c.Moolre.VASKey)
-	c.Celcom.APIKey = strings.TrimSpace(c.Celcom.APIKey)
-	c.Celcom.PartnerID = strings.TrimSpace(c.Celcom.PartnerID)
 	c.NewRelic.LicenseKey = strings.TrimSpace(c.NewRelic.LicenseKey)
 	c.Sentry.DSN = strings.TrimSpace(c.Sentry.DSN)
 	c.Sentry.Release = strings.TrimSpace(c.Sentry.Release)
