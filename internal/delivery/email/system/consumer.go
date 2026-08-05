@@ -3,7 +3,6 @@ package systememail
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -14,8 +13,6 @@ import (
 	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/messaging/jetstream"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 )
-
-const DeliverConsumerName = "dugble-system-email-delivery-v1"
 
 type processedEventStore interface {
 	IsProcessed(context.Context, string, uuid.UUID) (bool, error)
@@ -36,7 +33,7 @@ type ConsumerConfig struct {
 type Consumer struct {
 	provider  consumerProvider
 	processed processedEventStore
-	sender    platformemail.Sender
+	processor *Processor
 	config    ConsumerConfig
 }
 
@@ -53,25 +50,25 @@ func NewConsumer(client *jetstreammessaging.Client, processed processedEventStor
 	if config.MaxDeliver <= 0 {
 		config.MaxDeliver = 6
 	}
-	return &Consumer{provider: client, processed: processed, sender: sender, config: config}
+	return &Consumer{provider: client, processed: processed, processor: NewProcessor(sender), config: config}
 }
 
-func (c *Consumer) Run(ctx context.Context) error {
-	if c == nil || c.provider == nil || c.processed == nil || c.sender == nil {
-		return errors.New("system email consumer is not fully configured")
+func (consumer *Consumer) Run(ctx context.Context) error {
+	if consumer == nil || consumer.provider == nil || consumer.processed == nil || consumer.processor == nil {
+		return ErrConsumerNotConfigured
 	}
-	consumer, err := c.provider.CreateOrUpdateConsumer(ctx, jetstreammessaging.JobsStreamName, natsjs.ConsumerConfig{
+	streamConsumer, err := consumer.provider.CreateOrUpdateConsumer(ctx, jetstreammessaging.JobsStreamName, natsjs.ConsumerConfig{
 		Name: DeliverConsumerName, Durable: DeliverConsumerName, Description: "Durable Dugble system email jobs",
-		DeliverPolicy: natsjs.DeliverAllPolicy, AckPolicy: natsjs.AckExplicitPolicy, AckWait: c.config.AckWait,
-		MaxDeliver: c.config.MaxDeliver, FilterSubject: DeliverSubject, ReplayPolicy: natsjs.ReplayInstantPolicy,
-		MaxAckPending: c.config.Concurrency * 4, MaxWaiting: c.config.Concurrency * 2, MaxRequestBatch: 1,
+		DeliverPolicy: natsjs.DeliverAllPolicy, AckPolicy: natsjs.AckExplicitPolicy, AckWait: consumer.config.AckWait,
+		MaxDeliver: consumer.config.MaxDeliver, FilterSubject: DeliverSubject, ReplayPolicy: natsjs.ReplayInstantPolicy,
+		MaxAckPending: consumer.config.Concurrency * 4, MaxWaiting: consumer.config.Concurrency * 2, MaxRequestBatch: 1,
 	})
 	if err != nil {
 		return fmt.Errorf("provision system email consumer: %w", err)
 	}
-	contexts := make([]natsjs.ConsumeContext, 0, c.config.Concurrency)
-	for range c.config.Concurrency {
-		active, err := consumer.Consume(func(message natsjs.Msg) { c.process(ctx, message) }, natsjs.PullMaxMessages(1))
+	contexts := make([]natsjs.ConsumeContext, 0, consumer.config.Concurrency)
+	for range consumer.config.Concurrency {
+		active, err := streamConsumer.Consume(func(message natsjs.Msg) { consumer.process(ctx, message) }, natsjs.PullMaxMessages(1))
 		if err != nil {
 			for _, item := range contexts {
 				item.Stop()
@@ -87,18 +84,18 @@ func (c *Consumer) Run(ctx context.Context) error {
 	return nil
 }
 
-func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
+func (consumer *Consumer) process(parent context.Context, message natsjs.Msg) {
 	metadata, err := message.Metadata()
 	if err != nil {
 		_ = message.Nak()
 		return
 	}
 	var command DeliverCommand
-	if err := json.Unmarshal(message.Data(), &command); err != nil || command.EventID == uuid.Nil || command.SchemaVersion != 1 {
+	if err := json.Unmarshal(message.Data(), &command); err != nil || ValidateCommand(command) != nil {
 		_ = message.TermWithReason("invalid system email command")
 		return
 	}
-	processed, err := c.processed.IsProcessed(parent, DeliverConsumerName, command.EventID)
+	processed, err := consumer.processed.IsProcessed(parent, DeliverConsumerName, command.EventID)
 	if err != nil {
 		_ = message.Nak()
 		return
@@ -107,19 +104,21 @@ func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
 		_ = message.Ack()
 		return
 	}
-	ctx, cancel := context.WithTimeout(parent, c.config.HandlerTimeout)
-	_, err = c.sender.Send(ctx, command.Message)
+	ctx, cancel := context.WithTimeout(parent, consumer.config.HandlerTimeout)
+	err = consumer.processor.Handle(ctx, command)
 	cancel()
 	if err != nil {
-		if int(metadata.NumDelivered) >= c.config.MaxDeliver {
+		if int(metadata.NumDelivered) >= consumer.config.MaxDeliver {
 			_ = message.TermWithReason("system email delivery exhausted")
 			slog.Error("system email delivery exhausted", "event_id", command.EventID, "error", err)
 			return
 		}
-		_ = message.NakWithDelay(time.Duration(metadata.NumDelivered) * time.Second)
+		_ = message.NakWithDelay(retryDelay(metadata.NumDelivered))
 		return
 	}
-	if err := c.processed.MarkProcessed(parent, DeliverConsumerName, command.EventID, map[string]any{"subject": message.Subject(), "deliveries": metadata.NumDelivered}); err != nil {
+	if err := consumer.processed.MarkProcessed(parent, DeliverConsumerName, command.EventID, map[string]any{
+		"subject": message.Subject(), "deliveries": metadata.NumDelivered,
+	}); err != nil {
 		_ = message.Nak()
 		return
 	}
