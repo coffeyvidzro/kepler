@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/messaging/jetstream"
+	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 )
 
 const (

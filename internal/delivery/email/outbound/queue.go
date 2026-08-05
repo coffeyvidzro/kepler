@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 )
 
 type eventStore interface {

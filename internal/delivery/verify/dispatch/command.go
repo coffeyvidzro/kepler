@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 )
 
 const (

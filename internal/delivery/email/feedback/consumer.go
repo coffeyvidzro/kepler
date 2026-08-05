@@ -14,7 +14,7 @@ import (
 	"github.com/nats-io/nats.go"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/messaging/jetstream"
+	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 )
 
 type processedEventStore interface {

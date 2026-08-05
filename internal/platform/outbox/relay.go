@@ -20,10 +20,6 @@ type Store interface {
 	Release(context.Context, uuid.UUID, string, time.Time, string) error
 }
 
-type Publisher interface {
-	Publish(context.Context, string, []byte, map[string]string, string) error
-}
-
 type Config struct {
 	PollInterval time.Duration
 	BatchSize    int

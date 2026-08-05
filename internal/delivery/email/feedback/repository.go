@@ -15,7 +15,7 @@ import (
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
 
