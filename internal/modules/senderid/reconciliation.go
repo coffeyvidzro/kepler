@@ -18,6 +18,7 @@ type RegistrationClaim struct {
 	Name                string
 	CountryCode         string
 	Provider            string
+	ProviderStatus      string
 	ProviderSubmittedAt *time.Time
 	Attempt             int32
 }
@@ -68,6 +69,7 @@ func (r *Repository) ClaimPendingRegistrations(
 			sender.name,
 			sender.country_code,
 			sender.provider,
+			COALESCE(sender.provider_status, ''),
 			sender.provider_submitted_at,
 			sender.provider_attempts
 	`, providerID, workerID, limit, staleBefore)
@@ -85,6 +87,7 @@ func (r *Repository) ClaimPendingRegistrations(
 			&claim.Name,
 			&claim.CountryCode,
 			&claim.Provider,
+			&claim.ProviderStatus,
 			&submittedAt,
 			&claim.Attempt,
 		); err != nil {
@@ -142,6 +145,7 @@ func (r *Repository) CompleteStatus(
 		SET status = $3,
 			provider_status = $4,
 			provider_whitelisted = $5,
+			provider_submitted_at = COALESCE(provider_submitted_at, now()),
 			provider_last_checked_at = now(),
 			next_status_check_at = $7,
 			provider_error = NULL,
@@ -174,24 +178,36 @@ func (r *Repository) RecordProviderFailure(
 	ctx context.Context,
 	id uuid.UUID,
 	workerID string,
+	providerStatus string,
 	providerError error,
 	nextCheckAt time.Time,
 ) error {
+	if r == nil || r.db == nil {
+		return errors.New("sender ID repository is not configured")
+	}
 	message := "Sender ID provider operation failed"
 	if providerError != nil {
 		message = providerError.Error()
 	}
-	return r.completeClaim(ctx, id, workerID, `
+	result, err := r.db.Exec(ctx, `
 		UPDATE sender_ids
-		SET provider_last_checked_at = now(),
-			next_status_check_at = $4,
-			provider_error = $3,
+		SET provider_status = COALESCE(NULLIF($3, ''), provider_status),
+			provider_last_checked_at = now(),
+			next_status_check_at = $5,
+			provider_error = $4,
 			registration_locked_at = NULL,
 			registration_locked_by = NULL,
 			updated_at = now()
 		WHERE id = $1
 		  AND registration_locked_by = $2
-	`, message, nextCheckAt)
+	`, id, strings.TrimSpace(workerID), strings.TrimSpace(providerStatus), message, nextCheckAt)
+	if err != nil {
+		return fmt.Errorf("record Sender ID provider failure: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrRegistrationClaimLost
+	}
+	return nil
 }
 
 func (r *Repository) completeClaim(
