@@ -32,20 +32,88 @@ BEFORE DELETE OR UPDATE OF team_id, role, status ON team_members
 FOR EACH ROW
 EXECUTE FUNCTION protect_last_active_team_owner();
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sender_ids_id_team
-    ON sender_ids (id, team_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sender_domains_id_team
-    ON sender_domains (id, team_id);
+CREATE OR REPLACE FUNCTION enforce_sms_sender_binding()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.sender_id IS NULL THEN
+        RETURN NEW;
+    END IF;
 
-ALTER TABLE sms_messages
-    ADD CONSTRAINT fk_sms_sender_same_team
-    FOREIGN KEY (sender_id, team_id)
-    REFERENCES sender_ids (id, team_id);
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sender_provider_bindings AS binding
+        JOIN sender_assets AS asset
+          ON asset.id = binding.sender_asset_id
+        JOIN sender_asset_grants AS grant_record
+          ON grant_record.sender_asset_id = asset.id
+         AND grant_record.team_id = NEW.team_id
+         AND grant_record.channel = 'sms'
+         AND grant_record.status = 'active'
+        WHERE binding.id = NEW.sender_id
+          AND asset.channel = 'sms'
+          AND binding.status = 'active'
+          AND binding.verified
+          AND (
+              binding.country_code IS NULL
+              OR binding.country_code = NEW.destination_country
+          )
+    ) THEN
+        RAISE EXCEPTION 'SMS sender binding is not active for this team and destination'
+            USING ERRCODE = '23514';
+    END IF;
 
-ALTER TABLE email_messages
-    ADD CONSTRAINT fk_email_sender_domain_same_team
-    FOREIGN KEY (sender_domain_id, team_id)
-    REFERENCES sender_domains (id, team_id);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_sms_sender_binding ON sms_messages;
+CREATE TRIGGER trg_enforce_sms_sender_binding
+BEFORE INSERT OR UPDATE OF team_id, sender_id, destination_country ON sms_messages
+FOR EACH ROW
+EXECUTE FUNCTION enforce_sms_sender_binding();
+
+CREATE OR REPLACE FUNCTION enforce_email_sender_binding()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.sender_domain_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sender_provider_bindings AS binding
+        JOIN sender_assets AS asset
+          ON asset.id = binding.sender_asset_id
+        JOIN sender_asset_grants AS grant_record
+          ON grant_record.sender_asset_id = asset.id
+         AND grant_record.team_id = NEW.team_id
+         AND grant_record.channel = 'email'
+         AND grant_record.status = 'active'
+        WHERE binding.id = NEW.sender_domain_id
+          AND asset.channel = 'email'
+          AND binding.provider = CASE lower(trim(NEW.delivery_provider))
+              WHEN 'aws_ses' THEN 'ses'
+              ELSE lower(trim(NEW.delivery_provider))
+          END
+          AND binding.region = lower(trim(NEW.provider_region))
+    ) THEN
+        RAISE EXCEPTION 'email sender binding does not belong to this team and route'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_email_sender_binding ON email_messages;
+CREATE TRIGGER trg_enforce_email_sender_binding
+BEFORE INSERT OR UPDATE OF team_id, sender_domain_id, delivery_provider, provider_region ON email_messages
+FOR EACH ROW
+EXECUTE FUNCTION enforce_email_sender_binding();
 
 CREATE OR REPLACE FUNCTION enforce_webhook_delivery_team()
 RETURNS TRIGGER

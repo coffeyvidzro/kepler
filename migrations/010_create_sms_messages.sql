@@ -1,7 +1,9 @@
 CREATE TABLE IF NOT EXISTS sms_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    sender_id UUID REFERENCES sender_ids(id) ON DELETE SET NULL,
+    -- Compatibility name retained at the API boundary. The value is the
+    -- country/provider-specific sender_provider_bindings.id.
+    sender_id UUID REFERENCES sender_provider_bindings(id) ON DELETE SET NULL,
     to_number TEXT NOT NULL,
     from_name VARCHAR(11) NOT NULL,
     body TEXT NOT NULL,

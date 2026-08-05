@@ -4,32 +4,44 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     IF NEW.sender_domain_id IS NULL THEN
-        RAISE EXCEPTION 'customer sender domain is required'
+        RAISE EXCEPTION 'customer sender binding is required'
             USING ERRCODE = '23514';
     END IF;
 
     IF NOT EXISTS (
         SELECT 1
-        FROM sender_domains AS domain
-        WHERE domain.id = NEW.sender_domain_id
-          AND domain.team_id = NEW.team_id
-          AND domain.provider = NEW.delivery_provider
-          AND domain.provider_region = NEW.provider_region
-          AND domain.status = 'verified'
-          AND domain.disabled_at IS NULL
-          AND domain.health_status <> 'degraded'
+        FROM sender_provider_bindings AS binding
+        JOIN sender_assets AS asset
+          ON asset.id = binding.sender_asset_id
+        JOIN sender_asset_grants AS grant_record
+          ON grant_record.sender_asset_id = asset.id
+         AND grant_record.team_id = NEW.team_id
+         AND grant_record.channel = 'email'
+         AND grant_record.status = 'active'
+        WHERE binding.id = NEW.sender_domain_id
+          AND asset.channel = 'email'
+          AND binding.provider = CASE lower(trim(NEW.delivery_provider))
+              WHEN 'aws_ses' THEN 'ses'
+              ELSE lower(trim(NEW.delivery_provider))
+          END
+          AND binding.region = lower(trim(NEW.provider_region))
+          AND binding.status = 'active'
+          AND binding.verified
+          AND binding.disabled_at IS NULL
+          AND binding.health_status <> 'degraded'
     ) THEN
-        RAISE EXCEPTION 'customer sender domain is not verified, enabled, and healthy'
+        RAISE EXCEPTION 'customer sender binding is not verified, enabled, and healthy'
             USING ERRCODE = '23514';
     END IF;
 
-    -- Routing names and header keys are application-owned constants. The
-    -- database enforces only relational tenant isolation and lifecycle state.
+    -- Email tenant provider identifiers remain application-facing. Sender
+    -- bindings use the canonical provider ID, so only the trust-plane lookup is
+    -- normalized above.
     PERFORM 1
     FROM email_tenants
     WHERE team_id = NEW.team_id
-      AND provider = NEW.delivery_provider
-      AND region = NEW.provider_region
+      AND provider = lower(trim(NEW.delivery_provider))
+      AND region = lower(trim(NEW.provider_region))
       AND status = 'active';
 
     IF NOT FOUND THEN

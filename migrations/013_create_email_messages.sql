@@ -1,7 +1,9 @@
 CREATE TABLE IF NOT EXISTS email_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    sender_domain_id UUID REFERENCES sender_domains(id) ON DELETE SET NULL,
+    -- Compatibility name retained at the API boundary. The value is the
+    -- region/provider-specific sender_provider_bindings.id.
+    sender_domain_id UUID REFERENCES sender_provider_bindings(id) ON DELETE SET NULL,
     delivery_provider TEXT NOT NULL DEFAULT 'aws_ses',
     provider_region TEXT NOT NULL DEFAULT 'us-east-1',
     message_type TEXT NOT NULL DEFAULT 'transactional',
