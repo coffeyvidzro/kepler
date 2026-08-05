@@ -35,7 +35,7 @@ x-app-env: &app-env
 
 x-app-build: &app-build
   build:
-    context: ../server
+    context: ..
     dockerfile: Dockerfile
 
 services:
@@ -99,7 +99,7 @@ services:
     environment:
       DATABASE_URL: "postgres://${POSTGRES_USER:-dugble}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dugble}?sslmode=disable&search_path=public"
     volumes:
-      - ../server/migrations:/migrations:ro
+      - ../migrations:/migrations:ro
     networks:
       - dugble-network
     depends_on:
