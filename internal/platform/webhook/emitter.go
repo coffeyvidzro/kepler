@@ -1,16 +1,15 @@
 package webhook
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
 type Store interface {
@@ -28,24 +27,15 @@ func NewEmitter(store Store) *Emitter {
 	return &Emitter{store: store, now: time.Now}
 }
 
+// EmitTx is the compatibility entry point for callers that still construct a
+// webhook Event. The event is converted to the canonical platform event
+// envelope before it is validated and persisted.
 func (e *Emitter) EmitTx(ctx context.Context, tx pgx.Tx, event Event) (uuid.UUID, int64, error) {
-	event, err := e.normalize(event)
+	result, err := e.emitEnvelopeTx(ctx, tx, event.envelope())
 	if err != nil {
 		return uuid.Nil, 0, err
 	}
-	if tx == nil {
-		return uuid.Nil, 0, errors.New("webhook transaction is required")
-	}
-
-	eventID, err := e.store.CreateEventTx(ctx, tx, event)
-	if err != nil {
-		return uuid.Nil, 0, fmt.Errorf("create webhook event: %w", err)
-	}
-	count, err := e.store.CreateDeliveriesForEventTx(ctx, tx, eventID, e.now().UTC())
-	if err != nil {
-		return uuid.Nil, 0, fmt.Errorf("create webhook deliveries: %w", err)
-	}
-	return eventID, count, nil
+	return result.EventID, result.DeliveryCount, nil
 }
 
 func (e *Emitter) EmitToEndpointTx(
@@ -54,10 +44,6 @@ func (e *Emitter) EmitToEndpointTx(
 	event Event,
 	endpointID uuid.UUID,
 ) (uuid.UUID, uuid.UUID, error) {
-	event, err := e.normalize(event)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, err
-	}
 	if tx == nil {
 		return uuid.Nil, uuid.Nil, errors.New("webhook transaction is required")
 	}
@@ -65,42 +51,96 @@ func (e *Emitter) EmitToEndpointTx(
 		return uuid.Nil, uuid.Nil, errors.New("webhook endpoint id is required")
 	}
 
-	eventID, err := e.store.CreateEventTx(ctx, tx, event)
+	envelope, err := e.normalizeEnvelope(event.envelope())
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	storedEvent := eventFromEnvelope(envelope)
+	eventID, err := e.store.CreateEventTx(ctx, tx, storedEvent)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("create webhook event: %w", err)
+	}
+	if eventID == uuid.Nil {
+		return uuid.Nil, uuid.Nil, errors.New("webhook store returned an empty event id")
+	}
+	if eventID != envelope.ID {
+		return uuid.Nil, uuid.Nil, errors.New("webhook store returned a different event id")
 	}
 	deliveryID, err := e.store.CreateDeliveryTx(ctx, tx, eventID, endpointID, e.now().UTC())
 	if err != nil {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("create webhook delivery: %w", err)
 	}
+	if deliveryID == uuid.Nil {
+		return uuid.Nil, uuid.Nil, errors.New("webhook store returned an empty delivery id")
+	}
 	return eventID, deliveryID, nil
 }
 
-func (e *Emitter) normalize(event Event) (Event, error) {
+func (e *Emitter) emitEnvelopeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	envelope platformevent.Envelope,
+) (platformevent.Result, error) {
+	if tx == nil {
+		return platformevent.Result{}, errors.New("webhook transaction is required")
+	}
+
+	normalized, err := e.normalizeEnvelope(envelope)
+	if err != nil {
+		return platformevent.Result{}, err
+	}
+	eventID, err := e.store.CreateEventTx(ctx, tx, eventFromEnvelope(normalized))
+	if err != nil {
+		return platformevent.Result{}, fmt.Errorf("create webhook event: %w", err)
+	}
+	if eventID == uuid.Nil {
+		return platformevent.Result{}, errors.New("webhook store returned an empty event id")
+	}
+	if eventID != normalized.ID {
+		return platformevent.Result{}, errors.New("webhook store returned a different event id")
+	}
+	count, err := e.store.CreateDeliveriesForEventTx(ctx, tx, eventID, e.now().UTC())
+	if err != nil {
+		return platformevent.Result{}, fmt.Errorf("create webhook deliveries: %w", err)
+	}
+	if count < 0 {
+		return platformevent.Result{}, errors.New("webhook store returned a negative delivery count")
+	}
+	return platformevent.Result{EventID: eventID, DeliveryCount: count}, nil
+}
+
+func (e *Emitter) normalizeEnvelope(envelope platformevent.Envelope) (platformevent.Envelope, error) {
 	if e == nil || e.store == nil {
-		return Event{}, errors.New("webhook emitter is not configured")
+		return platformevent.Envelope{}, errors.New("webhook emitter is not configured")
 	}
-	if event.ID == uuid.Nil {
-		event.ID = uuid.New()
+	normalized, err := envelope.Normalize(e.now)
+	if err != nil {
+		return platformevent.Envelope{}, fmt.Errorf("normalize webhook event: %w", err)
 	}
-	if event.TeamID == uuid.Nil {
-		return Event{}, errors.New("webhook team id is required")
+	return normalized, nil
+}
+
+func (event Event) envelope() platformevent.Envelope {
+	return platformevent.Envelope{
+		ID:         event.ID,
+		Type:       platformevent.Type(event.Type),
+		Version:    platformevent.CurrentVersion,
+		TeamID:     event.TeamID,
+		ObjectType: event.ObjectType,
+		ObjectID:   event.ObjectID,
+		Data:       event.Payload,
+		OccurredAt: event.OccurredAt,
 	}
-	event.Type = strings.TrimSpace(event.Type)
-	if event.Type == "" {
-		return Event{}, errors.New("webhook event type is required")
+}
+
+func eventFromEnvelope(envelope platformevent.Envelope) Event {
+	return Event{
+		ID:         envelope.ID,
+		TeamID:     envelope.TeamID,
+		Type:       string(envelope.Type),
+		ObjectType: envelope.ObjectType,
+		ObjectID:   envelope.ObjectID,
+		Payload:    envelope.Data,
+		OccurredAt: envelope.OccurredAt,
 	}
-	event.ObjectType = strings.TrimSpace(event.ObjectType)
-	if event.ObjectType == "" {
-		return Event{}, errors.New("webhook object type is required")
-	}
-	if !json.Valid(event.Payload) || !bytes.HasPrefix(bytes.TrimSpace(event.Payload), []byte("{")) {
-		return Event{}, errors.New("webhook payload must be a JSON object")
-	}
-	if event.OccurredAt.IsZero() {
-		event.OccurredAt = e.now().UTC()
-	} else {
-		event.OccurredAt = event.OccurredAt.UTC()
-	}
-	return event, nil
 }
