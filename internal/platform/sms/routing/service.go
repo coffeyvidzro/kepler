@@ -7,11 +7,11 @@ import (
 )
 
 var (
-	ErrRoutingServiceNil       = errors.New("SMS routing service is nil")
-	ErrStrategyRequired        = errors.New("SMS routing strategy is required")
+	ErrRoutingServiceNil        = errors.New("SMS routing service is nil")
+	ErrStrategyRequired         = errors.New("SMS routing strategy is required")
 	ErrCountryValidatorRequired = errors.New("SMS destination country validator is required")
-	ErrUnsupportedCountry      = errors.New("unsupported SMS destination country")
-	ErrNoProviderAvailable     = errors.New("no SMS provider is available")
+	ErrUnsupportedCountry       = errors.New("unsupported SMS destination country")
+	ErrNoProviderAvailable      = errors.New("no SMS provider is available")
 )
 
 type Service struct {

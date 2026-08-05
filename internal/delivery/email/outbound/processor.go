@@ -25,10 +25,10 @@ type deliveryRepository interface {
 }
 
 type Processor struct {
-	repository      deliveryRepository
-	sender          platformemail.Sender
-	staleAfter      time.Duration
-	currentTime     func() time.Time
+	repository  deliveryRepository
+	sender      platformemail.Sender
+	staleAfter  time.Duration
+	currentTime func() time.Time
 }
 
 type Handler = Processor

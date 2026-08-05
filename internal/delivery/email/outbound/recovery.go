@@ -13,9 +13,9 @@ import (
 type RecoveryDecision string
 
 const (
-	RecoveryNotRequired      RecoveryDecision = "not_required"
-	RecoveryPending          RecoveryDecision = "pending"
-	RecoveryRetry            RecoveryDecision = "retry"
+	RecoveryNotRequired       RecoveryDecision = "not_required"
+	RecoveryPending           RecoveryDecision = "pending"
+	RecoveryRetry             RecoveryDecision = "retry"
 	RecoverySubmissionUnknown RecoveryDecision = "submission_unknown"
 )
 
