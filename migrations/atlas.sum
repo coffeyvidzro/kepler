@@ -1,4 +1,4 @@
-h1:U1b9XjCTJ2eEuO8h7ivX4dtLBltdu6C3Jmb5qnr/P4k=
+h1:Qfv9Mlt+1SiniHpKhDJkqB13ZYlF8+QIwKkIu+UhY2g=
 001_create_users.sql h1:SzmfDnKV7pBVweNm8IRsVvEKfzDN7VsSIdAckXWPOvM=
 002_create_sessions.sql h1:mfuQWhqrJwMca/G2R2DOzDoDjNojK/TXxjbs5FYtLuI=
 003_create_oauth_identities.sql h1:RzP5llfQylzwmKxDbJc77FSg+7OizsFzdqQKbQ+n8EY=
@@ -27,3 +27,4 @@ h1:U1b9XjCTJ2eEuO8h7ivX4dtLBltdu6C3Jmb5qnr/P4k=
 026_create_verify.sql h1:oQHCqOZA/5JK9EflTMkTZE02IVxxXvwjln/I/zR1Heo=
 027_extend_event_delivery.sql h1:GFyOXWm3gSPJ2uILStpq2gsJPTOIZHmFcKe6G80eK9U=
 028_create_messaging_control_plane.sql h1:ab1bQbcn4O2b24My1EDQlUa0PpIJlAQ9S/WKe/1MZOQ=
+029_normalize_messaging_provider_ids.sql h1:Ut3Qoah1Ln4CReLU3V00AKwp1Yf+nKP4ANxDLxy9Sbo=
