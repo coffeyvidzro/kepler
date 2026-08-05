@@ -49,6 +49,7 @@ type IdempotencyConfig struct {
 }
 
 type idempotencyRepository interface {
+	TryAcquireLease(context.Context, string, string) (idempotency.Lease, bool, error)
 	CreateProcessing(context.Context, idempotency.Record) (idempotency.Record, error)
 	Get(context.Context, string, string) (idempotency.Record, error)
 	Complete(context.Context, string, string, int, []byte, string, []byte) error
@@ -111,7 +112,19 @@ func Idempotency(config IdempotencyConfig) echo.MiddlewareFunc {
 			)
 			now := time.Now().UTC()
 
-			_, err = config.Repository.CreateProcessing(ctx, idempotency.Record{
+			lease, acquired, err := config.Repository.TryAcquireLease(ctx, scope, key)
+			if err != nil {
+				return httputil.Error(
+					c,
+					apperrors.NewInternal("Unable to acquire idempotency lease", err),
+				)
+			}
+			if !acquired {
+				return replayOrReject(ctx, c, config.Repository, scope, key, requestHash)
+			}
+			defer func() { _ = lease.Release(ctx) }()
+
+			proceed, err := reserveOrReplay(ctx, c, config.Repository, idempotency.Record{
 				Scope:       scope,
 				Key:         key,
 				Method:      c.Request().Method,
@@ -119,16 +132,9 @@ func Idempotency(config IdempotencyConfig) echo.MiddlewareFunc {
 				RequestHash: requestHash,
 				LockedUntil: now.Add(lockTTL),
 				ExpiresAt:   now.Add(recordTTL),
-			})
-			if err != nil {
-				if errors.Is(err, idempotency.ErrAlreadyExists) {
-					return replayOrReject(ctx, c, config.Repository, scope, key, requestHash, now)
-				}
-
-				return httputil.Error(
-					c,
-					apperrors.NewInternal("Unable to reserve idempotency key", err),
-				)
+			}, now)
+			if err != nil || !proceed {
+				return err
 			}
 
 			recorder := newResponseRecorder(c.Response())
@@ -173,6 +179,57 @@ func Idempotency(config IdempotencyConfig) echo.MiddlewareFunc {
 	}
 }
 
+func reserveOrReplay(
+	ctx context.Context,
+	c *echo.Context,
+	repository idempotencyRepository,
+	reservation idempotency.Record,
+	now time.Time,
+) (bool, error) {
+	if _, err := repository.CreateProcessing(ctx, reservation); err == nil {
+		return true, nil
+	} else if !errors.Is(err, idempotency.ErrAlreadyExists) {
+		return false, httputil.Error(
+			c,
+			apperrors.NewInternal("Unable to reserve idempotency key", err),
+		)
+	}
+
+	record, err := repository.Get(ctx, reservation.Scope, reservation.Key)
+	if err != nil {
+		return false, httputil.Error(c, apperrors.NewInternal("Unable to load idempotency key", err))
+	}
+	if record.RequestHash != reservation.RequestHash {
+		return false, httputil.Error(
+			c,
+			apperrors.NewConflict("Idempotency-Key was already used with a different request"),
+		)
+	}
+	if record.Status == idempotency.StatusCompleted && record.ResponseStatus != nil {
+		return false, replayCompleted(c, record)
+	}
+	if record.LockedUntil.After(now) {
+		return false, httputil.Error(
+			c,
+			apperrors.NewConflict("Idempotency-Key request is still processing"),
+		)
+	}
+
+	if err := repository.Delete(ctx, reservation.Scope, reservation.Key); err != nil {
+		return false, httputil.Error(
+			c,
+			apperrors.NewInternal("Unable to reclaim expired idempotency key", err),
+		)
+	}
+	if _, err := repository.CreateProcessing(ctx, reservation); err != nil {
+		return false, httputil.Error(
+			c,
+			apperrors.NewInternal("Unable to reserve reclaimed idempotency key", err),
+		)
+	}
+	return true, nil
+}
+
 func canonicalTeamID(request *http.Request) (string, bool, error) {
 	value := strings.TrimSpace(request.Header.Get("X-Team-ID"))
 	if value == "" {
@@ -185,8 +242,21 @@ func canonicalTeamID(request *http.Request) (string, bool, error) {
 	return teamID.String(), true, nil
 }
 
-func replayOrReject(ctx context.Context, c *echo.Context, repository idempotencyRepository, scope string, key string, requestHash string, now time.Time) error {
+func replayOrReject(
+	ctx context.Context,
+	c *echo.Context,
+	repository idempotencyRepository,
+	scope string,
+	key string,
+	requestHash string,
+) error {
 	record, err := repository.Get(ctx, scope, key)
+	if errors.Is(err, idempotency.ErrNotFound) {
+		return httputil.Error(
+			c,
+			apperrors.NewConflict("Idempotency-Key request is being reserved"),
+		)
+	}
 	if err != nil {
 		return httputil.Error(c, apperrors.NewInternal("Unable to load idempotency key", err))
 	}
@@ -199,33 +269,29 @@ func replayOrReject(ctx context.Context, c *echo.Context, repository idempotency
 	}
 
 	if record.Status == idempotency.StatusCompleted && record.ResponseStatus != nil {
-		if err := restoreResponseHeaders(c.Response().Header(), record.ResponseHeaders); err != nil {
-			return httputil.Error(
-				c,
-				apperrors.NewInternal("Unable to replay idempotent response headers", err),
-			)
-		}
-		if record.ResponseContentType != nil && *record.ResponseContentType != "" {
-			c.Response().Header().Set(echo.HeaderContentType, *record.ResponseContentType)
-		}
-
-		c.Response().WriteHeader(int(*record.ResponseStatus))
-		_, err := c.Response().Write(record.ResponseBody)
-		return err
+		return replayCompleted(c, record)
 	}
 
-	if record.LockedUntil.After(now) {
-		return httputil.Error(
-			c,
-			apperrors.NewConflict("Idempotency-Key request is still processing"),
-		)
-	}
-
-	_ = repository.Delete(ctx, scope, key)
 	return httputil.Error(
 		c,
-		apperrors.NewConflict("Idempotency-Key expired while processing; retry the request"),
+		apperrors.NewConflict("Idempotency-Key request is still processing"),
 	)
+}
+
+func replayCompleted(c *echo.Context, record idempotency.Record) error {
+	if err := restoreResponseHeaders(c.Response().Header(), record.ResponseHeaders); err != nil {
+		return httputil.Error(
+			c,
+			apperrors.NewInternal("Unable to replay idempotent response headers", err),
+		)
+	}
+	if record.ResponseContentType != nil && *record.ResponseContentType != "" {
+		c.Response().Header().Set(echo.HeaderContentType, *record.ResponseContentType)
+	}
+
+	c.Response().WriteHeader(int(*record.ResponseStatus))
+	_, err := c.Response().Write(record.ResponseBody)
+	return err
 }
 
 func isIdempotencyCandidate(method string) bool {
