@@ -3,7 +3,8 @@ package senderid
 import "context"
 
 const (
-	ProviderMoolre = "moolre"
+	ProviderMNotify = "mnotify"
+	ProviderMoolre  = "moolre"
 
 	StatusPending  = "pending"
 	StatusApproved = "approved"
@@ -13,6 +14,7 @@ const (
 
 type CreateRequest struct {
 	SenderID string
+	Purpose  string
 }
 
 type CreateResponse struct {
