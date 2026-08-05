@@ -62,7 +62,7 @@ func NewProviderWithConfig(config Config) (*Provider, error) {
 	switch config.CreateMode {
 	case CreateModeAccepted, CreateModeRejected, CreateModeUncertain:
 	default:
-		return nil, fmt.Errorf("Runnage Sender ID create mode %q is invalid", config.CreateMode)
+		return nil, fmt.Errorf("runnage sender ID create mode %q is invalid", config.CreateMode)
 	}
 	statuses, err := normalizeStatuses(config.StatusSequence)
 	if err != nil {
@@ -79,10 +79,10 @@ func (provider *Provider) ID() string { return ProviderID }
 
 func (provider *Provider) Create(ctx context.Context, request platformsenderid.CreateRequest) (*platformsenderid.CreateResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Runnage Sender ID provider is unavailable")
+		return nil, errors.New("runnage sender ID provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Runnage Sender ID context is required")
+		return nil, errors.New("runnage sender ID context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (provider *Provider) Create(ctx context.Context, request platformsenderid.C
 	case CreateModeUncertain:
 		return nil, &runnage.Error{
 			Code:    "sender_submission_unknown",
-			Message: "Runnage lost the connection after Sender ID submission",
+			Message: "runnage lost the connection after sender ID submission",
 		}
 	}
 
@@ -124,10 +124,10 @@ func (provider *Provider) Create(ctx context.Context, request platformsenderid.C
 
 func (provider *Provider) CheckStatus(ctx context.Context, senderID string) (*platformsenderid.StatusResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Runnage Sender ID provider is unavailable")
+		return nil, errors.New("runnage sender ID provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Runnage Sender ID context is required")
+		return nil, errors.New("runnage sender ID context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func (provider *Provider) CheckStatus(ctx context.Context, senderID string) (*pl
 		provider.mu.Unlock()
 		return nil, &runnage.Error{
 			Code:       "sender_not_found",
-			Message:    "Runnage does not recognize the Sender ID",
+			Message:    "runnage does not recognize the sender ID",
 			Definitive: true,
 		}
 	}
@@ -178,7 +178,7 @@ func normalizeStatuses(statuses []string) ([]string, error) {
 		case platformsenderid.StatusPending, platformsenderid.StatusApproved, platformsenderid.StatusRejected:
 			normalized[index] = status
 		default:
-			return nil, fmt.Errorf("Runnage Sender ID status sequence contains invalid status %q", status)
+			return nil, fmt.Errorf("runnage sender ID status sequence contains invalid status %q", status)
 		}
 	}
 	return normalized, nil
