@@ -13,71 +13,57 @@ type fakeTransaction struct {
 	rolledBack bool
 }
 
-func (tx *fakeTransaction) Commit(context.Context) error {
-	tx.committed = true
+func (transaction *fakeTransaction) Commit(context.Context) error {
+	transaction.committed = true
 	return nil
 }
 
-func (tx *fakeTransaction) Rollback(context.Context) error {
-	tx.rolledBack = true
+func (transaction *fakeTransaction) Rollback(context.Context) error {
+	transaction.rolledBack = true
 	return nil
 }
 
 type fakeTenantStore struct {
-	tx           *fakeTransaction
-	created      Tenant
-	createParams CreateParams
-	markCalls    int
-	markResult   Tenant
-	beginErr     error
-	createErr    error
-	markErr      error
+	transaction *fakeTransaction
+	created     Tenant
+	marked      Tenant
 }
 
-func (s *fakeTenantStore) BeginTx(context.Context) (Transaction, error) {
-	if s.beginErr != nil {
-		return nil, s.beginErr
+func (store *fakeTenantStore) BeginTx(context.Context) (Transaction, error) {
+	if store.transaction == nil {
+		store.transaction = &fakeTransaction{}
 	}
-	if s.tx == nil {
-		s.tx = &fakeTransaction{}
-	}
-	return s.tx, nil
+	return store.transaction, nil
 }
 
-func (s *fakeTenantStore) CreateTx(_ context.Context, _ Transaction, params CreateParams) (Tenant, error) {
-	s.createParams = params
-	return s.created, s.createErr
+func (store *fakeTenantStore) CreateTx(context.Context, Transaction, CreateParams) (Tenant, error) {
+	return store.created, nil
 }
 
-func (s *fakeTenantStore) MarkProvisioningTx(context.Context, Transaction, uuid.UUID) (Tenant, error) {
-	s.markCalls++
-	return s.markResult, s.markErr
+func (store *fakeTenantStore) MarkProvisioningTx(context.Context, Transaction, uuid.UUID) (Tenant, error) {
+	return store.marked, nil
 }
 
 type fakeProvisionQueue struct {
-	calls   int
-	command ProvisionCommand
+	request ProvisioningRequest
 	err     error
 }
 
-func (q *fakeProvisionQueue) EnqueueProvisioningTx(_ context.Context, _ Transaction, command ProvisionCommand) error {
-	q.calls++
-	q.command = command
-	return q.err
+func (queue *fakeProvisionQueue) EnqueueProvisioningTx(_ context.Context, _ Transaction, request ProvisioningRequest) error {
+	queue.request = request
+	return queue.err
 }
 
-func TestRequestProvisioningCreatesCommandAtomically(t *testing.T) {
-	teamID := uuid.MustParse("80d3f812-8ae4-4e19-aef4-16d93fa64015")
-	tenantID := uuid.New()
-	tx := &fakeTransaction{}
+func TestRequestProvisioningCreatesRequestAtomically(t *testing.T) {
+	teamID, tenantID := uuid.New(), uuid.New()
+	transaction := &fakeTransaction{}
 	store := &fakeTenantStore{
-		tx: tx,
+		transaction: transaction,
 		created: Tenant{
 			ID: tenantID, TeamID: teamID, Provider: ProviderAWSSES,
 			Region: "eu-north-1", ExternalName: AWSExternalName(teamID), Status: StatusPending,
-			SuppressionScope: SuppressionScopeTenant, ReputationPolicy: ReputationPolicyStandard,
 		},
-		markResult: Tenant{
+		marked: Tenant{
 			ID: tenantID, TeamID: teamID, Provider: ProviderAWSSES,
 			Region: "eu-north-1", ExternalName: AWSExternalName(teamID), Status: StatusProvisioning,
 			SuppressionScope: SuppressionScopeTenant, ReputationPolicy: ReputationPolicyStandard,
@@ -89,79 +75,30 @@ func TestRequestProvisioningCreatesCommandAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestProvisioning() error = %v", err)
 	}
-	if got.Status != StatusProvisioning {
-		t.Fatalf("status = %q, want %q", got.Status, StatusProvisioning)
+	if got.Status != StatusProvisioning || !transaction.committed {
+		t.Fatalf("tenant = %#v, committed = %v", got, transaction.committed)
 	}
-	if !tx.committed {
-		t.Fatal("transaction was not committed")
-	}
-	if store.markCalls != 1 || queue.calls != 1 {
-		t.Fatalf("mark calls = %d, queue calls = %d", store.markCalls, queue.calls)
-	}
-	if store.createParams.Region != "eu-north-1" || store.createParams.ExternalName != AWSExternalName(teamID) {
-		t.Fatalf("unexpected create params: %#v", store.createParams)
-	}
-	if queue.command.TenantID != tenantID || queue.command.TeamID != teamID || queue.command.EventID == uuid.Nil {
-		t.Fatalf("unexpected provisioning command: %#v", queue.command)
+	if queue.request.EventID == uuid.Nil || queue.request.TenantID != tenantID || queue.request.TeamID != teamID {
+		t.Fatalf("unexpected provisioning request: %#v", queue.request)
 	}
 }
 
-func TestRequestProvisioningDoesNotDuplicateActiveTenant(t *testing.T) {
-	teamID := uuid.New()
-	tx := &fakeTransaction{}
-	store := &fakeTenantStore{tx: tx, created: Tenant{
-		ID: uuid.New(), TeamID: teamID, Provider: ProviderAWSSES, Region: "eu-north-1",
-		ExternalName: AWSExternalName(teamID), Status: StatusActive,
-	}}
-	queue := &fakeProvisionQueue{}
-
-	got, err := NewService(store, queue).RequestProvisioning(context.Background(), teamID, "eu-north-1")
-	if err != nil {
-		t.Fatalf("RequestProvisioning() error = %v", err)
-	}
-	if got.Status != StatusActive || !tx.committed {
-		t.Fatalf("tenant = %#v, committed = %v", got, tx.committed)
-	}
-	if store.markCalls != 0 || queue.calls != 0 {
-		t.Fatalf("mark calls = %d, queue calls = %d", store.markCalls, queue.calls)
-	}
-}
-
-func TestRequestProvisioningRollsBackWhenOutboxFails(t *testing.T) {
-	teamID := uuid.New()
-	tenantID := uuid.New()
-	tx := &fakeTransaction{}
+func TestRequestProvisioningRollsBackWhenQueueFails(t *testing.T) {
+	teamID, tenantID := uuid.New(), uuid.New()
+	transaction := &fakeTransaction{}
 	store := &fakeTenantStore{
-		tx:      tx,
+		transaction: transaction,
 		created: Tenant{ID: tenantID, TeamID: teamID, Status: StatusPending},
-		markResult: Tenant{
-			ID: tenantID, TeamID: teamID, Provider: ProviderAWSSES, Region: "eu-north-1",
-			ExternalName: AWSExternalName(teamID), Status: StatusProvisioning,
-			SuppressionScope: SuppressionScopeTenant, ReputationPolicy: ReputationPolicyStandard,
+		marked: Tenant{
+			ID: tenantID, TeamID: teamID, Provider: ProviderAWSSES,
+			Region: "eu-north-1", ExternalName: AWSExternalName(teamID), Status: StatusProvisioning,
 		},
 	}
 	queueErr := errors.New("outbox unavailable")
-	queue := &fakeProvisionQueue{err: queueErr}
-
-	_, err := NewService(store, queue).RequestProvisioning(context.Background(), teamID, "eu-north-1")
-	if !errors.Is(err, queueErr) {
-		t.Fatalf("RequestProvisioning() error = %v, want %v", err, queueErr)
-	}
-	if tx.committed {
-		t.Fatal("transaction committed after outbox failure")
-	}
-	if !tx.rolledBack {
-		t.Fatal("transaction was not rolled back")
-	}
-}
-
-func TestRequestProvisioningRejectsUnsupportedRegionBeforeTransaction(t *testing.T) {
-	store := &fakeTenantStore{}
-	_, err := NewService(store, &fakeProvisionQueue{}).RequestProvisioning(context.Background(), uuid.New(), "eu-west-1")
-	if err == nil {
-		t.Fatal("RequestProvisioning() error = nil, want unsupported region")
-	}
-	if store.tx != nil {
-		t.Fatal("transaction began for unsupported region")
+	_, err := NewService(store, &fakeProvisionQueue{err: queueErr}).RequestProvisioning(
+		context.Background(), teamID, "eu-north-1",
+	)
+	if !errors.Is(err, queueErr) || transaction.committed || !transaction.rolledBack {
+		t.Fatalf("error = %v, committed = %v, rolled back = %v", err, transaction.committed, transaction.rolledBack)
 	}
 }

@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/integration/aws/ses"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 )
 
 type tenantStore interface {
@@ -18,23 +18,32 @@ type tenantStore interface {
 }
 
 type tenantProvider interface {
-	ProvisionTenant(context.Context, awsses.TenantProvisionRequest) (awsses.TenantProvisionResult, error)
+	ProvisionTenant(context.Context, platformemail.TenantProvisionRequest) (platformemail.TenantProvisionResult, error)
 }
 
-type Handler struct {
+type Processor struct {
 	store    tenantStore
 	provider tenantProvider
 }
 
-func NewHandler(store tenantStore, provider tenantProvider) *Handler {
-	return &Handler{store: store, provider: provider}
+type Handler = Processor
+
+func NewProcessor(store tenantStore, provider tenantProvider) *Processor {
+	return &Processor{store: store, provider: provider}
 }
 
-func (h *Handler) Handle(ctx context.Context, command emailtenant.ProvisionCommand) error {
-	if h == nil || h.store == nil || h.provider == nil {
-		return errors.New("email tenant provisioning handler is not configured")
+func NewHandler(store tenantStore, provider tenantProvider) *Processor {
+	return NewProcessor(store, provider)
+}
+
+func (processor *Processor) Handle(ctx context.Context, command Command) error {
+	if processor == nil || processor.store == nil || processor.provider == nil {
+		return ErrProcessorNotConfigured
 	}
-	current, err := h.store.Get(ctx, command.TenantID)
+	if err := ValidateCommand(command); err != nil {
+		return err
+	}
+	current, err := processor.store.Get(ctx, command.TenantID)
 	if err != nil {
 		return fmt.Errorf("load email tenant for provisioning: %w", err)
 	}
@@ -48,7 +57,7 @@ func (h *Handler) Handle(ctx context.Context, command emailtenant.ProvisionComma
 		return fmt.Errorf("email tenant is %s, expected provisioning", current.Status)
 	}
 
-	result, err := h.provider.ProvisionTenant(ctx, awsses.TenantProvisionRequest{
+	result, err := processor.provider.ProvisionTenant(ctx, platformemail.TenantProvisionRequest{
 		Region:           current.Region,
 		ExternalName:     current.ExternalName,
 		SuppressionScope: current.SuppressionScope,
@@ -57,24 +66,24 @@ func (h *Handler) Handle(ctx context.Context, command emailtenant.ProvisionComma
 	if err != nil {
 		return fmt.Errorf("provision SES tenant: %w", err)
 	}
-	if _, err := h.store.MarkActive(ctx, current.ID, result.ExternalID, result.TenantARN); err != nil {
+	if _, err := processor.store.MarkActive(ctx, current.ID, result.ExternalID, result.TenantARN); err != nil {
 		return fmt.Errorf("activate email tenant: %w", err)
 	}
 	return nil
 }
 
-func (h *Handler) HandleExhausted(ctx context.Context, command emailtenant.ProvisionCommand, cause error) error {
-	if h == nil || h.store == nil {
-		return errors.New("email tenant provisioning handler store is not configured")
+func (processor *Processor) HandleExhausted(ctx context.Context, command Command, cause error) error {
+	if processor == nil || processor.store == nil {
+		return ErrProcessorNotConfigured
 	}
-	current, err := h.store.Get(ctx, command.TenantID)
+	current, err := processor.store.Get(ctx, command.TenantID)
 	if err != nil {
 		return fmt.Errorf("load exhausted email tenant: %w", err)
 	}
 	if current.Status == emailtenant.StatusActive || current.Status == emailtenant.StatusFailed {
 		return nil
 	}
-	if _, err := h.store.MarkFailed(ctx, command.TenantID, cause); err != nil {
+	if _, err := processor.store.MarkFailed(ctx, command.TenantID, cause); err != nil {
 		return fmt.Errorf("mark email tenant provisioning failed: %w", err)
 	}
 	return nil
