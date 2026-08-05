@@ -1,0 +1,35 @@
+name: Validate messaging foundation
+
+on:
+  push:
+    branches:
+      - feat/messaging-trust-delivery-attempts
+    paths:
+      - ".github/workflows/validate-messaging-foundation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/messaging-trust-delivery-attempts
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Vet messaging foundation
+        run: go vet ./internal/platform/messaging/...
+
+      - name: Test messaging foundation with race detector
+        run: go test -race ./internal/platform/messaging/...
