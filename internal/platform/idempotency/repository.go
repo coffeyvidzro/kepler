@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	tryAcquireLeaseSQL  = `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`
-	releaseLeaseSQL     = `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`
-	leaseReleaseTimeout = 5 * time.Second
+	tryAcquireLeaseSQL   = `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`
+	releaseLeaseSQL      = `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`
+	leaseReleaseTimeout  = 5 * time.Second
+	leasePoolConcurrency = 4
 )
 
 var (
@@ -25,12 +26,31 @@ var (
 )
 
 type Repository struct {
-	db      *pgxpool.Pool
-	queries *dbsqlc.Queries
+	db         *pgxpool.Pool
+	queries    *dbsqlc.Queries
+	leaseSlots chan struct{}
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db, queries: dbsqlc.New(db)}
+	maxConnections := db.Config().MaxConns
+	leaseConnections := maxConnections / leasePoolConcurrency
+	if leaseConnections < 1 && maxConnections > 1 {
+		leaseConnections = 1
+	}
+	if leaseConnections >= maxConnections {
+		leaseConnections = maxConnections - 1
+	}
+
+	var leaseSlots chan struct{}
+	if leaseConnections > 0 {
+		leaseSlots = make(chan struct{}, leaseConnections)
+	}
+
+	return &Repository{
+		db:         db,
+		queries:    dbsqlc.New(db),
+		leaseSlots: leaseSlots,
+	}
 }
 
 func (r *Repository) TryAcquireLease(
@@ -38,6 +58,22 @@ func (r *Repository) TryAcquireLease(
 	scope string,
 	key string,
 ) (Lease, bool, error) {
+	if r.leaseSlots == nil {
+		return nil, false, errors.New("idempotency leases require at least two PostgreSQL pool connections")
+	}
+
+	select {
+	case r.leaseSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, false, fmt.Errorf("wait for idempotency lease capacity: %w", ctx.Err())
+	}
+	releaseSlot := true
+	defer func() {
+		if releaseSlot {
+			<-r.leaseSlots
+		}
+	}()
+
 	conn, err := r.db.Acquire(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("acquire idempotency lease connection: %w", err)
@@ -54,7 +90,8 @@ func (r *Repository) TryAcquireLease(
 		return nil, false, nil
 	}
 
-	return &postgresLease{conn: conn, identity: identity}, true, nil
+	releaseSlot = false
+	return &postgresLease{conn: conn, identity: identity, leaseSlots: r.leaseSlots}, true, nil
 }
 
 func (r *Repository) CreateProcessing(ctx context.Context, record Record) (Record, error) {
@@ -118,8 +155,9 @@ func (r *Repository) Delete(ctx context.Context, scope string, key string) error
 }
 
 type postgresLease struct {
-	conn     *pgxpool.Conn
-	identity string
+	conn       *pgxpool.Conn
+	identity   string
+	leaseSlots chan struct{}
 }
 
 func (l *postgresLease) Release(_ context.Context) error {
@@ -128,7 +166,10 @@ func (l *postgresLease) Release(_ context.Context) error {
 	}
 
 	conn := l.conn
+	leaseSlots := l.leaseSlots
 	l.conn = nil
+	l.leaseSlots = nil
+	defer func() { <-leaseSlots }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), leaseReleaseTimeout)
 	defer cancel()
