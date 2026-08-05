@@ -3,15 +3,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- The shared onboarding identity uses Dugble's platform sandbox tenant and
-    -- does not require a dedicated email_tenants row for the customer team.
     IF NEW.sender_domain_id IS NULL THEN
-        IF NEW.message_type <> 'transactional' THEN
-            RAISE EXCEPTION 'onboarding identity supports transactional email only'
-                USING ERRCODE = '23514';
-        END IF;
-
-        RETURN NEW;
+        RAISE EXCEPTION 'customer sender domain is required'
+            USING ERRCODE = '23514';
     END IF;
 
     IF NOT EXISTS (

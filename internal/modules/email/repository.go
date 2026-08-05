@@ -21,8 +21,6 @@ var ErrNotFound = errors.New("email message not found")
 var ErrNotCancelable = errors.New("email message is not a pending scheduled email")
 var ErrSenderDomainNotFound = errors.New("sender domain not found")
 var ErrActiveEmailTenantNotFound = errors.New("active email tenant not found")
-var ErrSandboxTeamEmailNotVerified = platformemail.ErrSandboxTeamEmailNotVerified
-var ErrSandboxRecipientRestricted = platformemail.ErrSandboxRecipientRestricted
 
 type SenderDomainRoute struct {
 	ID           uuid.UUID
@@ -71,39 +69,6 @@ func (r *Repository) ResolveActiveCustomerRouteTx(ctx context.Context, tx pgx.Tx
 		return platformemail.DeliveryRoute{}, fmt.Errorf("build customer email route: %w", err)
 	}
 	return route, nil
-}
-
-func (r *Repository) AuthorizeSandboxRecipients(
-	ctx context.Context,
-	teamID uuid.UUID,
-	to, cc, bcc []EmailAddress,
-) error {
-	if len(to) != 1 || len(cc) != 0 || len(bcc) != 0 {
-		return platformemail.ErrSandboxRecipientRestricted
-	}
-
-	var ownerEmail string
-	err := r.db.QueryRow(ctx, `
-		SELECT owner.email
-		FROM teams AS team
-		JOIN team_members AS member
-		  ON member.team_id = team.id
-		 AND member.user_id = team.created_by
-		 AND member.role = 'owner'
-		 AND member.status = 'active'
-		JOIN users AS owner
-		  ON owner.id = team.created_by
-		 AND owner.email_verified = true
-		WHERE team.id = $1
-		  AND team.status = 'active'
-	`, teamID).Scan(&ownerEmail)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return platformemail.ErrSandboxTeamEmailNotVerified
-	}
-	if err != nil {
-		return fmt.Errorf("resolve verified sandbox owner email: %w", err)
-	}
-	return platformemail.ValidateSandboxRecipient(ownerEmail, to[0].Email, len(to), len(cc), len(bcc))
 }
 
 func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, req validatedSend) (Message, error) {

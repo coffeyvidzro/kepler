@@ -10,10 +10,7 @@ const (
 	internalConfigurationSetHeader = "X-Dugble-Internal-SES-Configuration-Set"
 	internalSESTenantHeader        = "X-Dugble-Internal-SES-Tenant"
 
-	SystemSESTenantName           = "dugble-system"
-	CustomerSandboxSESTenantName  = "dugble-t-sandbox"
-	CustomerOnboardingIdentity    = "onboarding@runnage.dev"
-	CustomerOnboardingSESIdentity = "runnage.dev"
+	SystemSESTenantName = "dugble-system"
 )
 
 // DeliveryRoute is the immutable provider route selected when a message is
@@ -35,20 +32,9 @@ func SystemDeliveryRoute() DeliveryRoute {
 	}
 }
 
-// CustomerSandboxDeliveryRoute is reserved for restricted customer test email
-// sent with onboarding@runnage.dev. Sandbox email is always transactional and
-// uses a tenant separate from Dugble system notifications and customer domains.
-func CustomerSandboxDeliveryRoute() DeliveryRoute {
-	return DeliveryRoute{
-		Stream:           "transactional",
-		ConfigurationSet: "dugble-transactional",
-		SESTenantName:    CustomerSandboxSESTenantName,
-	}
-}
-
 // CustomerDeliveryRoute selects a shared product configuration set and binds
 // it to one explicit customer SES tenant. Customer routes can never target the
-// system or sandbox tenants or silently omit tenant isolation.
+// system tenant or silently omit tenant isolation.
 func CustomerDeliveryRoute(stream, tenantName string) (DeliveryRoute, error) {
 	tenantName = strings.TrimSpace(tenantName)
 	if tenantName == "" {
@@ -57,10 +43,6 @@ func CustomerDeliveryRoute(stream, tenantName string) (DeliveryRoute, error) {
 	if strings.EqualFold(tenantName, SystemSESTenantName) {
 		return DeliveryRoute{}, errors.New("dugble-system is reserved for platform email")
 	}
-	if strings.EqualFold(tenantName, CustomerSandboxSESTenantName) {
-		return DeliveryRoute{}, errors.New("dugble-t-sandbox is reserved for restricted test email")
-	}
-
 	route := DeliveryRoute{SESTenantName: tenantName}
 	switch strings.ToLower(strings.TrimSpace(stream)) {
 	case "transactional":

@@ -230,7 +230,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		emailRepository,
 		emaildelivery.NewQueue(outboxRepository),
 		emailmodule.ServiceConfig{
-			DefaultFromEmail: platformemail.CustomerOnboardingIdentity,
+			DefaultFromEmail: cfg.AWS.FromEmail,
 			DefaultProvider:  domainmodule.DefaultProvider,
 			DefaultRegion:    cfg.AWS.Region,
 		},
