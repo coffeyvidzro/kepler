@@ -1,0 +1,44 @@
+name: Generate SQLC models
+
+on:
+  push:
+    branches:
+      - feat/messaging-trust-delivery-attempts
+    paths:
+      - ".github/workflows/generate-sqlc.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/messaging-trust-delivery-attempts
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Generate SQLC code
+        run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+
+      - name: Commit generated code
+        run: |
+          if git diff --quiet -- internal/database/sqlc; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/database/sqlc
+          git commit -m "chore: regenerate SQLC models"
+          git push origin HEAD:feat/messaging-trust-delivery-attempts
