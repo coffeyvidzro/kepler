@@ -14,6 +14,9 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/dns/netdns"
 	natsadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/arkesel"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/celcom"
+	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	domainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
@@ -26,11 +29,6 @@ import (
 	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
 	verifyfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/feedback"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
-	smsintegration "github.com/coffeyvidzro/dugble/server/internal/integration/sms"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/arkesel"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/celcom"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/provider/mnotify"
-	"github.com/coffeyvidzro/dugble/server/internal/integration/sms/routing"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/processed"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
@@ -41,6 +39,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	"github.com/coffeyvidzro/dugble/server/internal/transport/workerhealth"
 	workerruntime "github.com/coffeyvidzro/dugble/server/internal/worker"
@@ -187,8 +186,8 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		domainWorkerID,
 	)
 
-	smsRouter, err := routing.NewService(
-		routing.DefaultConfig(),
+	smsRouter, err := platformsms.NewRoutingService(
+		platformsms.DefaultRoutingConfig(),
 		arkesel.NewProvider(arkesel.NewClient(cfg.Arkesel)),
 		celcom.NewProvider(celcom.NewClient(cfg.Celcom)),
 		mnotify.NewProvider(mnotify.NewClient(cfg.MNotify)),
@@ -196,7 +195,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS router: %w", err))
 	}
-	smsSender, err := smsintegration.NewService(smsRouter)
+	smsSender, err := platformsms.NewService(smsRouter)
 	if err != nil {
 		return fail(fmt.Errorf("initialize SMS sender: %w", err))
 	}
