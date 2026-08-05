@@ -4,7 +4,6 @@ import "github.com/coffeyvidzro/dugble/server/internal/platform/sms/destination"
 
 const (
 	CountryGhana   = destination.CountryGhana
-	CountryKenya   = destination.CountryKenya
 	CountryNigeria = destination.CountryNigeria
 )
 
