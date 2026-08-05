@@ -1,0 +1,50 @@
+name: Format messaging foundation
+
+on:
+  push:
+    branches:
+      - feat/messaging-trust-delivery-attempts
+    paths:
+      - ".github/workflows/format-messaging.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/messaging-trust-delivery-attempts
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Format messaging files
+        run: |
+          gofmt -w \
+            internal/platform/messaging/channel.go \
+            internal/platform/messaging/channel_test.go \
+            internal/platform/messaging/sender/model.go \
+            internal/platform/messaging/sender/model_test.go \
+            internal/platform/messaging/delivery/model.go \
+            internal/platform/messaging/delivery/model_test.go
+
+      - name: Commit formatting
+        run: |
+          if git diff --quiet -- internal/platform/messaging; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/platform/messaging
+          git commit -m "style: format all messaging foundation files"
+          git push origin HEAD:feat/messaging-trust-delivery-attempts
