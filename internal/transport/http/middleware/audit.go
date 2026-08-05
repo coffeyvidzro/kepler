@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"net"
 	"strings"
 
 	"github.com/labstack/echo/v5"
@@ -16,11 +15,11 @@ func AuditRequestContext(next echo.HandlerFunc) echo.HandlerFunc {
 		if requestID == "" {
 			requestID = strings.TrimSpace(c.Response().Header().Get(echo.HeaderXRequestID))
 		}
-		ipAddress := strings.TrimSpace(request.RemoteAddr)
-		if host, _, err := net.SplitHostPort(ipAddress); err == nil {
-			ipAddress = host
+		metadata := audit.RequestMetadata{
+			RequestID: requestID,
+			IPAddress: strings.TrimSpace(c.RealIP()),
+			UserAgent: strings.TrimSpace(request.UserAgent()),
 		}
-		metadata := audit.RequestMetadata{RequestID: requestID, IPAddress: ipAddress, UserAgent: strings.TrimSpace(request.UserAgent())}
 		c.SetRequest(request.WithContext(audit.ContextWithRequestMetadata(request.Context(), metadata)))
 		return next(c)
 	}
