@@ -8,24 +8,28 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
 
-func TestDefaultConfigPrioritizesGhanaProviders(t *testing.T) {
+func TestDefaultConfigStagesGhanaProvidersByPriority(t *testing.T) {
 	t.Parallel()
 
 	config := routing.DefaultConfig()
-	var ghana []routing.Route
-	for _, route := range config.Routes {
-		if route.Enabled && route.DestinationCountry == platformsms.CountryGhana {
-			ghana = append(ghana, route)
+	var mnotifyRoute, moolreRoute *routing.Route
+	for index := range config.Routes {
+		route := &config.Routes[index]
+		if route.DestinationCountry != platformsms.CountryGhana {
+			continue
+		}
+		switch route.ProviderID {
+		case "mnotify":
+			mnotifyRoute = route
+		case "moolre":
+			moolreRoute = route
 		}
 	}
-	if len(ghana) != 2 {
-		t.Fatalf("Ghana route count = %d, want 2", len(ghana))
+	if mnotifyRoute == nil || mnotifyRoute.Priority != 1 || !mnotifyRoute.Enabled {
+		t.Fatalf("mNotify route = %#v", mnotifyRoute)
 	}
-	if ghana[0].ProviderID != "mnotify" || ghana[0].Priority != 1 {
-		t.Fatalf("Ghana primary route = %#v", ghana[0])
-	}
-	if ghana[1].ProviderID != "moolre" || ghana[1].Priority != 2 {
-		t.Fatalf("Ghana secondary route = %#v", ghana[1])
+	if moolreRoute == nil || moolreRoute.Priority != 2 || moolreRoute.Enabled {
+		t.Fatalf("Moolre route = %#v", moolreRoute)
 	}
 }
 
