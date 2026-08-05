@@ -20,11 +20,12 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	domainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
-	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/send"
+	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/delivery/email/tenant"
-	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms"
-	verifychannel "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/channel"
+	smsfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/feedback"
+	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
+	verifycleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/cleanup"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
 	verifyfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/feedback"
@@ -39,10 +40,9 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
-	"github.com/coffeyvidzro/dugble/server/internal/transport/workerhealth"
-	workerruntime "github.com/coffeyvidzro/dugble/server/internal/worker"
 )
 
 // Wire builds the worker and returns a cleanup function for initialized resources.
@@ -107,7 +107,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	emailConsumer := emaildelivery.NewConsumer(
 		messagingClient,
 		processedEvents,
-		emaildelivery.NewHandler(emaildelivery.NewRepository(db), emailSender),
+		emaildelivery.NewProcessor(emaildelivery.NewRepository(db), emailSender),
 		emaildelivery.ConsumerConfig{
 			Concurrency:    5,
 			AckWait:        2 * time.Minute,
@@ -131,7 +131,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	emailTenantConsumer := tenantprovision.NewConsumer(
 		messagingClient,
 		processedEvents,
-		tenantprovision.NewHandler(emailTenantRepository, emailSender),
+		tenantprovision.NewProcessor(emailTenantRepository, emailSender),
 		tenantprovision.Config{
 			Concurrency:    3,
 			AckWait:        2 * time.Minute,
@@ -200,17 +200,32 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		return fail(fmt.Errorf("initialize SMS sender: %w", err))
 	}
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, lifecycleEmitter)
-	smsHandler := smsdelivery.NewHandler(smsRepository, smsSender)
 	smsConsumer := smsdelivery.NewConsumer(
 		messagingClient,
 		processedEvents,
-		smsHandler,
+		smsdelivery.NewProcessor(smsRepository, smsSender),
 		smsdelivery.ConsumerConfig{
 			Concurrency:    10,
 			AckWait:        2 * time.Minute,
 			HandlerTimeout: 45 * time.Second,
 			MaxDeliver:     6,
 		},
+	)
+	smsFeedbackRepository := smsfeedback.NewRepository(db)
+	smsFeedbackProcessor := smsfeedback.NewProcessor(smsFeedbackRepository)
+	smsFeedbackReconciler := smsfeedback.NewReconciler(
+		smsFeedbackRepository,
+		smsSender,
+		smsFeedbackProcessor,
+		smsfeedback.ReconcilerConfig{
+			BatchSize:       100,
+			Concurrency:     10,
+			ProviderTimeout: 15 * time.Second,
+		},
+	)
+	smsFeedbackConsumer := smsfeedback.NewConsumer(
+		smsFeedbackReconciler,
+		smsfeedback.ConsumerConfig{PollInterval: 30 * time.Second},
 	)
 
 	verifyCipher, err := authnz.NewSecretCipherKeyring(cfg.EncryptionKeys)
@@ -233,23 +248,24 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		smsdelivery.NewQueue(outboxRepository),
 		billingService,
 	)
-	verifyHandler := verifydispatch.NewHandler(
+	verifyProcessor := verifydispatch.NewProcessor(
 		verifydispatch.NewRepository(db),
 		verifyCipher,
-		verifychannel.NewEmail(emailAPIService),
-		verifychannel.NewSMS(smsAPIService, "Dugble"),
+		verifydispatch.NewEmailChannel(emailAPIService),
+		verifydispatch.NewSMSChannel(smsAPIService, "Dugble"),
 		events,
 	)
 	verifyConsumer := verifydispatch.NewConsumer(
 		messagingClient,
 		processedEvents,
-		verifyHandler,
+		verifyProcessor,
 		verifydispatch.DefaultConsumerConfig(),
 	)
-	verifyExpiryConsumer := verifyexpiry.NewConsumer(
-		verifyexpiry.NewRepository(db, events),
+	verifyExpiryScanner := verifyexpiry.NewScanner(
+		verifyexpiry.NewProcessor(db, events),
 		verifyexpiry.DefaultConfig(),
 	)
+	verifyCleanupWorker := verifycleanup.NewWorker(db, verifycleanup.DefaultConfig())
 
 	outboxRelay := outbox.NewRelay(
 		outboxRepository,
@@ -291,7 +307,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		WriteTimeout:      5 * time.Second,
 		IdleTimeout:       30 * time.Second,
 	}
-	healthComponent := workerruntime.Component{
+	healthComponent := Component{
 		Name: "health server",
 		Run: func(componentCtx context.Context) error {
 			go func() {
@@ -310,7 +326,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		},
 	}
 
-	components := []workerruntime.Component{
+	components := []Component{
 		healthComponent,
 		{Name: "outbox relay", Run: outboxRelay.Run},
 		{Name: "email JetStream consumer", Run: emailConsumer.Run},
@@ -320,19 +336,22 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		{Name: "email feedback database reconciler", Run: emailFeedbackReconciler.Run},
 		{Name: "email feedback metrics collector", Run: emailFeedbackMetricsCollector.Run},
 		{Name: "SMS JetStream consumer", Run: smsConsumer.Run},
+		{Name: "SMS feedback reconciler", Run: smsFeedbackConsumer.Run},
 		{Name: "Verify dispatch JetStream consumer", Run: verifyConsumer.Run},
-		{Name: "Verify expiry database consumer", Run: verifyExpiryConsumer.Run},
+		{Name: "Verify expiry scanner", Run: verifyExpiryScanner.Run},
+		{Name: "Verify cleanup worker", Run: verifyCleanupWorker.Run},
 		{Name: "webhook delivery consumer", Run: webhookConsumer.Run},
 		{Name: "sender domain reconciliation consumer", Run: domainConsumer.Run},
 	}
-	supervisor, err := workerruntime.NewSupervisor(workerruntime.FailFast, components...)
+	supervisor, err := NewSupervisor(FailFast, components...)
 	if err != nil {
 		return fail(fmt.Errorf("create worker supervisor: %w", err))
 	}
 
 	healthMux := http.NewServeMux()
-	healthMux.Handle("/", workerhealth.NewHandler(db, messagingClient, supervisor).Routes())
+	healthMux.Handle("/", NewHealthHandler(db, messagingClient, supervisor))
 	healthMux.Handle("GET /metrics", feedbackMetrics)
+	healthMux.Handle("GET /metrics/verify", verifymetrics.Default)
 	healthServer.Handler = healthMux
 
 	application, err := New(supervisor, healthServer.Addr, "/metrics")

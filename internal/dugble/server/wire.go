@@ -21,9 +21,10 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/sms/mnotify"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
-	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/send"
+	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
-	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms"
+	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/delivery/email/tenant"
+	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
@@ -41,12 +42,12 @@ import (
 	verifymodule "github.com/coffeyvidzro/dugble/server/internal/modules/verify"
 	walletmodule "github.com/coffeyvidzro/dugble/server/internal/modules/wallet"
 	webhooksmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
-	"github.com/coffeyvidzro/dugble/server/internal/monitoring"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
@@ -206,7 +207,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
 		emailTenantRepository,
-		emailtenant.NewProvisionQueue(outboxRepository),
+		tenantprovision.NewQueue(outboxRepository),
 	)
 	senderIDRepository := senderidmodule.NewRepository(db)
 	webhookRepository := webhooksmodule.NewRepository(db)

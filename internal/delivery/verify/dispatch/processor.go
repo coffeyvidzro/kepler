@@ -12,11 +12,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/coffeyvidzro/dugble/server/internal/monitoring/verifymetrics"
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics"
 )
 
 type DispatchState struct {

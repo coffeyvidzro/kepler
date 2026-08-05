@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/monitoring/verifymetrics"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring/verifymetrics"
 )
 
 type batchExpirer interface {
