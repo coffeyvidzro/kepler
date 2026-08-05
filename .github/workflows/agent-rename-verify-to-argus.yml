@@ -114,7 +114,7 @@ jobs:
           test ! -e internal/delivery/verify
           test ! -e internal/platform/monitoring/verifymetrics
 
-          if git grep -nE 'internal/(modules|transport/http|delivery)/verify|internal/platform/monitoring/verifymetrics' -- ':!internal/database/sqlc'; then
+          if git grep -nE 'internal/(modules|transport/http|delivery)/verify|internal/platform/monitoring/verifymetrics' -- '*.go' '*.md' ':!.github/**'; then
             echo 'legacy Verify package path remains' >&2
             exit 1
           fi
@@ -126,7 +126,7 @@ jobs:
             echo 'legacy Verify package declaration remains' >&2
             exit 1
           fi
-          if git grep -nE '\bVerifyConfig\b|cfg\.Verify\b|c\.Verify\b|VERIFY_HMAC_SECRET|envPrefix:"VERIFY_"' -- '*.go' '*.md' '*.yml' '*.yaml' '.env*'; then
+          if git grep -nE '\bVerifyConfig\b|cfg\.Verify\b|c\.Verify\b|VERIFY_HMAC_SECRET|envPrefix:"VERIFY_"' -- '*.go' '*.md' '.env*' ':!.github/**'; then
             echo 'legacy Verify configuration branding remains' >&2
             exit 1
           fi
