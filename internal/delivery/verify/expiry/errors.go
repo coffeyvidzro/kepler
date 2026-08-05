@@ -1,6 +1,18 @@
 package expiry
 
-import "time"
+import (
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+)
+
+var (
+	ErrProcessorNotConfigured = errors.New("verification expiry processor is not configured")
+	ErrScannerNotConfigured   = errors.New("verification expiry scanner is not configured")
+)
 
 type Config struct {
 	PollInterval time.Duration
@@ -28,4 +40,10 @@ func normalizeConfig(config Config) Config {
 		config.BatchTimeout = defaults.BatchTimeout
 	}
 	return config
+}
+
+type Processor = Repository
+
+func NewProcessor(db *pgxpool.Pool, events *platformevent.Emitter) *Processor {
+	return NewRepository(db, events)
 }

@@ -13,23 +13,29 @@ type batchExpirer interface {
 	ExpireBatch(context.Context, int32) (int, error)
 }
 
-type Consumer struct {
-	repository batchExpirer
-	config     Config
+type Scanner struct {
+	processor batchExpirer
+	config    Config
 }
 
-func NewConsumer(repository batchExpirer, config Config) *Consumer {
-	return &Consumer{repository: repository, config: normalizeConfig(config)}
+type Consumer = Scanner
+
+func NewScanner(processor batchExpirer, config Config) *Scanner {
+	return &Scanner{processor: processor, config: normalizeConfig(config)}
 }
 
-func (consumer *Consumer) Run(ctx context.Context) error {
-	if consumer == nil || consumer.repository == nil {
-		return errors.New("verification expiry consumer is not configured")
+func NewConsumer(processor batchExpirer, config Config) *Scanner {
+	return NewScanner(processor, config)
+}
+
+func (scanner *Scanner) Run(ctx context.Context) error {
+	if scanner == nil || scanner.processor == nil {
+		return ErrScannerNotConfigured
 	}
-	ticker := time.NewTicker(consumer.config.PollInterval)
+	ticker := time.NewTicker(scanner.config.PollInterval)
 	defer ticker.Stop()
 	for {
-		consumer.poll(ctx)
+		scanner.scan(ctx)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -38,11 +44,11 @@ func (consumer *Consumer) Run(ctx context.Context) error {
 	}
 }
 
-func (consumer *Consumer) poll(ctx context.Context) {
+func (scanner *Scanner) scan(ctx context.Context) {
 	for {
 		started := time.Now()
-		batchCtx, cancel := context.WithTimeout(ctx, consumer.config.BatchTimeout)
-		expired, err := consumer.repository.ExpireBatch(batchCtx, consumer.config.BatchSize)
+		batchCtx, cancel := context.WithTimeout(ctx, scanner.config.BatchTimeout)
+		expired, err := scanner.processor.ExpireBatch(batchCtx, scanner.config.BatchSize)
 		cancel()
 		verifymetrics.Default.Observe("expiry_batch", verifymetrics.Outcome(err), time.Since(started))
 		verifymetrics.Default.AddExpired(expired)
@@ -55,7 +61,7 @@ func (consumer *Consumer) poll(ctx context.Context) {
 		if expired > 0 {
 			slog.InfoContext(ctx, "verification expiry batch completed", "expired", expired)
 		}
-		if expired < int(consumer.config.BatchSize) {
+		if expired < int(scanner.config.BatchSize) {
 			return
 		}
 		select {
