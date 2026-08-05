@@ -27,7 +27,6 @@ import (
 	verifycleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/cleanup"
 	verifydispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/dispatch"
 	verifyexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/expiry"
-	verifyfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/verify/feedback"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	"github.com/coffeyvidzro/dugble/server/internal/messaging/processed"
@@ -87,7 +86,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	webhookModuleRepository := webhookmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)
 	events := platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter))
-	lifecycleEmitter := verifyfeedback.NewEmitter(webhookEmitter, events)
+	lifecycleEmitter := webhookEmitter
 	billingService := platformbilling.NewService(platformbilling.NewRepository(db))
 
 	emailSender, err := awsses.NewSESSender(
