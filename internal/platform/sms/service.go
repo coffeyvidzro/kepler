@@ -32,25 +32,76 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	upstream, err := service.router.Route(ctx, request)
+
+	candidates, err := service.routeCandidates(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("route SMS request: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil, ErrNoProviderAvailable
+	}
+
+	attempts := make([]ProviderAttempt, 0, len(candidates))
+	for _, upstream := range candidates {
+		if upstream == nil {
+			attempts = append(attempts, ProviderAttempt{
+				ProviderID: "unknown",
+				Err:        errors.New("routed SMS provider is nil"),
+			})
+			break
+		}
+
+		providerID := normalizeProviderID(upstream.ID())
+		if providerID == "" {
+			attempts = append(attempts, ProviderAttempt{
+				ProviderID: "unknown",
+				Err:        errors.New("routed SMS provider has an empty ID"),
+			})
+			break
+		}
+
+		response, attemptErr := upstream.Send(ctx, request)
+		if attemptErr == nil {
+			attemptErr = validateSendResponse(providerID, response)
+			if attemptErr == nil {
+				return response, nil
+			}
+		}
+
+		attempts = append(attempts, ProviderAttempt{
+			ProviderID: providerID,
+			Err:        attemptErr,
+		})
+		if !safeToFallback(attemptErr) {
+			break
+		}
+	}
+
+	return nil, &SendError{Attempts: attempts}
+}
+
+func (service *Service) routeCandidates(ctx context.Context, request SendRequest) ([]Provider, error) {
+	if router, ok := service.router.(CandidateRouter); ok {
+		return router.Candidates(ctx, request)
+	}
+	upstream, err := service.router.Route(ctx, request)
+	if err != nil {
+		return nil, err
 	}
 	if upstream == nil {
 		return nil, ErrNoProviderAvailable
 	}
-	providerID := normalizeProviderID(upstream.ID())
-	if providerID == "" {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: "unknown", Err: errors.New("routed SMS provider has an empty ID")}}}
+	return []Provider{upstream}, nil
+}
+
+func safeToFallback(err error) bool {
+	if err == nil {
+		return false
 	}
-	response, err := upstream.Send(ctx, request)
-	if err != nil {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: providerID, Err: err}}}
+	var classifier interface {
+		SafeToFallback() bool
 	}
-	if err := validateSendResponse(providerID, response); err != nil {
-		return nil, &SendError{Attempts: []ProviderAttempt{{ProviderID: providerID, Err: err}}}
-	}
-	return response, nil
+	return errors.As(err, &classifier) && classifier.SafeToFallback()
 }
 
 func (service *Service) CheckStatus(ctx context.Context, providerID, providerMessageID string) (*StatusResponse, error) {
