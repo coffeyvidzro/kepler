@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 )
 
 func (consumer *Consumer) recordFailure(
 	ctx context.Context,
-	claim senderidmodule.RegistrationClaim,
+	claim RegistrationClaim,
 	providerStatus string,
 	cause error,
 ) error {
