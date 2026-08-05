@@ -30,7 +30,7 @@ SELECT
 FROM teams AS team
 WHERE team.id = $6
   AND team.status = 'active'
-RETURNING id, team_id, name, country_code, purpose, status, provider, rejection_reason, approved_at, rejected_at, suspended_at, created_by, created_at, updated_at
+RETURNING id, team_id, name, country_code, purpose, status, provider, provider_status, provider_whitelisted, provider_submitted_at, provider_last_checked_at, next_status_check_at, provider_attempts, provider_error, registration_locked_at, registration_locked_by, rejection_reason, approved_at, rejected_at, suspended_at, created_by, created_at, updated_at
 `
 
 type CreateSenderIDParams struct {
@@ -60,6 +60,15 @@ func (q *Queries) CreateSenderID(ctx context.Context, arg CreateSenderIDParams) 
 		&i.Purpose,
 		&i.Status,
 		&i.Provider,
+		&i.ProviderStatus,
+		&i.ProviderWhitelisted,
+		&i.ProviderSubmittedAt,
+		&i.ProviderLastCheckedAt,
+		&i.NextStatusCheckAt,
+		&i.ProviderAttempts,
+		&i.ProviderError,
+		&i.RegistrationLockedAt,
+		&i.RegistrationLockedBy,
 		&i.RejectionReason,
 		&i.ApprovedAt,
 		&i.RejectedAt,
@@ -78,7 +87,7 @@ WHERE sender.id = $1
   AND sender.team_id = $2
   AND team.id = sender.team_id
   AND team.status = 'active'
-RETURNING sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
+RETURNING sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.provider_status, sender.provider_whitelisted, sender.provider_submitted_at, sender.provider_last_checked_at, sender.next_status_check_at, sender.provider_attempts, sender.provider_error, sender.registration_locked_at, sender.registration_locked_by, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
 `
 
 type DeleteSenderIDParams struct {
@@ -97,6 +106,15 @@ func (q *Queries) DeleteSenderID(ctx context.Context, arg DeleteSenderIDParams) 
 		&i.Purpose,
 		&i.Status,
 		&i.Provider,
+		&i.ProviderStatus,
+		&i.ProviderWhitelisted,
+		&i.ProviderSubmittedAt,
+		&i.ProviderLastCheckedAt,
+		&i.NextStatusCheckAt,
+		&i.ProviderAttempts,
+		&i.ProviderError,
+		&i.RegistrationLockedAt,
+		&i.RegistrationLockedBy,
 		&i.RejectionReason,
 		&i.ApprovedAt,
 		&i.RejectedAt,
@@ -109,7 +127,7 @@ func (q *Queries) DeleteSenderID(ctx context.Context, arg DeleteSenderIDParams) 
 }
 
 const getSenderID = `-- name: GetSenderID :one
-SELECT sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
+SELECT sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.provider_status, sender.provider_whitelisted, sender.provider_submitted_at, sender.provider_last_checked_at, sender.next_status_check_at, sender.provider_attempts, sender.provider_error, sender.registration_locked_at, sender.registration_locked_by, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
 FROM sender_ids AS sender
 JOIN teams AS team ON team.id = sender.team_id
 WHERE sender.id = $1
@@ -133,6 +151,15 @@ func (q *Queries) GetSenderID(ctx context.Context, arg GetSenderIDParams) (Sende
 		&i.Purpose,
 		&i.Status,
 		&i.Provider,
+		&i.ProviderStatus,
+		&i.ProviderWhitelisted,
+		&i.ProviderSubmittedAt,
+		&i.ProviderLastCheckedAt,
+		&i.NextStatusCheckAt,
+		&i.ProviderAttempts,
+		&i.ProviderError,
+		&i.RegistrationLockedAt,
+		&i.RegistrationLockedBy,
 		&i.RejectionReason,
 		&i.ApprovedAt,
 		&i.RejectedAt,
@@ -145,7 +172,7 @@ func (q *Queries) GetSenderID(ctx context.Context, arg GetSenderIDParams) (Sende
 }
 
 const listSenderIDs = `-- name: ListSenderIDs :many
-SELECT sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
+SELECT sender.id, sender.team_id, sender.name, sender.country_code, sender.purpose, sender.status, sender.provider, sender.provider_status, sender.provider_whitelisted, sender.provider_submitted_at, sender.provider_last_checked_at, sender.next_status_check_at, sender.provider_attempts, sender.provider_error, sender.registration_locked_at, sender.registration_locked_by, sender.rejection_reason, sender.approved_at, sender.rejected_at, sender.suspended_at, sender.created_by, sender.created_at, sender.updated_at
 FROM sender_ids AS sender
 JOIN teams AS team ON team.id = sender.team_id
 WHERE sender.team_id = $1
@@ -174,6 +201,15 @@ func (q *Queries) ListSenderIDs(ctx context.Context, arg ListSenderIDsParams) ([
 			&i.Purpose,
 			&i.Status,
 			&i.Provider,
+			&i.ProviderStatus,
+			&i.ProviderWhitelisted,
+			&i.ProviderSubmittedAt,
+			&i.ProviderLastCheckedAt,
+			&i.NextStatusCheckAt,
+			&i.ProviderAttempts,
+			&i.ProviderError,
+			&i.RegistrationLockedAt,
+			&i.RegistrationLockedBy,
 			&i.RejectionReason,
 			&i.ApprovedAt,
 			&i.RejectedAt,
