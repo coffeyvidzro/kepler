@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 	platformsenderid "github.com/coffeyvidzro/dugble/server/internal/platform/senderid"
 )
 
@@ -48,7 +47,7 @@ func (config Config) validate() error {
 }
 
 type Consumer struct {
-	repository repository
+	repository registrationRepository
 	providers  map[string]platformsenderid.Provider
 	config     Config
 	workerID   string
@@ -56,7 +55,7 @@ type Consumer struct {
 }
 
 func NewConsumer(
-	repository repository,
+	repository registrationRepository,
 	config Config,
 	workerID string,
 	providers ...platformsenderid.Provider,
@@ -115,7 +114,7 @@ func (consumer *Consumer) Run(ctx context.Context) error {
 
 type workItem struct {
 	provider platformsenderid.Provider
-	claim    senderidmodule.RegistrationClaim
+	claim    RegistrationClaim
 }
 
 func (consumer *Consumer) poll(ctx context.Context) error {
