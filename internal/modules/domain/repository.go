@@ -114,7 +114,7 @@ func (r *Repository) Create(
 		return SenderDomain{}, fmt.Errorf("marshal sender domain verification records: %w", err)
 	}
 	row, err := r.queries.CreateSenderDomain(ctx, dbsqlc.CreateSenderDomainParams{
-		TeamID:              teamID,
+		TeamID:              &teamID,
 		Domain:              domain,
 		Provider:            provider,
 		ProviderRegion:      providerRegion,
@@ -131,7 +131,7 @@ func (r *Repository) Create(
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderDomain, error) {
-	rows, err := r.queries.ListSenderDomains(ctx, dbsqlc.ListSenderDomainsParams{TeamID: teamID})
+	rows, err := r.queries.ListSenderDomains(ctx, dbsqlc.ListSenderDomainsParams{TeamID: &teamID})
 	if err != nil {
 		return nil, fmt.Errorf("list sender domains: %w", err)
 	}
@@ -143,7 +143,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderDomain
 }
 
 func (r *Repository) Get(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderDomain, error) {
-	row, err := r.queries.GetSenderDomain(ctx, dbsqlc.GetSenderDomainParams{ID: id, TeamID: teamID})
+	row, err := r.queries.GetSenderDomain(ctx, dbsqlc.GetSenderDomainParams{ID: id, TeamID: &teamID})
 	if err != nil {
 		return SenderDomain{}, fmt.Errorf("get sender domain: %w", err)
 	}
@@ -156,7 +156,7 @@ func (r *Repository) UpdateVerification(ctx context.Context, id, teamID uuid.UUI
 		return SenderDomain{}, fmt.Errorf("marshal sender domain verification records: %w", err)
 	}
 	row, err := r.queries.UpdateSenderDomainVerification(ctx, dbsqlc.UpdateSenderDomainVerificationParams{
-		Status: status, VerificationRecords: recordsJSON, FailureReason: failureReason, ID: id, TeamID: teamID,
+		Status: status, VerificationRecords: recordsJSON, FailureReason: failureReason, ID: id, TeamID: &teamID,
 	})
 	if err != nil {
 		return SenderDomain{}, fmt.Errorf("update sender domain verification: %w", err)
@@ -247,7 +247,7 @@ func (r *Repository) PurgeIfUnreferenced(ctx context.Context, id, teamID uuid.UU
 }
 
 func (r *Repository) Delete(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderDomain, error) {
-	row, err := r.queries.DeleteSenderDomain(ctx, dbsqlc.DeleteSenderDomainParams{ID: id, TeamID: teamID})
+	row, err := r.queries.DeleteSenderDomain(ctx, dbsqlc.DeleteSenderDomainParams{ID: id, TeamID: &teamID})
 	if err != nil {
 		return SenderDomain{}, fmt.Errorf("delete sender domain: %w", err)
 	}

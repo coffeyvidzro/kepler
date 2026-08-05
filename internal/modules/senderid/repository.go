@@ -51,7 +51,7 @@ func (r *Repository) Create(
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderID, error) {
-	rows, err := r.queries.ListSenderIDs(ctx, dbsqlc.ListSenderIDsParams{TeamID: teamID})
+	rows, err := r.queries.ListSenderIDs(ctx, dbsqlc.ListSenderIDsParams{TeamID: &teamID})
 	if err != nil {
 		return nil, fmt.Errorf("list sender ids: %w", err)
 	}
@@ -63,7 +63,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderID, er
 }
 
 func (r *Repository) Get(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderID, error) {
-	row, err := r.queries.GetSenderID(ctx, dbsqlc.GetSenderIDParams{ID: id, TeamID: teamID})
+	row, err := r.queries.GetSenderID(ctx, dbsqlc.GetSenderIDParams{ID: id, TeamID: &teamID})
 	if err != nil {
 		return SenderID{}, fmt.Errorf("get sender id: %w", err)
 	}
@@ -71,7 +71,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (S
 }
 
 func (r *Repository) Delete(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderID, error) {
-	row, err := r.queries.DeleteSenderID(ctx, dbsqlc.DeleteSenderIDParams{ID: id, TeamID: teamID})
+	row, err := r.queries.DeleteSenderID(ctx, dbsqlc.DeleteSenderIDParams{ID: id, TeamID: &teamID})
 	if err != nil {
 		return SenderID{}, fmt.Errorf("delete sender id: %w", err)
 	}

@@ -117,7 +117,7 @@ func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, 
 
 func (r *Repository) ResolveSenderDomain(ctx context.Context, teamID uuid.UUID, domainName string) (SenderDomainRoute, error) {
 	row, err := r.queries.GetSenderDomainByDomain(ctx, dbsqlc.GetSenderDomainByDomainParams{
-		TeamID: teamID,
+		TeamID: &teamID,
 		Domain: domainName,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
