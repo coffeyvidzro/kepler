@@ -8,32 +8,27 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
 
-func TestDefaultConfigPrioritizesGhanaAndNigeriaProviders(t *testing.T) {
+func TestDefaultConfigPrioritizesCountryProviders(t *testing.T) {
 	t.Parallel()
 
 	config := routing.DefaultConfig()
-	assertRoute := func(country, provider string, priority int) {
-		t.Helper()
-		for _, route := range config.Routes {
-			if route.DestinationCountry == country && route.ProviderID == provider {
-				if route.Priority != priority || !route.Enabled {
-					t.Fatalf("route %s/%s = %#v", country, provider, route)
-				}
-				return
-			}
-		}
-		t.Fatalf("route %s/%s not found", country, provider)
-	}
-
-	assertRoute(platformsms.CountryGhana, "mnotify", 1)
-	assertRoute(platformsms.CountryGhana, "moolre", 2)
-	assertRoute(platformsms.CountryNigeria, "leamout", 1)
-	assertRoute(platformsms.CountryNigeria, "runnage", 2)
-
+	var ghana, nigeria []routing.Route
 	for _, route := range config.Routes {
-		if route.DestinationCountry == "KE" || route.ProviderID == "celcom" || route.ProviderID == "arkesel" {
-			t.Fatalf("obsolete default route = %#v", route)
+		if !route.Enabled {
+			continue
 		}
+		switch route.DestinationCountry {
+		case platformsms.CountryGhana:
+			ghana = append(ghana, route)
+		case platformsms.CountryNigeria:
+			nigeria = append(nigeria, route)
+		}
+	}
+	if len(ghana) != 2 || ghana[0].ProviderID != "mnotify" || ghana[0].Priority != 1 || ghana[1].ProviderID != "moolre" || ghana[1].Priority != 2 {
+		t.Fatalf("Ghana routes = %#v", ghana)
+	}
+	if len(nigeria) != 2 || nigeria[0].ProviderID != "leamout" || nigeria[0].Priority != 1 || nigeria[1].ProviderID != "runnage" || nigeria[1].Priority != 2 {
+		t.Fatalf("Nigeria routes = %#v", nigeria)
 	}
 }
 
@@ -69,9 +64,9 @@ func TestConfigRejectsInvalidRoutes(t *testing.T) {
 			target: routing.ErrDuplicatePriority,
 		},
 		{
-			name: "unsupported country",
+			name: "malformed country",
 			routes: []routing.Route{
-				{ProviderID: "leamout", DestinationCountry: "KE", Priority: 1, Enabled: true},
+				{ProviderID: "leamout", DestinationCountry: "NGA", Priority: 1, Enabled: true},
 			},
 			target: routing.ErrInvalidCountryCode,
 		},
