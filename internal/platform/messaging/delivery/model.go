@@ -15,19 +15,19 @@ import (
 type AttemptStatus string
 
 const (
-	StatusClaimed          AttemptStatus = "claimed"
-	StatusRequestStarted   AttemptStatus = "request_started"
+	StatusClaimed           AttemptStatus = "claimed"
+	StatusRequestStarted    AttemptStatus = "request_started"
 	StatusSubmissionUnknown AttemptStatus = "submission_unknown"
-	StatusSubmitted        AttemptStatus = "submitted"
-	StatusAccepted         AttemptStatus = "accepted"
-	StatusSent             AttemptStatus = "sent"
-	StatusDelivered        AttemptStatus = "delivered"
-	StatusRetryableFailure AttemptStatus = "retryable_failure"
-	StatusPermanentFailure AttemptStatus = "permanent_failure"
-	StatusRejected         AttemptStatus = "rejected"
-	StatusExpired          AttemptStatus = "expired"
-	StatusCanceled         AttemptStatus = "canceled"
-	StatusUnknown          AttemptStatus = "unknown"
+	StatusSubmitted         AttemptStatus = "submitted"
+	StatusAccepted          AttemptStatus = "accepted"
+	StatusSent              AttemptStatus = "sent"
+	StatusDelivered         AttemptStatus = "delivered"
+	StatusRetryableFailure  AttemptStatus = "retryable_failure"
+	StatusPermanentFailure  AttemptStatus = "permanent_failure"
+	StatusRejected          AttemptStatus = "rejected"
+	StatusExpired           AttemptStatus = "expired"
+	StatusCanceled          AttemptStatus = "canceled"
+	StatusUnknown           AttemptStatus = "unknown"
 )
 
 // Attempt records one provider interaction for one email or SMS message.

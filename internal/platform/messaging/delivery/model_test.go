@@ -44,19 +44,19 @@ func TestAttemptTerminalRequiresTimestamp(t *testing.T) {
 	now := time.Now().UTC()
 	messageID := uuid.New()
 	attempt := Attempt{
-		ID:                uuid.New(),
-		TeamID:            uuid.New(),
-		Channel:           messaging.ChannelEmail,
-		EmailMessageID:    &messageID,
-		AttemptNumber:     1,
-		Status:            StatusDelivered,
-		Provider:          "ses",
-		ProviderAccount:   "default",
-		ClaimedAt:         now,
-		SubmittedAt:       &now,
-		Metadata:          json.RawMessage(`{}`),
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:              uuid.New(),
+		TeamID:          uuid.New(),
+		Channel:         messaging.ChannelEmail,
+		EmailMessageID:  &messageID,
+		AttemptNumber:   1,
+		Status:          StatusDelivered,
+		Provider:        "ses",
+		ProviderAccount: "default",
+		ClaimedAt:       now,
+		SubmittedAt:     &now,
+		Metadata:        json.RawMessage(`{}`),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if err := attempt.Validate(); err == nil {
 		t.Fatal("Attempt.Validate() error = nil for terminal status without terminal time")
