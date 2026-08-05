@@ -5,7 +5,86 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
+
+type Route = platformrouting.Route
+type RoutingConfig = platformrouting.Config
+
+func DefaultRoutingConfig() RoutingConfig {
+	return platformrouting.DefaultConfig()
+}
+
+type RoutingService struct {
+	service   *platformrouting.Service
+	providers []Provider
+}
+
+var _ Router = (*RoutingService)(nil)
+
+func NewRoutingService(
+	config RoutingConfig,
+	providers ...Provider,
+) (*RoutingService, error) {
+	registry, normalizedProviders, err := providerRegistry(providers)
+	if err != nil {
+		return nil, err
+	}
+
+	service, err := platformrouting.NewService(
+		config,
+		platformrouting.NewPriorityStrategy(),
+		IsSupportedDestinationCountry,
+	)
+	if err != nil {
+		return nil, err
+	}
+	for _, providerID := range service.ProviderIDs() {
+		if _, exists := registry[providerID]; !exists {
+			return nil, fmt.Errorf("%w: %s", ErrProviderNotRegistered, providerID)
+		}
+	}
+
+	return &RoutingService{service: service, providers: normalizedProviders}, nil
+}
+
+func (service *RoutingService) Route(
+	ctx context.Context,
+	destinationCountry string,
+) ([]string, error) {
+	if service == nil || service.service == nil {
+		return nil, platformrouting.ErrRoutingServiceNil
+	}
+	return service.service.Route(ctx, destinationCountry)
+}
+
+func (service *RoutingService) ShouldFallback(
+	ctx context.Context,
+	providerID string,
+	err error,
+) bool {
+	if service == nil || service.service == nil {
+		return false
+	}
+	return service.service.ShouldFallback(ctx, providerID, err)
+}
+
+func (service *RoutingService) ProviderIDs() []string {
+	if service == nil || service.service == nil {
+		return nil
+	}
+	return service.service.ProviderIDs()
+}
+
+func (service *RoutingService) Providers() []Provider {
+	if service == nil {
+		return nil
+	}
+	result := make([]Provider, len(service.providers))
+	copy(result, service.providers)
+	return result
+}
 
 type Service struct {
 	router    Router
@@ -16,29 +95,24 @@ type routedProviderSource interface {
 	ProviderIDs() []string
 }
 
+type providerSource interface {
+	Providers() []Provider
+}
+
 func NewService(router Router, providers ...Provider) (*Service, error) {
 	if router == nil {
 		return nil, ErrRouterRequired
 	}
 	if len(providers) == 0 {
-		return nil, ErrProviderRequired
+		if source, ok := router.(providerSource); ok {
+			providers = source.Providers()
+		}
 	}
 
-	registry := make(map[string]Provider, len(providers))
-	for _, upstream := range providers {
-		if upstream == nil {
-			return nil, ErrProviderRequired
-		}
-		providerID := normalizeProviderID(upstream.ID())
-		if providerID == "" {
-			return nil, ErrInvalidProviderID
-		}
-		if _, exists := registry[providerID]; exists {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateProvider, providerID)
-		}
-		registry[providerID] = upstream
+	registry, _, err := providerRegistry(providers)
+	if err != nil {
+		return nil, err
 	}
-
 	if source, ok := router.(routedProviderSource); ok {
 		for _, providerID := range source.ProviderIDs() {
 			providerID = normalizeProviderID(providerID)
@@ -136,6 +210,29 @@ func (service *Service) CheckStatus(ctx context.Context, providerID, providerMes
 		return nil, err
 	}
 	return response, nil
+}
+
+func providerRegistry(providers []Provider) (map[string]Provider, []Provider, error) {
+	if len(providers) == 0 {
+		return nil, nil, ErrProviderRequired
+	}
+	registry := make(map[string]Provider, len(providers))
+	normalizedProviders := make([]Provider, 0, len(providers))
+	for _, upstream := range providers {
+		if upstream == nil {
+			return nil, nil, ErrProviderRequired
+		}
+		providerID := normalizeProviderID(upstream.ID())
+		if providerID == "" {
+			return nil, nil, ErrInvalidProviderID
+		}
+		if _, exists := registry[providerID]; exists {
+			return nil, nil, fmt.Errorf("%w: %s", ErrDuplicateProvider, providerID)
+		}
+		registry[providerID] = upstream
+		normalizedProviders = append(normalizedProviders, upstream)
+	}
+	return registry, normalizedProviders, nil
 }
 
 func validateSendResponse(expectedProviderID string, response *SendResponse) error {
