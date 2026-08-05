@@ -3,28 +3,16 @@ package systememail
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
-)
-
-const (
-	DeliverSubject    = "dugble.job.email.system.v1"
-	deliveryNamespace = "https://dugble.com/events/email/system/"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 )
 
 type eventStore interface {
 	Enqueue(context.Context, outbox.Event) (uuid.UUID, error)
-}
-
-type DeliverCommand struct {
-	EventID       uuid.UUID             `json:"event_id"`
-	Message       platformemail.Message `json:"message"`
-	SchemaVersion int                   `json:"schema_version"`
 }
 
 type Queue struct {
@@ -48,24 +36,24 @@ func NewQueue(store eventStore, defaults ...platformemail.Message) *Queue {
 	return queue
 }
 
-func (q *Queue) Send(ctx context.Context, message platformemail.Message) (platformemail.Result, error) {
-	if q == nil || q.store == nil {
-		return platformemail.Result{}, errors.New("system email outbox is not configured")
+func (queue *Queue) Send(ctx context.Context, message platformemail.Message) (platformemail.Result, error) {
+	if queue == nil || queue.store == nil {
+		return platformemail.Result{}, ErrQueueNotConfigured
 	}
 	if strings.TrimSpace(message.Provider) == "" {
-		message.Provider = q.provider
+		message.Provider = queue.provider
 	}
 	if strings.TrimSpace(message.Region) == "" {
-		message.Region = q.region
+		message.Region = queue.region
 	}
 	if strings.TrimSpace(message.Stream) == "" {
-		message.Stream = q.defaults.Stream
+		message.Stream = queue.defaults.Stream
 	}
 	if strings.TrimSpace(message.ConfigurationSet) == "" {
-		message.ConfigurationSet = q.defaults.ConfigurationSet
+		message.ConfigurationSet = queue.defaults.ConfigurationSet
 	}
 	if strings.TrimSpace(message.SESTenantName) == "" {
-		message.SESTenantName = q.defaults.SESTenantName
+		message.SESTenantName = queue.defaults.SESTenantName
 	}
 
 	eventID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(deliveryNamespace+uuid.NewString()))
@@ -73,7 +61,7 @@ func (q *Queue) Send(ctx context.Context, message platformemail.Message) (platfo
 	if err != nil {
 		return platformemail.Result{}, err
 	}
-	_, err = q.store.Enqueue(ctx, outbox.Event{
+	_, err = queue.store.Enqueue(ctx, outbox.Event{
 		ID:            eventID,
 		Subject:       DeliverSubject,
 		AggregateType: "system_email",

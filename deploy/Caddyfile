@@ -13,8 +13,3 @@
     import dugble_common
     reverse_proxy http://server:8080
 }
-
-{$BACKOFFICE_DOMAIN} {
-    import dugble_common
-    reverse_proxy http://backoffice:8081
-}

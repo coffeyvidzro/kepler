@@ -13,13 +13,7 @@ import (
 	"github.com/google/uuid"
 	natsjs "github.com/nats-io/nats.go/jetstream"
 
-	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/messaging/jetstream"
-	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
-)
-
-const (
-	ConsumerName = "dugble-email-tenant-provision-v1"
-	DLQSubject   = "dugble.dlq.email.tenant.provision.v1"
+	jetstreammessaging "github.com/coffeyvidzro/dugble/server/internal/adapters/nats"
 )
 
 type processedEventStore interface {
@@ -35,9 +29,9 @@ type messagePublisher interface {
 	Publish(context.Context, string, []byte, map[string]string, string) error
 }
 
-type commandHandler interface {
-	Handle(context.Context, emailtenant.ProvisionCommand) error
-	HandleExhausted(context.Context, emailtenant.ProvisionCommand, error) error
+type commandProcessor interface {
+	Handle(context.Context, Command) error
+	HandleExhausted(context.Context, Command, error) error
 }
 
 type Config struct {
@@ -48,21 +42,15 @@ type Config struct {
 	RetryBackOff   []time.Duration
 }
 
-var defaultRetryBackOff = []time.Duration{time.Second, 5 * time.Second, 30 * time.Second, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute}
-
-func DefaultRetryBackOff() []time.Duration {
-	return append([]time.Duration(nil), defaultRetryBackOff...)
-}
-
 type Consumer struct {
 	provider  consumerProvider
 	publisher messagePublisher
 	processed processedEventStore
-	handler   commandHandler
+	processor commandProcessor
 	config    Config
 }
 
-func NewConsumer(client *jetstreammessaging.Client, processed processedEventStore, handler commandHandler, config Config) *Consumer {
+func NewConsumer(client *jetstreammessaging.Client, processed processedEventStore, processor commandProcessor, config Config) *Consumer {
 	if config.Concurrency <= 0 {
 		config.Concurrency = 3
 	}
@@ -81,26 +69,26 @@ func NewConsumer(client *jetstreammessaging.Client, processed processedEventStor
 		config.MaxDeliver = len(config.RetryBackOff)
 	}
 	config.RetryBackOff = normalizeRetryBackOff(config.RetryBackOff, config.MaxDeliver)
-	return &Consumer{provider: client, publisher: client, processed: processed, handler: handler, config: config}
+	return &Consumer{provider: client, publisher: client, processed: processed, processor: processor, config: config}
 }
 
-func (c *Consumer) Run(ctx context.Context) error {
-	if c == nil || c.provider == nil || c.publisher == nil || c.processed == nil || c.handler == nil {
-		return errors.New("email tenant provisioning consumer is not fully configured")
+func (consumer *Consumer) Run(ctx context.Context) error {
+	if consumer == nil || consumer.provider == nil || consumer.publisher == nil || consumer.processed == nil || consumer.processor == nil {
+		return ErrConsumerNotConfigured
 	}
-	consumer, err := c.provider.CreateOrUpdateConsumer(ctx, jetstreammessaging.JobsStreamName, natsjs.ConsumerConfig{
+	streamConsumer, err := consumer.provider.CreateOrUpdateConsumer(ctx, jetstreammessaging.JobsStreamName, natsjs.ConsumerConfig{
 		Name: ConsumerName, Durable: ConsumerName, Description: "Durable SES tenant provisioning jobs",
-		DeliverPolicy: natsjs.DeliverAllPolicy, AckPolicy: natsjs.AckExplicitPolicy, AckWait: c.config.AckWait,
-		MaxDeliver: c.config.MaxDeliver, BackOff: c.config.RetryBackOff,
-		FilterSubject: emailtenant.ProvisionSubject, ReplayPolicy: natsjs.ReplayInstantPolicy,
-		MaxAckPending: c.config.Concurrency * 4, MaxWaiting: c.config.Concurrency * 2, MaxRequestBatch: 1,
+		DeliverPolicy: natsjs.DeliverAllPolicy, AckPolicy: natsjs.AckExplicitPolicy, AckWait: consumer.config.AckWait,
+		MaxDeliver: consumer.config.MaxDeliver, BackOff: consumer.config.RetryBackOff,
+		FilterSubject: ProvisionSubject, ReplayPolicy: natsjs.ReplayInstantPolicy,
+		MaxAckPending: consumer.config.Concurrency * 4, MaxWaiting: consumer.config.Concurrency * 2, MaxRequestBatch: 1,
 	})
 	if err != nil {
 		return fmt.Errorf("provision email tenant consumer: %w", err)
 	}
-	contexts := make([]natsjs.ConsumeContext, 0, c.config.Concurrency)
-	for worker := range c.config.Concurrency {
-		active, consumeErr := consumer.Consume(func(message natsjs.Msg) { c.process(ctx, message) }, natsjs.PullMaxMessages(1))
+	contexts := make([]natsjs.ConsumeContext, 0, consumer.config.Concurrency)
+	for worker := range consumer.config.Concurrency {
+		active, consumeErr := streamConsumer.Consume(func(message natsjs.Msg) { consumer.process(ctx, message) }, natsjs.PullMaxMessages(1))
 		if consumeErr != nil {
 			for _, item := range contexts {
 				item.Stop()
@@ -116,7 +104,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	return nil
 }
 
-func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
+func (consumer *Consumer) process(parent context.Context, message natsjs.Msg) {
 	metadata, err := message.Metadata()
 	if err != nil {
 		_ = message.Nak()
@@ -124,10 +112,10 @@ func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
 	}
 	command, err := decodeCommand(message)
 	if err != nil {
-		c.deadLetter(parent, message, metadata, uuid.Nil, err)
+		consumer.deadLetter(parent, message, metadata, uuid.Nil, err)
 		return
 	}
-	processed, err := c.processed.IsProcessed(parent, ConsumerName, command.EventID)
+	processed, err := consumer.processed.IsProcessed(parent, ConsumerName, command.EventID)
 	if err != nil {
 		_ = message.Nak()
 		return
@@ -137,29 +125,29 @@ func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
 		return
 	}
 
-	handlerCtx, cancel := context.WithTimeout(parent, c.config.HandlerTimeout)
-	err = c.handler.Handle(handlerCtx, command)
+	processorCtx, cancel := context.WithTimeout(parent, consumer.config.HandlerTimeout)
+	err = consumer.processor.Handle(processorCtx, command)
 	cancel()
 	if err != nil {
 		if parent.Err() != nil {
 			return
 		}
-		if int(metadata.NumDelivered) >= c.config.MaxDeliver {
-			finalizeCtx, finalizeCancel := context.WithTimeout(parent, c.config.HandlerTimeout)
-			finalizeErr := c.handler.HandleExhausted(finalizeCtx, command, err)
+		if int(metadata.NumDelivered) >= consumer.config.MaxDeliver {
+			finalizeCtx, finalizeCancel := context.WithTimeout(parent, consumer.config.HandlerTimeout)
+			finalizeErr := consumer.processor.HandleExhausted(finalizeCtx, command, err)
 			finalizeCancel()
 			if finalizeErr != nil {
 				_ = message.NakWithDelay(time.Minute)
 				return
 			}
-			c.deadLetter(parent, message, metadata, command.EventID, err)
+			consumer.deadLetter(parent, message, metadata, command.EventID, err)
 			return
 		}
-		_ = message.NakWithDelay(c.retryDelay(metadata.NumDelivered))
+		_ = message.NakWithDelay(retryDelay(consumer.config.RetryBackOff, metadata.NumDelivered))
 		return
 	}
 
-	if err := c.processed.MarkProcessed(parent, ConsumerName, command.EventID, map[string]any{
+	if err := consumer.processed.MarkProcessed(parent, ConsumerName, command.EventID, map[string]any{
 		"subject": message.Subject(), "stream_sequence": metadata.Sequence.Stream, "deliveries": metadata.NumDelivered,
 	}); err != nil {
 		_ = message.Nak()
@@ -168,49 +156,22 @@ func (c *Consumer) process(parent context.Context, message natsjs.Msg) {
 	_ = message.Ack()
 }
 
-func decodeCommand(message natsjs.Msg) (emailtenant.ProvisionCommand, error) {
-	var command emailtenant.ProvisionCommand
+func decodeCommand(message natsjs.Msg) (Command, error) {
+	var command Command
 	if err := json.Unmarshal(message.Data(), &command); err != nil {
-		return emailtenant.ProvisionCommand{}, fmt.Errorf("decode email tenant provisioning command: %w", err)
+		return Command{}, fmt.Errorf("decode email tenant provisioning command: %w", err)
 	}
-	if command.EventID == uuid.Nil || command.TenantID == uuid.Nil || command.TeamID == uuid.Nil || command.SchemaVersion != 1 {
-		return emailtenant.ProvisionCommand{}, errors.New("invalid email tenant provisioning command")
+	if err := ValidateCommand(command); err != nil {
+		return Command{}, err
 	}
 	headerID, err := uuid.Parse(strings.TrimSpace(message.Headers().Get("Dugble-Event-Id")))
 	if err != nil || headerID != command.EventID {
-		return emailtenant.ProvisionCommand{}, errors.New("email tenant event ID does not match outbox header")
+		return Command{}, errors.New("email tenant event ID does not match outbox header")
 	}
 	return command, nil
 }
 
-func (c *Consumer) retryDelay(delivered uint64) time.Duration {
-	delays := c.config.RetryBackOff
-	index := int(delivered) - 1
-	if index < 0 {
-		index = 0
-	}
-	if index >= len(delays) {
-		index = len(delays) - 1
-	}
-	return delays[index]
-}
-
-func normalizeRetryBackOff(delays []time.Duration, maxDeliver int) []time.Duration {
-	if maxDeliver <= 0 {
-		return nil
-	}
-	result := make([]time.Duration, maxDeliver)
-	for index := range result {
-		source := index
-		if source >= len(delays) {
-			source = len(delays) - 1
-		}
-		result[index] = delays[source]
-	}
-	return result
-}
-
-func (c *Consumer) deadLetter(ctx context.Context, message natsjs.Msg, metadata *natsjs.MsgMetadata, eventID uuid.UUID, cause error) {
+func (consumer *Consumer) deadLetter(ctx context.Context, message natsjs.Msg, metadata *natsjs.MsgMetadata, eventID uuid.UUID, cause error) {
 	headers := map[string]string{
 		"Dugble-Original-Subject":   message.Subject(),
 		"Dugble-Dead-Letter-Reason": truncateReason(cause),
@@ -220,7 +181,7 @@ func (c *Consumer) deadLetter(ctx context.Context, message natsjs.Msg, metadata 
 	if eventID == uuid.Nil {
 		messageID = fmt.Sprintf("%s-%d-dlq", ConsumerName, metadata.Sequence.Stream)
 	}
-	if err := c.publisher.Publish(ctx, DLQSubject, message.Data(), headers, messageID); err != nil {
+	if err := consumer.publisher.Publish(ctx, DLQSubject, message.Data(), headers, messageID); err != nil {
 		_ = message.NakWithDelay(time.Minute)
 		return
 	}

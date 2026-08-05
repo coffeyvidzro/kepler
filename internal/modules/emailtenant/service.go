@@ -10,6 +10,17 @@ import (
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/email"
 )
 
+type ProvisioningRequest struct {
+	EventID          uuid.UUID
+	TenantID         uuid.UUID
+	TeamID           uuid.UUID
+	Provider         string
+	Region           string
+	ExternalName     string
+	SuppressionScope string
+	ReputationPolicy string
+}
+
 type tenantStore interface {
 	BeginTx(context.Context) (Transaction, error)
 	CreateTx(context.Context, Transaction, CreateParams) (Tenant, error)
@@ -17,7 +28,7 @@ type tenantStore interface {
 }
 
 type provisioningQueue interface {
-	EnqueueProvisioningTx(context.Context, Transaction, ProvisionCommand) error
+	EnqueueProvisioningTx(context.Context, Transaction, ProvisioningRequest) error
 }
 
 type Service struct {
@@ -31,11 +42,11 @@ func NewService(repository tenantStore, queue provisioningQueue) *Service {
 
 // RequestProvisioning reserves one regional provider tenant for a team and
 // atomically publishes a provisioning command through the PostgreSQL outbox.
-func (s *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUID, region string) (Tenant, error) {
-	if s == nil || s.repository == nil {
+func (service *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUID, region string) (Tenant, error) {
+	if service == nil || service.repository == nil {
 		return Tenant{}, errors.New("email tenant service is not configured")
 	}
-	if s.queue == nil {
+	if service.queue == nil {
 		return Tenant{}, errors.New("email tenant provisioning queue is not configured")
 	}
 	if teamID == uuid.Nil {
@@ -46,13 +57,13 @@ func (s *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUID, reg
 		return Tenant{}, fmt.Errorf("unsupported SES region %q", region)
 	}
 
-	tx, err := s.repository.BeginTx(ctx)
+	tx, err := service.repository.BeginTx(ctx)
 	if err != nil {
 		return Tenant{}, fmt.Errorf("begin email tenant provisioning transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	tenant, err := s.repository.CreateTx(ctx, tx, CreateParams{
+	tenant, err := service.repository.CreateTx(ctx, tx, CreateParams{
 		TeamID:           teamID,
 		Provider:         ProviderAWSSES,
 		Region:           region,
@@ -71,16 +82,15 @@ func (s *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUID, reg
 		}
 		return tenant, nil
 	case StatusPending, StatusFailed:
-		// Continue below and claim the lifecycle transition in this transaction.
 	default:
 		return Tenant{}, fmt.Errorf("unsupported email tenant status %q", tenant.Status)
 	}
 
-	tenant, err = s.repository.MarkProvisioningTx(ctx, tx, tenant.ID)
+	tenant, err = service.repository.MarkProvisioningTx(ctx, tx, tenant.ID)
 	if err != nil {
 		return Tenant{}, err
 	}
-	command := ProvisionCommand{
+	request := ProvisioningRequest{
 		EventID:          uuid.New(),
 		TenantID:         tenant.ID,
 		TeamID:           tenant.TeamID,
@@ -89,9 +99,8 @@ func (s *Service) RequestProvisioning(ctx context.Context, teamID uuid.UUID, reg
 		ExternalName:     tenant.ExternalName,
 		SuppressionScope: tenant.SuppressionScope,
 		ReputationPolicy: tenant.ReputationPolicy,
-		SchemaVersion:    1,
 	}
-	if err := s.queue.EnqueueProvisioningTx(ctx, tx, command); err != nil {
+	if err := service.queue.EnqueueProvisioningTx(ctx, tx, request); err != nil {
 		return Tenant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

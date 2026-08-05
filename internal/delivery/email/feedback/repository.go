@@ -13,9 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	awsses "github.com/coffeyvidzro/dugble/server/internal/integration/aws/ses"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/integration/aws/sns"
-	"github.com/coffeyvidzro/dugble/server/internal/messaging/outbox"
+	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
+	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
+	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
 
 var ErrProviderEventUnlinked = errors.New("email provider event is not linked to a message")
@@ -29,6 +30,10 @@ type Repository struct {
 
 func NewRepository(db *pgxpool.Pool, outboxRepository *outbox.Repository) *Repository {
 	return &Repository{db: db, outbox: outboxRepository, now: time.Now}
+}
+
+func (repository *Repository) IngestSNS(ctx context.Context, envelope awssns.Envelope) error {
+	return repository.Ingest(ctx, envelope)
 }
 
 func (r *Repository) Ingest(ctx context.Context, envelope awssns.Envelope) error {
@@ -407,4 +412,446 @@ func (r *Repository) currentTime() time.Time {
 		return r.now()
 	}
 	return time.Now()
+}
+
+func aggregateTransitionFromCounts(
+	counts map[string]int,
+	total int,
+	fallbackStatus string,
+	latestDeliveredAt *time.Time,
+	latestFailedAt *time.Time,
+) aggregateTransition {
+	if total == 0 {
+		return aggregateTransition{status: fallbackStatus}
+	}
+
+	delivered := counts[recipientStatusDelivered]
+	complained := counts[recipientStatusComplained]
+	bounced := counts[recipientStatusBounced]
+	rejected := counts[recipientStatusRejected]
+	failed := counts[recipientStatusFailed]
+	terminalFailures := complained + bounced + rejected + failed
+
+	transition := aggregateTransition{deliveredAt: latestDeliveredAt, failedAt: latestFailedAt}
+	switch {
+	case complained > 0:
+		transition.status = "complained"
+		transition.errorCode = stringPointer("ses_complaint")
+		transition.errorMessage = stringPointer("SES reported a complaint for at least one recipient")
+	case delivered == total:
+		transition.status = "delivered"
+		transition.failedAt = nil
+	case delivered > 0:
+		transition.status = "partially_delivered"
+		if terminalFailures > 0 {
+			transition.errorCode = stringPointer("email_partial_delivery")
+			transition.errorMessage = stringPointer("The email was delivered to only some recipients")
+		}
+	case terminalFailures == total:
+		switch {
+		case bounced == total:
+			transition.status = "bounced"
+			transition.errorCode = stringPointer("ses_bounce")
+			transition.errorMessage = stringPointer("SES reported a bounce for every recipient")
+		case rejected == total:
+			transition.status = "rejected"
+			transition.errorCode = stringPointer("ses_reject")
+			transition.errorMessage = stringPointer("SES rejected every recipient")
+		case failed == total:
+			transition.status = "failed"
+			transition.errorCode = stringPointer("ses_rendering_failure")
+			transition.errorMessage = stringPointer("SES could not process the email for any recipient")
+		default:
+			transition.status = "partially_failed"
+			transition.errorCode = stringPointer("email_mixed_recipient_failures")
+			transition.errorMessage = stringPointer("Recipients ended in different failure states")
+		}
+	case terminalFailures > 0:
+		transition.status = "partially_failed"
+		transition.errorCode = stringPointer("email_partial_failure")
+		transition.errorMessage = stringPointer("At least one recipient failed while others remain unresolved")
+	case counts[recipientStatusDelayed] > 0:
+		transition.status = "delayed"
+		transition.errorCode = stringPointer("ses_delivery_delay")
+		transition.errorMessage = stringPointer("SES reported a delivery delay for at least one recipient")
+	case counts[recipientStatusSubmitted] > 0:
+		transition.status = "submitted"
+	default:
+		transition.status = fallbackStatus
+	}
+	return transition
+}
+
+const (
+	recipientStatusPending    = "pending"
+	recipientStatusSubmitted  = "submitted"
+	recipientStatusDelayed    = "delayed"
+	recipientStatusDelivered  = "delivered"
+	recipientStatusBounced    = "bounced"
+	recipientStatusComplained = "complained"
+	recipientStatusRejected   = "rejected"
+	recipientStatusFailed     = "failed"
+)
+
+type recipientTransition struct {
+	status       string
+	errorCode    *string
+	errorMessage *string
+	deliveredAt  *time.Time
+	failedAt     *time.Time
+}
+
+type aggregateTransition struct {
+	status       string
+	errorCode    *string
+	errorMessage *string
+	deliveredAt  *time.Time
+	failedAt     *time.Time
+}
+
+func applyRecipientCurrentState(ctx context.Context, tx pgx.Tx, messageID uuid.UUID, event awsses.FeedbackEvent) error {
+	for _, recipientEmail := range normalizedRecipients(event.Recipients) {
+		var currentStatus string
+		var lastEventAt *time.Time
+		err := tx.QueryRow(ctx, `
+			SELECT status, last_event_at
+			FROM email_recipients
+			WHERE email_message_id = $1 AND recipient_email = $2
+			FOR UPDATE
+		`, messageID, recipientEmail).Scan(&currentStatus, &lastEventAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO email_recipients (id, email_message_id, recipient_email, recipient_type, status)
+				VALUES ($1, $2, $3, 'unknown', 'pending')
+				ON CONFLICT (email_message_id, recipient_email) DO NOTHING
+			`, uuid.New(), messageID, recipientEmail); err != nil {
+				return fmt.Errorf("create current state for recipient %q: %w", recipientEmail, err)
+			}
+			currentStatus = recipientStatusPending
+			lastEventAt = nil
+		} else if err != nil {
+			return fmt.Errorf("lock current state for recipient %q: %w", recipientEmail, err)
+		}
+		occurredAt := event.OccurredAt.UTC()
+		if lastEventAt != nil && occurredAt.Before(lastEventAt.UTC()) {
+			continue
+		}
+		transition, apply, err := recipientStatusTransition(currentStatus, event.EventType, occurredAt)
+		if err != nil {
+			return err
+		}
+		if !apply {
+			continue
+		}
+		diagnostic := recipientDiagnostic(event.RecipientDiagnostics, recipientEmail)
+		if _, err := tx.Exec(ctx, `
+			UPDATE email_recipients
+			SET status = $3,
+				last_event_type = $4,
+				last_event_at = $5,
+				last_action = $6,
+				last_status_code = $7,
+				last_diagnostic_code = $8,
+				delivered_at = COALESCE($9, delivered_at),
+				failed_at = COALESCE($10, failed_at),
+				error_code = $11,
+				error_message = $12,
+				updated_at = now()
+			WHERE email_message_id = $1 AND recipient_email = $2
+		`, messageID, recipientEmail, transition.status, event.EventType, occurredAt,
+			nullableString(diagnostic.Action), nullableString(diagnostic.StatusCode), nullableString(diagnostic.DiagnosticCode),
+			transition.deliveredAt, transition.failedAt, transition.errorCode, transition.errorMessage); err != nil {
+			return fmt.Errorf("apply %s state to recipient %q: %w", event.EventType, recipientEmail, err)
+		}
+	}
+	return nil
+}
+
+func recipientDiagnostic(values []awsses.RecipientDiagnostics, recipientEmail string) awsses.RecipientDiagnostics {
+	recipientEmail = strings.ToLower(strings.TrimSpace(recipientEmail))
+	for _, value := range values {
+		if strings.ToLower(strings.TrimSpace(value.Email)) == recipientEmail {
+			return value
+		}
+	}
+	return awsses.RecipientDiagnostics{}
+}
+
+func nullableString(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func recipientStatusTransition(currentStatus, eventType string, occurredAt time.Time) (recipientTransition, bool, error) {
+	currentStatus = strings.TrimSpace(currentStatus)
+	eventType = strings.TrimSpace(eventType)
+	occurredAt = occurredAt.UTC()
+	transition := recipientTransition{}
+	providerError := func(code, message string) {
+		transition.errorCode = &code
+		transition.errorMessage = &message
+		transition.failedAt = &occurredAt
+	}
+	switch eventType {
+	case "send":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusSubmitted
+	case "delivery_delay":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusDelayed
+		transition.errorCode = stringPointer("ses_delivery_delay")
+		transition.errorMessage = stringPointer("SES reported a delivery delay")
+	case "delivery":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed, recipientStatusDelivered) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusDelivered
+		transition.deliveredAt = &occurredAt
+	case "bounce":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed, recipientStatusDelivered, recipientStatusBounced) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusBounced
+		providerError("ses_bounce", "SES reported a bounce")
+	case "complaint":
+		if currentStatus == recipientStatusComplained {
+			transition.status = recipientStatusComplained
+			providerError("ses_complaint", "SES reported a complaint")
+			return transition, true, nil
+		}
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed, recipientStatusDelivered, recipientStatusBounced) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusComplained
+		providerError("ses_complaint", "SES reported a complaint")
+	case "reject":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed, recipientStatusRejected) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusRejected
+		providerError("ses_reject", "SES rejected the message")
+	case "rendering_failure":
+		if !recipientStatusIn(currentStatus, recipientStatusPending, recipientStatusSubmitted, recipientStatusDelayed, recipientStatusFailed) {
+			return recipientTransition{}, false, nil
+		}
+		transition.status = recipientStatusFailed
+		providerError("ses_rendering_failure", "SES could not render the message")
+	case "open", "click", "subscription":
+		return recipientTransition{}, false, nil
+	default:
+		return recipientTransition{}, false, fmt.Errorf("unsupported persisted SES event type %q", eventType)
+	}
+	return transition, true, nil
+}
+
+func aggregateRecipientMessageStatus(ctx context.Context, tx pgx.Tx, messageID uuid.UUID, fallbackStatus string) (aggregateTransition, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT status, delivered_at, failed_at
+		FROM email_recipients
+		WHERE email_message_id = $1
+		FOR SHARE
+	`, messageID)
+	if err != nil {
+		return aggregateTransition{}, fmt.Errorf("load recipient states for email %s: %w", messageID, err)
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	var total int
+	var latestDeliveredAt *time.Time
+	var latestFailedAt *time.Time
+	for rows.Next() {
+		var status string
+		var deliveredAt, failedAt *time.Time
+		if err := rows.Scan(&status, &deliveredAt, &failedAt); err != nil {
+			return aggregateTransition{}, fmt.Errorf("scan recipient state for email %s: %w", messageID, err)
+		}
+		counts[status]++
+		total++
+		latestDeliveredAt = laterTime(latestDeliveredAt, deliveredAt)
+		latestFailedAt = laterTime(latestFailedAt, failedAt)
+	}
+	if err := rows.Err(); err != nil {
+		return aggregateTransition{}, fmt.Errorf("iterate recipient states for email %s: %w", messageID, err)
+	}
+	return aggregateTransitionFromCounts(counts, total, fallbackStatus, latestDeliveredAt, latestFailedAt), nil
+}
+
+func recipientStatusIn(current string, allowed ...string) bool {
+	for _, status := range allowed {
+		if current == status {
+			return true
+		}
+	}
+	return false
+}
+
+func stringPointer(value string) *string { return &value }
+
+func laterTime(current, candidate *time.Time) *time.Time {
+	if candidate == nil {
+		return current
+	}
+	candidateUTC := candidate.UTC()
+	if current == nil || candidateUTC.After(current.UTC()) {
+		return &candidateUTC
+	}
+	return current
+}
+
+var webhookEventNamespace = uuid.MustParse("d90f621c-937d-5fd2-9c85-cd8f55cacaa2")
+
+type webhookEmitter interface {
+	EmitTx(context.Context, pgx.Tx, platformwebhook.Event) (uuid.UUID, int64, error)
+}
+
+type emailLifecycleRecipient struct {
+	Email          string `json:"email"`
+	Status         string `json:"status"`
+	Action         string `json:"action,omitempty"`
+	StatusCode     string `json:"status_code,omitempty"`
+	DiagnosticCode string `json:"diagnostic_code,omitempty"`
+}
+
+type emailLifecyclePayload struct {
+	Object            string                    `json:"object"`
+	ID                string                    `json:"id"`
+	Status            string                    `json:"status"`
+	Provider          string                    `json:"provider"`
+	ProviderEventID   string                    `json:"provider_event_id"`
+	ProviderMessageID string                    `json:"provider_message_id"`
+	LastEvent         string                    `json:"last_event"`
+	Recipients        []string                  `json:"recipients"`
+	RecipientDetails  []emailLifecycleRecipient `json:"recipient_details,omitempty"`
+	Diagnostics       awsses.EventDiagnostics   `json:"diagnostics,omitempty"`
+}
+
+func NewRepositoryWithWebhookEmitter(db *pgxpool.Pool, emitter webhookEmitter) *Repository {
+	repository := NewRepository(db, nil)
+	repository.emitter = emitter
+	return repository
+}
+
+func (r *Repository) emitLifecycleWebhook(ctx context.Context, tx pgx.Tx, providerEventID, messageID, teamID uuid.UUID, event awsses.FeedbackEvent) error {
+	if r == nil || r.emitter == nil {
+		return nil
+	}
+	var messageStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM email_messages WHERE id = $1`, messageID).Scan(&messageStatus); err != nil {
+		return fmt.Errorf("load email status for lifecycle webhook %s: %w", messageID, err)
+	}
+	recipientDetails, err := loadLifecycleRecipients(ctx, tx, messageID, event.Recipients)
+	if err != nil {
+		return err
+	}
+	webhookEvent, ok, err := emailLifecycleWebhookEvent(providerEventID, messageID, teamID, messageStatus, recipientDetails, event)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if _, _, err := r.emitter.EmitTx(ctx, tx, webhookEvent); err != nil {
+		return fmt.Errorf("emit %s email lifecycle webhook: %w", event.EventType, err)
+	}
+	return nil
+}
+
+func loadLifecycleRecipients(ctx context.Context, tx pgx.Tx, messageID uuid.UUID, recipients []string) ([]emailLifecycleRecipient, error) {
+	normalized := normalizedRecipients(recipients)
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT recipient_email, status, COALESCE(last_action, ''), COALESCE(last_status_code, ''), COALESCE(last_diagnostic_code, '')
+		FROM email_recipients
+		WHERE email_message_id = $1 AND recipient_email = ANY($2::text[])
+		ORDER BY recipient_email
+	`, messageID, normalized)
+	if err != nil {
+		return nil, fmt.Errorf("load recipient diagnostics for email %s: %w", messageID, err)
+	}
+	defer rows.Close()
+	result := make([]emailLifecycleRecipient, 0, len(normalized))
+	for rows.Next() {
+		var recipient emailLifecycleRecipient
+		if err := rows.Scan(&recipient.Email, &recipient.Status, &recipient.Action, &recipient.StatusCode, &recipient.DiagnosticCode); err != nil {
+			return nil, fmt.Errorf("scan recipient diagnostics for email %s: %w", messageID, err)
+		}
+		result = append(result, recipient)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recipient diagnostics for email %s: %w", messageID, err)
+	}
+	return result, nil
+}
+
+func emailLifecycleWebhookEvent(providerEventID, messageID, teamID uuid.UUID, messageStatus string, recipientDetails []emailLifecycleRecipient, event awsses.FeedbackEvent) (platformwebhook.Event, bool, error) {
+	eventType, ok := emailWebhookEventType(event.EventType)
+	if !ok {
+		return platformwebhook.Event{}, false, nil
+	}
+	payload, err := json.Marshal(emailLifecyclePayload{
+		Object: "email", ID: messageID.String(), Status: strings.TrimSpace(messageStatus), Provider: ProviderSES,
+		ProviderEventID: providerEventID.String(), ProviderMessageID: strings.TrimSpace(event.ProviderMessageID),
+		LastEvent: strings.TrimSpace(event.EventType), Recipients: normalizedRecipients(event.Recipients),
+		RecipientDetails: recipientDetails, Diagnostics: event.Diagnostics,
+	})
+	if err != nil {
+		return platformwebhook.Event{}, false, fmt.Errorf("encode email lifecycle webhook payload: %w", err)
+	}
+	return platformwebhook.Event{
+		ID: uuid.NewSHA1(webhookEventNamespace, []byte(providerEventID.String())), TeamID: teamID, Type: eventType,
+		ObjectType: "email", ObjectID: &messageID, Payload: payload, OccurredAt: event.OccurredAt,
+	}, true, nil
+}
+
+func emailWebhookEventType(eventType string) (string, bool) {
+	switch strings.TrimSpace(eventType) {
+	case "send":
+		return platformwebhook.EventEmailSubmitted, true
+	case "delivery":
+		return platformwebhook.EventEmailDelivered, true
+	case "delivery_delay":
+		return platformwebhook.EventEmailDelayed, true
+	case "bounce":
+		return platformwebhook.EventEmailBounced, true
+	case "complaint":
+		return platformwebhook.EventEmailComplained, true
+	case "reject":
+		return platformwebhook.EventEmailRejected, true
+	case "rendering_failure":
+		return platformwebhook.EventEmailFailed, true
+	case "open":
+		return platformwebhook.EventEmailOpened, true
+	case "click":
+		return platformwebhook.EventEmailClicked, true
+	case "subscription":
+		return platformwebhook.EventEmailSubscriptionChanged, true
+	default:
+		return "", false
+	}
+}
+
+func normalizedRecipients(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }

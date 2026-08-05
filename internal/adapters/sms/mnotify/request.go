@@ -1,0 +1,24 @@
+package mnotify
+
+import (
+	"strings"
+
+	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+)
+
+type SendRequest struct {
+	Recipient    []string `json:"recipient"`
+	Sender       string   `json:"sender"`
+	Message      string   `json:"message"`
+	IsSchedule   bool     `json:"is_schedule"`
+	ScheduleDate string   `json:"schedule_date"`
+}
+
+func newSendRequest(request platformsms.SendRequest) SendRequest {
+	return SendRequest{
+		Recipient:  []string{strings.TrimPrefix(strings.TrimSpace(request.To), "+")},
+		Sender:     strings.TrimSpace(request.From),
+		Message:    request.Message,
+		IsSchedule: false,
+	}
+}
