@@ -62,7 +62,7 @@ func NewProviderWithConfig(config Config) (*Provider, error) {
 	switch config.SendMode {
 	case SendModeAccepted, SendModeRejected, SendModeUncertain:
 	default:
-		return nil, fmt.Errorf("Runnage SMS send mode %q is invalid", config.SendMode)
+		return nil, fmt.Errorf("runnage SMS send mode %q is invalid", config.SendMode)
 	}
 	statuses, err := normalizeStatuses(config.StatusSequence)
 	if err != nil {
@@ -79,10 +79,10 @@ func (provider *Provider) ID() string { return ProviderID }
 
 func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequest) (*platformsms.SendResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Runnage SMS provider is unavailable")
+		return nil, errors.New("runnage SMS provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Runnage SMS context is required")
+		return nil, errors.New("runnage SMS context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -96,13 +96,13 @@ func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequ
 	case SendModeRejected:
 		return nil, &runnage.Error{
 			Code:       "sms_rejected",
-			Message:    "Runnage rejected the SMS before acceptance",
+			Message:    "runnage rejected the SMS before acceptance",
 			Definitive: true,
 		}
 	case SendModeUncertain:
 		return nil, &runnage.Error{
 			Code:    "sms_outcome_unknown",
-			Message: "Runnage lost the connection after submission",
+			Message: "runnage lost the connection after submission",
 		}
 	}
 
@@ -121,17 +121,17 @@ func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequ
 
 func (provider *Provider) CheckStatus(ctx context.Context, messageID string) (*platformsms.StatusResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Runnage SMS provider is unavailable")
+		return nil, errors.New("runnage SMS provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Runnage SMS context is required")
+		return nil, errors.New("runnage SMS context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	messageID = strings.TrimSpace(messageID)
 	if messageID == "" {
-		return nil, errors.New("Runnage SMS message ID is required")
+		return nil, errors.New("runnage SMS message ID is required")
 	}
 
 	provider.mu.Lock()
@@ -140,7 +140,7 @@ func (provider *Provider) CheckStatus(ctx context.Context, messageID string) (*p
 		provider.mu.Unlock()
 		return nil, &runnage.Error{
 			Code:       "sms_not_found",
-			Message:    "Runnage does not recognize the SMS message ID",
+			Message:    "runnage does not recognize the SMS message ID",
 			Definitive: true,
 		}
 	}
@@ -170,7 +170,7 @@ func normalizeStatuses(statuses []string) ([]string, error) {
 	for index, status := range statuses {
 		status = strings.ToLower(strings.TrimSpace(status))
 		if !platformsms.IsKnownStatus(status) || status == platformsms.StatusUnknown {
-			return nil, fmt.Errorf("Runnage SMS status sequence contains invalid status %q", status)
+			return nil, fmt.Errorf("runnage SMS status sequence contains invalid status %q", status)
 		}
 		normalized[index] = status
 	}
