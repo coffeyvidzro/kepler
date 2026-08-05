@@ -42,18 +42,18 @@ func DefaultConfig() Config {
 			ProviderID:         "moolre",
 			DestinationCountry: destination.CountryGhana,
 			Priority:           2,
-			Enabled:            false,
+			Enabled:            true,
 		},
 		{
-			ProviderID:         "celcom",
-			DestinationCountry: destination.CountryKenya,
+			ProviderID:         "leamout",
+			DestinationCountry: destination.CountryNigeria,
 			Priority:           1,
 			Enabled:            true,
 		},
 		{
-			ProviderID:         "arkesel",
+			ProviderID:         "runnage",
 			DestinationCountry: destination.CountryNigeria,
-			Priority:           1,
+			Priority:           2,
 			Enabled:            true,
 		},
 	}}
