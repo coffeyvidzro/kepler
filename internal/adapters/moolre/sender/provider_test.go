@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
@@ -40,7 +41,7 @@ func TestProviderCreatesAndChecksSenderID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewProvider(moolre.NewClientWithHTTP(server.URL, "vas-key", server.Client()))
+	provider := NewProvider(moolre.NewClientWithHTTP("vas-key", testHTTPClient(t, server)))
 	created, err := provider.Create(context.Background(), CreateRequest{SenderID: "Dugble"})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -56,4 +57,25 @@ func TestProviderCreatesAndChecksSenderID(t *testing.T) {
 	if status.Status != StatusApproved || status.ProviderStatus != "Approved" {
 		t.Fatalf("status = %#v", status)
 	}
+}
+
+func testHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	transport := server.Client().Transport
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		return transport.RoundTrip(clone)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
