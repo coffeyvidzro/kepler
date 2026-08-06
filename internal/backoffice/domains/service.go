@@ -16,20 +16,12 @@ const (
 	maximumPageLimit int32 = 100
 )
 
-type store interface {
-	List(context.Context, int32, int32) ([]Domain, error)
-	Get(context.Context, uuid.UUID) (Domain, error)
-}
-
 type Service struct {
-	repository store
+	repository *Repository
 }
 
-func NewService(repository store) (*Service, error) {
-	if repository == nil {
-		return nil, errors.New("backoffice domains repository is required")
-	}
-	return &Service{repository: repository}, nil
+func NewService(repository *Repository) *Service {
+	return &Service{repository: repository}
 }
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {

@@ -23,20 +23,12 @@ var marketCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
 var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 var identifierPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-type store interface {
-	List(context.Context, int32, int32) ([]ProductRate, error)
-	Get(context.Context, uuid.UUID) (ProductRate, error)
-	Create(context.Context, CreateInput) (ProductRate, error)
-	Close(context.Context, uuid.UUID, time.Time) (ProductRate, error)
+type Service struct {
+	repository *Repository
 }
 
-type Service struct{ repository store }
-
-func NewService(repository store) (*Service, error) {
-	if repository == nil {
-		return nil, errors.New("backoffice product rates repository is required")
-	}
-	return &Service{repository: repository}, nil
+func NewService(repository *Repository) *Service {
+	return &Service{repository: repository}
 }
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {

@@ -1,0 +1,17 @@
+{{template "layout_start" .}}
+<form class="filters" method="get">
+  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="team name"></label>
+  <button type="submit">Filter</button>
+  <a href="/teams">Clear</a>
+</form>
+<table>
+  <thead><tr><th>Name</th><th>Status</th><th>Created</th><th>ID</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr><td><a href="/teams/{{.ID}}">{{.Name}}</a></td><td>{{.Status}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td><code>{{.ID}}</code></td></tr>
+  {{else}}
+    <tr><td colspan="4">No teams found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

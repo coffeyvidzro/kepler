@@ -22,14 +22,14 @@ const (
 var marketCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
 var identifierPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-type store interface {
-	List(context.Context, int32, int32) ([]AllowancePolicy, error)
-	Get(context.Context, uuid.UUID) (AllowancePolicy, error)
-	Create(context.Context, CreateInput) (AllowancePolicy, error)
-	Close(context.Context, uuid.UUID, time.Time) (AllowancePolicy, error)
+type Service struct {
+	repository *Repository
 }
 
-type Service struct{ repository store }
+func NewService(repository *Repository) *Service {
+	return &Service{repository: repository}
+}
+
 
 func NewService(repository store) (*Service, error) {
 	if repository == nil {

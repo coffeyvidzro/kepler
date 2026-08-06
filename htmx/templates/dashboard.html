@@ -1,0 +1,11 @@
+{{template "layout_start" .}}
+{{$stats := .Data}}
+<section class="cards">
+  <article><span>Total users</span><strong>{{$stats.Users}}</strong></article>
+  <article><span>Total teams</span><strong>{{$stats.Teams}}</strong></article>
+  <article><span>SMS today</span><strong>{{$stats.SMSToday}}</strong></article>
+  <article><span>Failed SMS, 24h</span><strong>{{$stats.FailedSMS24Hours}}</strong></article>
+  <article><span>Pending sender IDs</span><strong>{{$stats.PendingSenderIDs}}</strong></article>
+  <article><span>Pending domains</span><strong>{{$stats.PendingDomains}}</strong></article>
+</section>
+{{template "layout_end" .}}

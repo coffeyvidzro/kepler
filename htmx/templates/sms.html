@@ -1,0 +1,18 @@
+{{template "layout_start" .}}
+<form class="filters" method="get">
+  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="team, recipient, sender"></label>
+  <label>Status <input type="search" name="status" value="{{.Filter.Status}}" placeholder="failed"></label>
+  <button type="submit">Filter</button>
+  <a href="/sms">Clear</a>
+</form>
+<table>
+  <thead><tr><th>Team</th><th>To</th><th>From</th><th>Status</th><th>Provider</th><th>Error</th><th>Created</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr><td>{{.TeamName}}</td><td><a href="/sms/{{.ID}}">{{.ToNumber}}</a></td><td>{{.FromName}}</td><td>{{.Status}}</td><td>{{.ProviderID}}</td><td>{{.ErrorMessage}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+  {{else}}
+    <tr><td colspan="7">No SMS messages found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}

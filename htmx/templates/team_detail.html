@@ -1,0 +1,46 @@
+{{template "layout_start" .}}
+{{$detail := .Data}}
+<p><a href="/teams">← Back to teams</a></p>
+<section class="detail-grid">
+  <article><span>Name</span><strong>{{$detail.Team.Name}}</strong></article>
+  <article><span>Status</span><strong>{{$detail.Team.Status}}</strong></article>
+  <article><span>Created</span><strong>{{$detail.Team.CreatedAt.Format "2006-01-02 15:04"}}</strong></article>
+  <article><span>ID</span><strong><code>{{$detail.Team.ID}}</code></strong></article>
+</section>
+<h2>Status</h2>
+<form class="control-panel" method="post" action="/teams/{{$detail.Team.ID}}/status">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Action
+    <select name="action" required>
+      <option value="disable">Disable</option>
+      <option value="enable">Enable</option>
+    </select>
+  </label>
+  <label>Reason
+    <input type="text" name="reason" placeholder="Abuse review" required>
+  </label>
+  <button type="submit">Update status</button>
+</form>
+<h2>Members</h2>
+<table>
+  <thead><tr><th>User</th><th>Name</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+  <tbody>
+  {{range $detail.Members}}
+    <tr><td><a href="/users/{{.UserID}}">{{.Email}}</a></td><td>{{.Name}}</td><td>{{.Role}}</td><td>{{.Status}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+  {{else}}
+    <tr><td colspan="5">No members found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+<h2>Recent SMS</h2>
+<table>
+  <thead><tr><th>To</th><th>From</th><th>Status</th><th>Provider</th><th>Created</th></tr></thead>
+  <tbody>
+  {{range $detail.SMS}}
+    <tr><td><a href="/sms/{{.ID}}">{{.ToNumber}}</a></td><td>{{.FromName}}</td><td>{{.Status}}</td><td>{{.ProviderID}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+  {{else}}
+    <tr><td colspan="5">No recent SMS messages found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "layout_end" .}}
