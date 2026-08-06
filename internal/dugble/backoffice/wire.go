@@ -18,6 +18,7 @@ import (
 	backofficedomains "github.com/coffeyvidzro/dugble/server/internal/backoffice/domains"
 	backofficeproductrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/productrates"
 	backofficesmsrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/smsrates"
+	backofficeusers "github.com/coffeyvidzro/dugble/server/internal/backoffice/users"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
 	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
@@ -30,6 +31,7 @@ import (
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
 	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
+	backofficeusershttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/users"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
 )
@@ -85,6 +87,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	})
 
 	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
+	usersService := backofficeusers.NewService(backofficeusers.NewRepository(db))
 	domainsService := backofficedomains.NewService(backofficedomains.NewRepository(db))
 	currenciesService := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
 	billingMarketsService := backofficebillingmarkets.NewService(backofficebillingmarkets.NewRepository(db))
@@ -95,6 +98,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	handlers := routeHandlers{
 		health:            backofficehealthhttp.NewHandler(db),
 		dashboard:         backofficedashboardhttp.NewHandler(dashboardService),
+		users:             backofficeusershttp.NewHandler(usersService),
 		domains:           backofficedomainhttp.NewHandler(domainsService),
 		currencies:        backofficecurrencieshttp.NewHandler(currenciesService),
 		billingMarkets:    backofficebillingmarketshttp.NewHandler(billingMarketsService),
