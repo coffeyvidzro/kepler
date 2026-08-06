@@ -1,81 +1,28 @@
 {{template "layout_start" .}}
 {{$page := .Data}}
 
-<section class="notice warning">
+<section class="mb-8 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
   Allowance policies are append-only monthly periods. Add a new policy for a change and close an existing period without rewriting historical allowances.
 </section>
 
-<h2>Add allowance policy</h2>
-<form class="control-panel" method="post" action="/billing/allowance-policies">
+<h2 class="mb-4 text-xl font-semibold text-slate-950">Add allowance policy</h2>
+<form class="mb-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4" method="post" action="/billing/allowance-policies">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <label>Product
-    <input type="text" name="product" placeholder="sms" required>
-  </label>
-  <label>Meter
-    <input type="text" name="meter" placeholder="segment" required>
-  </label>
-  <label>Billing market
-    <input type="text" name="billing_market" maxlength="2" placeholder="GH" required>
-  </label>
-  <label>Tier
-    <input type="text" name="tier" placeholder="starter" required>
-  </label>
-  <label>Included quantity
-    <input type="number" name="included_quantity" min="0" step="1" placeholder="1000" required>
-  </label>
-  <label>Cadence
-    <select name="cadence">
-      <option value="monthly" selected>Monthly</option>
-    </select>
-  </label>
-  <label>Effective from (UTC month boundary)
-    <input type="datetime-local" name="effective_from" required>
-  </label>
-  <label>Effective until (UTC month boundary)
-    <input type="datetime-local" name="effective_until">
-  </label>
-  <button type="submit">Add allowance policy</button>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Product<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="text" name="product" placeholder="sms" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Meter<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="text" name="meter" placeholder="segment" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Billing market<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="text" name="billing_market" maxlength="2" placeholder="GH" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Tier<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="text" name="tier" placeholder="starter" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Included quantity<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="number" name="included_quantity" min="0" step="1" placeholder="1000" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Cadence<select class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" name="cadence"><option value="monthly" selected>Monthly</option></select></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Effective from (UTC month boundary)<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="datetime-local" name="effective_from" required></label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Effective until (UTC month boundary)<input class="rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="datetime-local" name="effective_until"></label>
+  <button class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 lg:col-span-4" type="submit">Add allowance policy</button>
 </form>
 
-<h2>Allowance policy periods</h2>
-<table>
-  <thead>
-    <tr><th>Product</th><th>Meter</th><th>Market</th><th>Tier</th><th>Included</th><th>Cadence</th><th>Effective period</th><th>Status</th><th>Close</th></tr>
-  </thead>
-  <tbody>
-  {{range $page.AllowancePolicies}}
-    <tr>
-      <td>{{.Product}}</td>
-      <td>{{.Meter}}</td>
-      <td>{{.BillingMarket}}</td>
-      <td>{{.Tier}}</td>
-      <td>{{.IncludedQuantity}}</td>
-      <td>{{.Cadence}}</td>
-      <td>
-        {{.EffectiveFrom.Format "2006-01-02 15:04"}}
-        <br><small>to {{if .EffectiveUntil}}{{.EffectiveUntil.Format "2006-01-02 15:04"}}{{else}}open-ended{{end}}</small>
-      </td>
-      <td>
-        {{if .EffectiveUntil}}
-          <span class="status-badge status-expired">Closed</span>
-        {{else}}
-          <span class="status-badge status-current">Open</span>
-        {{end}}
-      </td>
-      <td>
-        {{if not .EffectiveUntil}}
-        <form class="compact-form" method="post" action="/billing/allowance-policies/{{.ID}}/close">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}">
-          <input type="datetime-local" name="effective_until" aria-label="Effective until" required>
-          <button class="danger" type="submit">Close</button>
-        </form>
-        {{else}}—{{end}}
-      </td>
-    </tr>
-  {{else}}
-    <tr><td colspan="9">No allowance policies configured.</td></tr>
-  {{end}}
-  </tbody>
-</table>
+<h2 class="mb-4 text-xl font-semibold text-slate-950">Allowance policy periods</h2>
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200">
+<thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Product</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Meter</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Market</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Tier</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Included</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Cadence</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Effective period</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Close</th></tr></thead>
+<tbody class="divide-y divide-slate-100 bg-white">{{range $page.AllowancePolicies}}<tr class="transition hover:bg-slate-50"><td class="px-4 py-3 text-sm">{{.Product}}</td><td class="px-4 py-3 text-sm">{{.Meter}}</td><td class="px-4 py-3 text-sm">{{.BillingMarket}}</td><td class="px-4 py-3 text-sm">{{.Tier}}</td><td class="px-4 py-3 text-sm font-medium">{{.IncludedQuantity}}</td><td class="px-4 py-3 text-sm">{{.Cadence}}</td><td class="px-4 py-3 text-sm">{{.EffectiveFrom.Format "2006-01-02 15:04"}}<br><span class="text-xs text-slate-500">to {{if .EffectiveUntil}}{{.EffectiveUntil.Format "2006-01-02 15:04"}}{{else}}open-ended{{end}}</span></td><td class="px-4 py-3">{{if .EffectiveUntil}}<span class="inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">Closed</span>{{else}}<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Open</span>{{end}}</td><td class="px-4 py-3">{{if not .EffectiveUntil}}<form class="flex flex-wrap gap-2" method="post" action="/billing/allowance-policies/{{.ID}}/close"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="datetime-local" name="effective_until" aria-label="Effective until" required><button class="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700" type="submit">Close</button></form>{{else}}—{{end}}</td></tr>{{else}}<tr><td class="px-4 py-8 text-center text-sm text-slate-500" colspan="9">No allowance policies configured.</td></tr>{{end}}</tbody>
+</table></div></div>
 
 {{template "layout_end" .}}
