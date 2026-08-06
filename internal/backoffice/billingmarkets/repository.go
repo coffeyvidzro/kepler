@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -94,7 +95,7 @@ func (repository *Repository) SetEnabled(ctx context.Context, code string, enabl
 		return BillingMarket{}, fmt.Errorf("update billing market: %w", err)
 	}
 	if result.RowsAffected() == 0 {
-		return BillingMarket{}, fmt.Errorf("update billing market: no rows affected")
+		return BillingMarket{}, pgx.ErrNoRows
 	}
 	return repository.Get(ctx, code)
 }
