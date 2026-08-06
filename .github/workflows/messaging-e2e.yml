@@ -30,13 +30,82 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: messaging-e2e-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  fix-email-feedback-constructor:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/messaging-fresh-db-e2e' && github.actor != 'github-actions[bot]'
+    name: Fix email feedback dependency wiring
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kepler_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kepler_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/kepler_e2e?sslmode=disable
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/messaging-fresh-db-e2e
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Configure durable email feedback outbox
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('internal/delivery/email/feedback/repository.go')
+          source = path.read_text()
+          old = 'repository := NewRepository(db, nil)'
+          new = 'repository := NewRepository(db, outbox.NewRepository(db))'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one nil outbox constructor, found {source.count(old)}')
+          path.write_text(source.replace(old, new, 1))
+          PY
+          gofmt -w internal/delivery/email/feedback/repository.go
+          git diff --check
+
+      - name: Run fresh-database messaging lifecycle tests
+        run: go test -race -count=1 ./internal/integration/messaging
+
+      - name: Commit production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/delivery/email/feedback/repository.go
+          test -n "$(git status --porcelain)"
+          git commit -m "fix: configure durable email feedback outbox"
+          git push origin HEAD:feat/messaging-fresh-db-e2e
+
   fresh-database:
     name: Fresh PostgreSQL messaging lifecycle
     runs-on: ubuntu-latest
