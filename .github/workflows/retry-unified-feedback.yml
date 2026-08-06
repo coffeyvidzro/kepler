@@ -44,8 +44,8 @@ jobs:
           if match is None:
               raise SystemExit('embedded transformation payload was not found')
           source = zlib.decompress(base64.b64decode(match.group(1))).decode()
-          old = "r'''\\t).Scan("
-          new = "r'''\\t`, claim.EventID, ProviderSES, TransportSNS).Scan("
+          old = "r'''	).Scan("
+          new = "r'''	`, claim.EventID, ProviderSES, TransportSNS).Scan("
           if source.count(old) != 2:
               raise SystemExit(f'expected two scan guards, found {source.count(old)}')
           source = source.replace(old, new, 2)
