@@ -8,6 +8,8 @@ import (
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
 
+const serviceName = "dugble-backoffice"
+
 // Application owns the backoffice HTTP transport server.
 type Application struct {
 	server *httptransport.Server
