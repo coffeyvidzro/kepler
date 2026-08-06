@@ -9,8 +9,10 @@ import (
 	newrelicmonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
-	backofficeapp "github.com/coffeyvidzro/dugble/server/internal/backoffice"
+	backofficedomains "github.com/coffeyvidzro/dugble/server/internal/backoffice/domains"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
+	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
 
@@ -26,16 +28,16 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		return nil, nil, err
 	}
 
-	cfg, err := config.LoadBackoffice()
+	cfg, err := config.Load()
 	if err != nil {
-		return fail(fmt.Errorf("load backoffice configuration: %w", err))
+		return fail(fmt.Errorf("load configuration: %w", err))
 	}
 	if err := sentrymonitoring.Init(cfg.Sentry, cfg.AppEnv); err != nil {
 		return fail(fmt.Errorf("initialize Sentry: %w", err))
 	}
 	cleanups.Add(func() { sentrymonitoring.Flush(5 * time.Second) })
 
-	newRelic, err := newrelicmonitoring.New(backofficeapp.ServiceName, cfg.AppEnv, cfg.NewRelic)
+	newRelic, err := newrelicmonitoring.New(serviceName, cfg.AppEnv, cfg.NewRelic)
 	if err != nil {
 		return fail(fmt.Errorf("initialize New Relic: %w", err))
 	}
@@ -50,16 +52,20 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	}
 	cleanups.Add(db.Close)
 
-	service, err := backofficeapp.NewService(db)
+	domainsService, err := backofficedomains.NewService(backofficedomains.NewRepository(db))
 	if err != nil {
-		return fail(fmt.Errorf("create backoffice service: %w", err))
+		return fail(fmt.Errorf("create backoffice domains service: %w", err))
+	}
+	handlers := routeHandlers{
+		health:  backofficehealthhttp.NewHandler(db),
+		domains: backofficedomainhttp.NewHandler(domainsService),
 	}
 	router, err := httptransport.NewRouter(
 		httptransport.RouterConfig{
 			Development: cfg.IsDevelopment(),
 			CORSOrigins: cfg.CORSOrigins,
 		},
-		newRouteRegistrar(service),
+		newRouteRegistrar(handlers, nil),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice HTTP router: %w", err))
