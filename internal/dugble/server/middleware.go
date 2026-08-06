@@ -1,10 +1,10 @@
 package server
 
 import (
+	"github.com/arcjet/arcjet-go"
 	sentryecho "github.com/getsentry/sentry-go/echo"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
-	"github.com/arcjet/arcjet-go"
 
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
