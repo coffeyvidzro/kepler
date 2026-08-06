@@ -19,6 +19,7 @@ type messagingFixture struct {
 	EmailAssetID    uuid.UUID
 	EmailBindingID  uuid.UUID
 	EmailGrantID    uuid.UUID
+	EmailTenantID   uuid.UUID
 	SMSAssetID      uuid.UUID
 	SMSBindingID    uuid.UUID
 	SMSGrantID      uuid.UUID
@@ -92,6 +93,7 @@ func seedMessagingFixture(t *testing.T, pool *pgxpool.Pool) messagingFixture {
 		EmailAssetID:    uuid.New(),
 		EmailBindingID:  uuid.New(),
 		EmailGrantID:    uuid.New(),
+		EmailTenantID:   uuid.New(),
 		SMSAssetID:      uuid.New(),
 		SMSBindingID:    uuid.New(),
 		SMSGrantID:      uuid.New(),
@@ -136,6 +138,19 @@ func seedMessagingFixture(t *testing.T, pool *pgxpool.Pool) messagingFixture {
 			($4, $2, $5, 'sms', 'active', true)
 	`, fixture.EmailGrantID, fixture.TeamID, fixture.EmailAssetID, fixture.SMSGrantID, fixture.SMSAssetID); err != nil {
 		t.Fatalf("seed sender grants: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO email_tenants (
+			id, team_id, provider, region, external_name, external_id,
+			tenant_arn, status, suppression_scope, reputation_policy
+		)
+		VALUES (
+			$1, $2, 'aws_ses', 'us-east-1', 'messaging-e2e', 'tenant-messaging-e2e',
+			'arn:aws:ses:us-east-1:123456789012:tenant/messaging-e2e',
+			'active', 'tenant', 'standard'
+		)
+	`, fixture.EmailTenantID, fixture.TeamID); err != nil {
+		t.Fatalf("seed email tenant: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO webhook_endpoints (
