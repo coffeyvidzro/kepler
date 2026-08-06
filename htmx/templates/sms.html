@@ -1,18 +1,24 @@
 {{template "layout_start" .}}
-<form class="filters" method="get">
-  <label>Search <input type="search" name="q" value="{{.Filter.Query}}" placeholder="team, recipient, sender"></label>
-  <label>Status <input type="search" name="status" value="{{.Filter.Status}}" placeholder="failed"></label>
-  <button type="submit">Filter</button>
-  <a href="/sms">Clear</a>
+<form class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+  <label class="grid flex-1 gap-1 text-sm font-medium text-slate-700">Search
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" type="search" name="q" value="{{.Filter.Query}}" placeholder="team, recipient, sender">
+  </label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Status
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" type="search" name="status" value="{{.Filter.Status}}" placeholder="failed">
+  </label>
+  <button class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700" type="submit">Filter</button>
+  <a class="px-2 py-2 font-medium text-slate-600 hover:text-slate-900" href="/sms">Clear</a>
 </form>
-<table>
-  <thead><tr><th>Team</th><th>To</th><th>From</th><th>Status</th><th>Provider</th><th>Error</th><th>Created</th></tr></thead>
-  <tbody>
+<div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+<table class="min-w-full divide-y divide-slate-200">
+  <thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Team</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">To</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">From</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Provider</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Error</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Created</th></tr></thead>
+  <tbody class="divide-y divide-slate-100">
   {{range .Data}}
-    <tr><td>{{.TeamName}}</td><td><a href="/sms/{{.ID}}">{{.ToNumber}}</a></td><td>{{.FromName}}</td><td>{{.Status}}</td><td>{{.ProviderID}}</td><td>{{.ErrorMessage}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+    <tr><td class="px-4 py-3">{{.TeamName}}</td><td class="px-4 py-3"><a class="font-medium text-blue-700 hover:text-blue-900" href="/sms/{{.ID}}">{{.ToNumber}}</a></td><td class="px-4 py-3">{{.FromName}}</td><td class="px-4 py-3">{{.Status}}</td><td class="px-4 py-3">{{.ProviderID}}</td><td class="max-w-xs break-words px-4 py-3 text-slate-600">{{.ErrorMessage}}</td><td class="whitespace-nowrap px-4 py-3">{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
   {{else}}
-    <tr><td colspan="7">No SMS messages found.</td></tr>
+    <tr><td class="px-4 py-8 text-center text-slate-500" colspan="7">No SMS messages found.</td></tr>
   {{end}}
   </tbody>
 </table>
+</div>
 {{template "layout_end" .}}
