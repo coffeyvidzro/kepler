@@ -17,6 +17,8 @@ import (
 	backofficedashboard "github.com/coffeyvidzro/dugble/server/internal/backoffice/dashboard"
 	backofficedomains "github.com/coffeyvidzro/dugble/server/internal/backoffice/domains"
 	backofficeproductrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/productrates"
+	backofficesenderids "github.com/coffeyvidzro/dugble/server/internal/backoffice/senderids"
+	backofficesms "github.com/coffeyvidzro/dugble/server/internal/backoffice/sms"
 	backofficesmsrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/smsrates"
 	backofficeteams "github.com/coffeyvidzro/dugble/server/internal/backoffice/teams"
 	backofficeusers "github.com/coffeyvidzro/dugble/server/internal/backoffice/users"
@@ -31,6 +33,8 @@ import (
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
+	backofficesenderidshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/senderids"
+	backofficesmshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/sms"
 	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
 	backofficeteamshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/teams"
 	backofficeusershttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/users"
@@ -91,6 +95,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
 	usersService := backofficeusers.NewService(backofficeusers.NewRepository(db))
 	teamsService := backofficeteams.NewService(backofficeteams.NewRepository(db))
+	smsService := backofficesms.NewService(backofficesms.NewRepository(db))
+	senderIDsService := backofficesenderids.NewService(backofficesenderids.NewRepository(db))
 	domainsService := backofficedomains.NewService(backofficedomains.NewRepository(db))
 	currenciesService := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
 	billingMarketsService := backofficebillingmarkets.NewService(backofficebillingmarkets.NewRepository(db))
@@ -103,6 +109,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		dashboard:         backofficedashboardhttp.NewHandler(dashboardService),
 		users:             backofficeusershttp.NewHandler(usersService),
 		teams:             backofficeteamshttp.NewHandler(teamsService),
+		sms:               backofficesmshttp.NewHandler(smsService),
+		senderIDs:         backofficesenderidshttp.NewHandler(senderIDsService),
 		domains:           backofficedomainhttp.NewHandler(domainsService),
 		currencies:        backofficecurrencieshttp.NewHandler(currenciesService),
 		billingMarkets:    backofficebillingmarketshttp.NewHandler(billingMarketsService),
