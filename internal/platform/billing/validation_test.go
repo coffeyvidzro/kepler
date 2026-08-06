@@ -33,8 +33,8 @@ func TestValidateSMSChargeResolvesDestinationCountry(t *testing.T) {
 			t.Parallel()
 
 			validated, err := validateSMSCharge(SMSChargeInput{
-				TeamID:             uuid.New(),
-				MessageID:          uuid.New(),
+				TeamID:            uuid.New(),
+				MessageID:         uuid.New(),
 				DestinationNumber: test.destination,
 				Segments:          2,
 			})
@@ -56,8 +56,8 @@ func TestValidateSMSChargeRejectsUnsupportedDestination(t *testing.T) {
 	t.Parallel()
 
 	_, err := validateSMSCharge(SMSChargeInput{
-		TeamID:             uuid.New(),
-		MessageID:          uuid.New(),
+		TeamID:            uuid.New(),
+		MessageID:         uuid.New(),
 		DestinationNumber: "+254712345678",
 		Segments:          1,
 	})
