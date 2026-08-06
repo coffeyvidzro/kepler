@@ -40,24 +40,29 @@ type SentryConfig struct {
 	Debug           bool    `env:"DEBUG" envDefault:"false"`
 }
 
+type BackofficeConfig struct {
+	HTTPPort    string   `env:"HTTP_PORT" envDefault:"8081"`
+	AdminEmails []string `env:"ADMIN_EMAILS" envSeparator:","`
+}
+
 type Config struct {
-	AppEnv          string         `env:"APP_ENV"   envDefault:"development"`
-	HTTPPort        string         `env:"HTTP_PORT" envDefault:"8080"`
-	DatabaseURL     string         `env:"DATABASE_URL,required,notEmpty"`
-	RedisURL        string         `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
-	CORSOrigins     []string       `env:"CORS_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000,http://127.0.0.1:3000"`
-	ArcjetKey       string         `env:"ARCJET_KEY,required,notEmpty"`
-	FrontendURL     string         `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
-	BackendURL      string         `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
-	BackofficeToken string         `env:"BACKOFFICE_TOKEN"`
-	CookieDomain    string         `env:"COOKIE_DOMAIN"`
-	EncryptionKeys  []string       `env:"ENCRYPTION_KEYS" envSeparator:","`
-	AWS             AWSConfig      `envPrefix:"AWS_"`
-	NATSURL         string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
-	MNotify         ProviderConfig `envPrefix:"MNOTIFY_"`
-	Moolre          MoolreConfig   `envPrefix:"MOOLRE_"`
-	NewRelic        NewRelicConfig `envPrefix:"NEW_RELIC_"`
-	Sentry          SentryConfig   `envPrefix:"SENTRY_"`
+	AppEnv      string `env:"APP_ENV"   envDefault:"development"`
+	HTTPPort    string `env:"HTTP_PORT" envDefault:"8080"`
+	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
+	RedisURL    string `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
+	CORSOrigins []string `env:"CORS_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000,http://127.0.0.1:3000"`
+	ArcjetKey   string   `env:"ARCJET_KEY,required,notEmpty"`
+	FrontendURL string   `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
+	BackendURL  string   `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
+	CookieDomain string  `env:"COOKIE_DOMAIN"`
+	EncryptionKeys []string `env:"ENCRYPTION_KEYS" envSeparator:","`
+	Backoffice BackofficeConfig `envPrefix:"BACKOFFICE_"`
+	AWS        AWSConfig        `envPrefix:"AWS_"`
+	NATSURL    string           `env:"NATS_URL" envDefault:"nats://localhost:4222"`
+	MNotify    ProviderConfig   `envPrefix:"MNOTIFY_"`
+	Moolre     MoolreConfig     `envPrefix:"MOOLRE_"`
+	NewRelic   NewRelicConfig   `envPrefix:"NEW_RELIC_"`
+	Sentry     SentryConfig     `envPrefix:"SENTRY_"`
 }
 
 func Load() (*Config, error) {
@@ -80,9 +85,10 @@ func (c *Config) normalize() {
 	c.ArcjetKey = strings.TrimSpace(c.ArcjetKey)
 	c.FrontendURL = strings.TrimRight(strings.TrimSpace(c.FrontendURL), "/")
 	c.BackendURL = strings.TrimRight(strings.TrimSpace(c.BackendURL), "/")
-	c.BackofficeToken = strings.TrimSpace(c.BackofficeToken)
 	c.CookieDomain = strings.TrimSpace(c.CookieDomain)
 	c.EncryptionKeys = normalizeStrings(c.EncryptionKeys)
+	c.Backoffice.HTTPPort = strings.TrimSpace(c.Backoffice.HTTPPort)
+	c.Backoffice.AdminEmails = normalizeStrings(c.Backoffice.AdminEmails)
 	c.AWS.FromEmail = strings.TrimSpace(c.AWS.FromEmail)
 	c.AWS.Region = strings.TrimSpace(c.AWS.Region)
 	c.AWS.AccessKey = strings.TrimSpace(c.AWS.AccessKey)
