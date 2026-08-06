@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/coffeyvidzro/dugble/server/backofficeweb"
+	"github.com/coffeyvidzro/dugble/server/htmx"
 )
 
 type Renderer struct {
@@ -22,7 +22,7 @@ func NewRenderer() (*Renderer, error) {
 			"microsInput":   formatMicrosInput,
 			"datetimeLocal": formatDatetimeLocal,
 		}).
-		ParseFS(backofficeweb.Files, "templates/*.html")
+		ParseFS(htmx.Files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
