@@ -12,14 +12,26 @@ const CSRFContextKey = "csrf"
 type CSRFConfig struct {
 	Development    bool
 	TrustedOrigins []string
+	TokenLookup    string
+	CookieName     string
 }
 
 func CSRF(config CSRFConfig) echo.MiddlewareFunc {
+	tokenLookup := config.TokenLookup
+	if tokenLookup == "" {
+		tokenLookup = "header:" + echo.HeaderXCSRFToken
+	}
+
+	cookieName := config.CookieName
+	if cookieName == "" {
+		cookieName = "dugble_csrf"
+	}
+
 	return echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
 		TrustedOrigins: config.TrustedOrigins,
-		TokenLookup:    "header:" + echo.HeaderXCSRFToken,
+		TokenLookup:    tokenLookup,
 		ContextKey:     CSRFContextKey,
-		CookieName:     "dugble_csrf",
+		CookieName:     cookieName,
 		CookiePath:     "/",
 		CookieSecure:   !config.Development,
 		CookieHTTPOnly: false,

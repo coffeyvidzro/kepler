@@ -1,0 +1,34 @@
+{{define "layout_start"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Dugble Backoffice</title>
+  <link rel="stylesheet" href="/static/dugble.css">
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+  <header class="border-b border-slate-800 bg-slate-950 text-white shadow-sm">
+    <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+      <a class="text-lg font-semibold tracking-tight text-white transition hover:text-blue-200 hover:no-underline" href="/">Dugble Backoffice</a>
+      <nav class="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium" aria-label="Primary navigation">
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/">Dashboard</a>
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/users">Users</a>
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/teams">Teams</a>
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/sms">SMS</a>
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/sender-ids">Sender IDs</a>
+        <a class="text-slate-300 transition hover:text-white hover:no-underline" href="/domains">Domains</a>
+      </nav>
+    </div>
+  </header>
+  <main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <h1 class="mb-6 text-3xl font-bold tracking-tight text-slate-950">{{.Title}}</h1>
+{{end}}
+
+{{define "layout_end"}}
+  </main>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/dugble.js" defer></script>
+</body>
+</html>
+{{end}}

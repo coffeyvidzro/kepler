@@ -1,0 +1,46 @@
+{{template "layout_start" .}}
+<form class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+  <label class="grid flex-1 gap-1 text-sm font-medium text-slate-700">Search
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" type="search" name="q" value="{{.Filter.Query}}" placeholder="team, sender, country">
+  </label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Status
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" type="search" name="status" value="{{.Filter.Status}}" placeholder="pending">
+  </label>
+  <button class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700" type="submit">Filter</button>
+  <a class="px-2 py-2 font-medium text-slate-600 hover:text-slate-900" href="/sender-ids">Clear</a>
+</form>
+<div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+<table class="min-w-full divide-y divide-slate-200">
+  <thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Team</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Name</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Country</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Created</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ID</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Review</th></tr></thead>
+  <tbody class="divide-y divide-slate-100">
+  {{range .Data}}
+    <tr>
+      <td class="px-4 py-3">{{.TeamName}}</td>
+      <td class="px-4 py-3"><a class="font-medium text-blue-700 hover:text-blue-900" href="/sender-ids/{{.ID}}">{{.Name}}</a></td>
+      <td class="px-4 py-3">{{.CountryCode}}</td>
+      <td class="px-4 py-3">{{.Status}}</td>
+      <td class="whitespace-nowrap px-4 py-3">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td class="px-4 py-3"><code class="break-all text-xs text-slate-600">{{.ID}}</code></td>
+      <td class="px-4 py-3">
+        {{if eq .Status "pending"}}
+        <div class="flex flex-wrap gap-2">
+          <form method="post" action="/sender-ids/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="approve">
+            <button class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700" type="submit">Approve</button>
+          </form>
+          <form class="flex flex-wrap gap-2" method="post" action="/sender-ids/{{.ID}}/status">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="reject">
+            <input class="max-w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" type="text" name="reason" placeholder="Reason" required>
+            <button class="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-700" type="submit">Reject</button>
+          </form>
+        </div>
+        {{else}}—{{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td class="px-4 py-8 text-center text-slate-500" colspan="7">No sender IDs found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{template "layout_end" .}}

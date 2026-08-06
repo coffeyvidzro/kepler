@@ -1,0 +1,20 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+<div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+<table class="min-w-full divide-y divide-slate-200">
+  <thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Team</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Domain</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Provider</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Binding</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Verified</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Health</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Created</th></tr></thead>
+  <tbody class="divide-y divide-slate-100">
+  {{range $page.Domains}}
+    <tr><td class="px-4 py-3">{{.TeamName}}</td><td class="px-4 py-3"><a class="font-medium text-blue-700 hover:text-blue-900" href="/domains/{{.ID}}">{{.Name}}</a></td><td class="px-4 py-3">{{.Provider}}</td><td class="px-4 py-3">{{.Status}}</td><td class="px-4 py-3">{{.Verified}}</td><td class="px-4 py-3">{{.HealthStatus}}</td><td class="whitespace-nowrap px-4 py-3">{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+  {{else}}
+    <tr><td class="px-4 py-8 text-center text-slate-500" colspan="7">No domains found.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<nav class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Domain pages">
+  <div>{{if $page.HasPrevious}}<a class="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 hover:no-underline" href="/domains?limit={{$page.Limit}}&offset={{$page.PreviousOffset}}">← Previous</a>{{end}}</div>
+  <span class="text-slate-500">Offset {{$page.Offset}}</span>
+  <div>{{if $page.HasNext}}<a class="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 hover:no-underline" href="/domains?limit={{$page.Limit}}&offset={{$page.NextOffset}}">Next →</a>{{end}}</div>
+</nav>
+{{template "layout_end" .}}

@@ -1,0 +1,25 @@
+{{template "layout_start" .}}
+{{$detail := .Data}}
+<p class="mb-6"><a class="text-sm font-medium text-blue-700 hover:text-blue-900" href="/users">← Back to users</a></p>
+<section class="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Email</span><strong class="mt-2 block break-words text-slate-950">{{$detail.User.Email}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Name</span><strong class="mt-2 block break-words text-slate-950">{{$detail.User.Name}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Email verified</span><strong class="mt-2 block text-slate-950">{{$detail.User.EmailVerified}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Created</span><strong class="mt-2 block text-slate-950">{{$detail.User.CreatedAt.Format "2006-01-02 15:04"}}</strong></article>
+</section>
+<h2 class="mb-4 text-xl font-semibold text-slate-950">Teams</h2>
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-200">
+      <thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Team</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Role</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ID</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+      {{range $detail.Teams}}
+        <tr class="hover:bg-slate-50"><td class="px-4 py-3"><a class="font-medium text-blue-700 hover:text-blue-900" href="/teams/{{.ID}}">{{.Name}}</a></td><td class="px-4 py-3 text-slate-700">{{.Role}}</td><td class="px-4 py-3 text-slate-700">{{.Status}}</td><td class="px-4 py-3"><code class="text-xs text-slate-500">{{.ID}}</code></td></tr>
+      {{else}}
+        <tr><td class="px-4 py-8 text-center text-slate-500" colspan="4">This user is not a member of any teams.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{template "layout_end" .}}

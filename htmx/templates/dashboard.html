@@ -1,0 +1,11 @@
+{{template "layout_start" .}}
+{{$stats := .Data}}
+<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Total users</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.Users}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Total teams</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.Teams}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">SMS today</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.SMSToday}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Failed SMS, 24h</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.FailedSMS24Hours}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Pending sender IDs</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.PendingSenderIDs}}</strong></article>
+  <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><span class="text-sm font-medium text-slate-500">Pending domains</span><strong class="mt-2 block text-3xl font-bold tracking-tight text-slate-950">{{$stats.PendingDomains}}</strong></article>
+</section>
+{{template "layout_end" .}}

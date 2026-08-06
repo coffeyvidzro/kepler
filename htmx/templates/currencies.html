@@ -1,0 +1,66 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+
+<section class="mb-8 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+  Currency codes are normalized to uppercase. Minor units define the number of decimal places used for stored amounts.
+</section>
+
+<h2 class="mb-4 text-xl font-semibold text-slate-950">Add currency</h2>
+<form class="mb-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4" method="post" action="/billing/currencies">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Code
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="text" name="code" maxlength="3" placeholder="USD" autocomplete="off" required>
+  </label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Minor unit
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="number" name="minor_unit" min="0" max="6" value="2" required>
+  </label>
+  <label class="grid gap-1 text-sm font-medium text-slate-700">Initial status
+    <select class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" name="is_enabled">
+      <option value="true" selected>Enabled</option>
+      <option value="false">Disabled</option>
+    </select>
+  </label>
+  <button class="self-end rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" type="submit">Add currency</button>
+</form>
+
+<h2 class="mb-4 text-xl font-semibold text-slate-950">Configured currencies</h2>
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-200">
+      <thead class="bg-slate-50">
+        <tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Code</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Minor unit</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Action</th></tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 bg-white">
+      {{range $page.Currencies}}
+        <tr class="transition hover:bg-slate-50">
+          <td class="px-4 py-3 font-semibold text-slate-950">{{.Code}}</td>
+          <td class="px-4 py-3 text-sm text-slate-700">{{.MinorUnit}}</td>
+          <td class="px-4 py-3 text-sm">
+            {{if .IsEnabled}}
+              <span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Enabled</span>
+            {{else}}
+              <span class="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800">Disabled</span>
+            {{end}}
+          </td>
+          <td class="px-4 py-3 text-sm">
+            <form method="post" action="/billing/currencies/{{.Code}}/status">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              {{if .IsEnabled}}
+                <input type="hidden" name="is_enabled" value="false">
+                <button class="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2" type="submit">Disable</button>
+              {{else}}
+                <input type="hidden" name="is_enabled" value="true">
+                <button class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2" type="submit">Enable</button>
+              {{end}}
+            </form>
+          </td>
+        </tr>
+      {{else}}
+        <tr><td class="px-4 py-8 text-center text-sm text-slate-500" colspan="4">No currencies configured.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{template "layout_end" .}}

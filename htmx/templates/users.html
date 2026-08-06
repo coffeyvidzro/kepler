@@ -1,0 +1,23 @@
+{{template "layout_start" .}}
+<form class="mb-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end" method="get">
+  <label class="grid flex-1 gap-1 text-sm font-medium text-slate-700">Search
+    <input class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="search" name="q" value="{{.Filter.Query}}" placeholder="email or name">
+  </label>
+  <button class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-blue-700" type="submit">Filter</button>
+  <a class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 hover:no-underline" href="/users">Clear</a>
+</form>
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-200">
+      <thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Email</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Name</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Verified</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Created</th><th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">ID</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+      {{range .Data}}
+        <tr class="hover:bg-slate-50"><td class="whitespace-nowrap px-4 py-3"><a class="font-medium text-blue-700 hover:text-blue-900" href="/users/{{.ID}}">{{.Email}}</a></td><td class="px-4 py-3 text-slate-700">{{.Name}}</td><td class="px-4 py-3 text-slate-700">{{.EmailVerified}}</td><td class="whitespace-nowrap px-4 py-3 text-slate-600">{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td class="px-4 py-3"><code class="text-xs text-slate-500">{{.ID}}</code></td></tr>
+      {{else}}
+        <tr><td class="px-4 py-8 text-center text-slate-500" colspan="5">No users found.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{template "layout_end" .}}
