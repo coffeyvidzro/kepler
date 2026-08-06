@@ -8,13 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Repository loads sender assets, grants, bindings and provider capabilities
-// without exposing SQLC or database-specific types to the domain package.
 type Repository interface {
 	ListCandidates(context.Context, Request) ([]Candidate, error)
 }
 
-// Route is the selected provider and canonical sender binding.
 type Route struct {
 	SenderAssetID           uuid.UUID
 	SenderProviderBindingID uuid.UUID
@@ -24,7 +21,6 @@ type Route struct {
 	CountryCode             string
 }
 
-// Resolver filters provider routes through eligibility rules before applying a strategy.
 type Resolver struct {
 	repository Repository
 	strategy   Strategy
@@ -41,27 +37,56 @@ func NewResolver(repository Repository, strategy Strategy) (*Resolver, error) {
 }
 
 func (resolver *Resolver) Resolve(ctx context.Context, request Request) (Route, error) {
+	routes, err := resolver.ResolveAll(ctx, request)
+	if err != nil {
+		return Route{}, err
+	}
+	return routes[0], nil
+}
+
+func (resolver *Resolver) ResolveAll(ctx context.Context, request Request) ([]Route, error) {
 	if resolver == nil || resolver.repository == nil || resolver.strategy == nil {
-		return Route{}, errors.New("routing resolver is not configured")
+		return nil, errors.New("routing resolver is not configured")
 	}
 	if err := request.Validate(); err != nil {
-		return Route{}, err
+		return nil, err
 	}
 	candidates, err := resolver.repository.ListCandidates(ctx, request)
 	if err != nil {
-		return Route{}, fmt.Errorf("list messaging route candidates: %w", err)
+		return nil, fmt.Errorf("list messaging route candidates: %w", err)
 	}
-
-	eligible := make([]Candidate, 0, len(candidates))
+	remaining := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		if Evaluate(request, candidate).Eligible {
-			eligible = append(eligible, candidate)
+			remaining = append(remaining, candidate)
 		}
 	}
-	selected, err := resolver.strategy.Select(request, eligible)
-	if err != nil {
-		return Route{}, err
+	if len(remaining) == 0 {
+		return nil, ErrNoEligibleRoute
 	}
+	routes := make([]Route, 0, len(remaining))
+	for len(remaining) > 0 {
+		selected, selectErr := resolver.strategy.Select(request, remaining)
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		selectedIndex := -1
+		for index := range remaining {
+			if remaining[index].Binding.ID == selected.Binding.ID {
+				selectedIndex = index
+				break
+			}
+		}
+		if selectedIndex < 0 {
+			return nil, errors.New("routing strategy selected an unknown candidate")
+		}
+		routes = append(routes, routeFromCandidate(selected))
+		remaining = append(remaining[:selectedIndex], remaining[selectedIndex+1:]...)
+	}
+	return routes, nil
+}
+
+func routeFromCandidate(selected Candidate) Route {
 	return Route{
 		SenderAssetID:           selected.Asset.ID,
 		SenderProviderBindingID: selected.Binding.ID,
@@ -69,5 +94,5 @@ func (resolver *Resolver) Resolve(ctx context.Context, request Request) (Route, 
 		ProviderAccount:         selected.Binding.ProviderAccount,
 		Region:                  selected.Binding.Region,
 		CountryCode:             selected.Binding.CountryCode,
-	}, nil
+	}
 }
