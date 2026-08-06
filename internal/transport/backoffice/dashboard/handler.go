@@ -6,7 +6,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	backofficedashboard "github.com/coffeyvidzro/dugble/server/internal/backoffice/dashboard"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
+	backofficehttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice"
 )
 
 type service interface {
@@ -21,10 +21,14 @@ func NewHandler(service service) *Handler {
 	return &Handler{service: service}
 }
 
-func (handler *Handler) Stats(c *echo.Context) error {
+func (handler *Handler) Index(c *echo.Context) error {
 	stats, err := handler.service.Stats(c.Request().Context())
 	if err != nil {
-		return httputil.Error(c, err)
+		return err
 	}
-	return httputil.OK(c, stats)
+
+	return backofficehttp.RenderPage(c, "dashboard.html", backofficehttp.PageData{
+		Title: "Dashboard",
+		Data:  stats,
+	})
 }
