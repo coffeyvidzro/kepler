@@ -15,6 +15,10 @@ import (
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
+	messagingfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/feedback"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
+	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
@@ -158,14 +162,16 @@ func (r *Repository) processClaimed(ctx context.Context, claim ReconcileClaim) e
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var emailMessageID *uuid.UUID
+	var providerNotificationID string
 	var providerMessageID string
 	var eventType string
 	var occurredAt time.Time
+	var receivedAt time.Time
 	var normalizedPayload []byte
 	var processedAt, deadLetteredAt pgtype.Timestamptz
 	if err := tx.QueryRow(ctx, `
-		SELECT email_message_id, provider_message_id, event_type, occurred_at,
-			normalized_payload, processed_at, dead_lettered_at
+		SELECT email_message_id, provider_notification_id, provider_message_id, event_type, occurred_at,
+			received_at, normalized_payload, processed_at, dead_lettered_at
 		FROM email_provider_events
 		WHERE id = $1
 		  AND provider = $2
@@ -173,9 +179,11 @@ func (r *Repository) processClaimed(ctx context.Context, claim ReconcileClaim) e
 		FOR UPDATE
 	`, claim.EventID, ProviderSES, TransportSNS).Scan(
 		&emailMessageID,
+		&providerNotificationID,
 		&providerMessageID,
 		&eventType,
 		&occurredAt,
+		&receivedAt,
 		&normalizedPayload,
 		&processedAt,
 		&deadLetteredAt,
@@ -222,6 +230,23 @@ func (r *Repository) processClaimed(ctx context.Context, claim ReconcileClaim) e
 	aggregate, err := aggregateRecipientMessageStatus(ctx, tx, messageID, currentStatus)
 	if err != nil {
 		return err
+	}
+	normalizedEvent, err := normalizeSESFeedbackEvent(
+		providerNotificationID,
+		providerEvent,
+		receivedAt,
+		normalizedPayload,
+		aggregate.status,
+	)
+	if err != nil {
+		return err
+	}
+	processor, err := platformfeedback.NewProcessor(messagingfeedback.NewRepository(tx))
+	if err != nil {
+		return err
+	}
+	if _, err := processor.Process(ctx, normalizedEvent); err != nil {
+		return fmt.Errorf("apply normalized SES feedback event %s: %w", claim.EventID, err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE email_messages
@@ -339,14 +364,12 @@ func linkAndLockMessage(
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE message_delivery_attempts
-			SET status = 'submitted',
+			SET provider = $3,
 				provider_message_id = COALESCE(provider_message_id, $2),
-				error_code = NULL,
-				error_message = NULL,
 				request_completed_at = COALESCE(request_completed_at, now()),
 				submitted_at = COALESCE(submitted_at, now()), updated_at = now()
 			WHERE id = $1 AND channel = 'email'
-		`, attemptID, providerMessageID); err != nil {
+		`, attemptID, providerMessageID, ProviderSES); err != nil {
 			return uuid.Nil, "", fmt.Errorf("reconcile tagged email delivery attempt %s: %w", attemptID, err)
 		}
 	}
@@ -406,6 +429,94 @@ func scheduleClaimTx(ctx context.Context, tx pgx.Tx, claim ReconcileClaim, cause
 		return fmt.Errorf("reschedule unlinked email provider event %s: %w", claim.EventID, err)
 	}
 	return nil
+}
+
+func normalizeSESFeedbackEvent(
+	providerNotificationID string,
+	event awsses.FeedbackEvent,
+	receivedAt time.Time,
+	metadata json.RawMessage,
+	messageStatus string,
+) (platformfeedback.Event, error) {
+	status, err := sesAttemptStatus(messageStatus, event.EventType)
+	if err != nil {
+		return platformfeedback.Event{}, err
+	}
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+	attemptID, _ := uuid.Parse(strings.TrimSpace(event.InternalAttemptID))
+	errorCode, errorMessage := sesFeedbackError(event)
+	occurredAt := event.OccurredAt.UTC()
+	receivedAt = receivedAt.UTC()
+	if receivedAt.Before(occurredAt) {
+		receivedAt = occurredAt
+	}
+	normalized := platformfeedback.Event{
+		AttemptID:         attemptID,
+		Provider:          ProviderSES,
+		ProviderEventID:   strings.TrimSpace(providerNotificationID),
+		ProviderMessageID: strings.TrimSpace(event.ProviderMessageID),
+		EventType:         strings.TrimSpace(event.EventType),
+		Channel:           messaging.ChannelEmail,
+		Status:            status,
+		ProviderStatus:    strings.TrimSpace(event.EventType),
+		ErrorCode:         errorCode,
+		ErrorMessage:      errorMessage,
+		OccurredAt:        occurredAt,
+		ReceivedAt:        receivedAt,
+		Metadata:          append(json.RawMessage(nil), metadata...),
+	}
+	if err := normalized.Validate(); err != nil {
+		return platformfeedback.Event{}, fmt.Errorf("normalize SES feedback: %w", err)
+	}
+	return normalized, nil
+}
+
+func sesAttemptStatus(messageStatus, eventType string) (platformdelivery.AttemptStatus, error) {
+	switch strings.TrimSpace(messageStatus) {
+	case "submitted":
+		return platformdelivery.StatusSubmitted, nil
+	case "delayed", "partially_delivered", "partially_failed":
+		return platformdelivery.StatusSent, nil
+	case "delivered", "complained":
+		return platformdelivery.StatusDelivered, nil
+	case "bounced", "failed":
+		return platformdelivery.StatusPermanentFailure, nil
+	case "rejected":
+		return platformdelivery.StatusRejected, nil
+	case "canceled":
+		return platformdelivery.StatusCanceled, nil
+	default:
+		return "", fmt.Errorf("cannot map SES event %q from email status %q", eventType, messageStatus)
+	}
+}
+
+func sesFeedbackError(event awsses.FeedbackEvent) (string, string) {
+	switch strings.TrimSpace(event.EventType) {
+	case "delivery_delay":
+		return "ses_delivery_delay", "SES reported a delivery delay"
+	case "bounce":
+		message := strings.TrimSpace(event.Diagnostics.BounceType)
+		if message == "" {
+			message = "SES reported a bounce"
+		}
+		return "ses_bounce", message
+	case "reject":
+		message := strings.TrimSpace(event.Diagnostics.RejectReason)
+		if message == "" {
+			message = "SES rejected the message"
+		}
+		return "ses_reject", message
+	case "rendering_failure":
+		message := strings.TrimSpace(event.Diagnostics.FailureReason)
+		if message == "" {
+			message = "SES could not render the message"
+		}
+		return "ses_rendering_failure", message
+	default:
+		return "", ""
+	}
 }
 
 func (r *Repository) currentTime() time.Time {

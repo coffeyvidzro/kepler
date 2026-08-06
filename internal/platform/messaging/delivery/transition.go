@@ -18,9 +18,13 @@ func (status AttemptStatus) CanTransitionTo(next AttemptStatus) bool {
 		return next == StatusRequestStarted || next == StatusRetryableFailure ||
 			next == StatusPermanentFailure || next == StatusCanceled
 	case StatusRequestStarted:
+		// A provider callback can prove submission even when the worker lost
+		// the synchronous response before it persisted submission_unknown.
 		return next == StatusSubmissionUnknown || next == StatusSubmitted ||
+			next == StatusAccepted || next == StatusSent || next == StatusDelivered ||
 			next == StatusRetryableFailure || next == StatusPermanentFailure ||
-			next == StatusRejected || next == StatusCanceled
+			next == StatusRejected || next == StatusExpired || next == StatusUnknown ||
+			next == StatusCanceled
 	case StatusSubmissionUnknown:
 		return next == StatusSubmitted || next == StatusAccepted || next == StatusSent ||
 			next == StatusDelivered || next == StatusRetryableFailure ||

@@ -2,7 +2,6 @@ package feedback
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -44,9 +43,9 @@ func TestProcessorAppliesMonotonicFeedback(t *testing.T) {
 			Channel:           messaging.ChannelSMS,
 			Provider:          "mnotify",
 			ProviderMessageID: "provider-message",
-			Status:            delivery.StatusSent,
+			Status:            delivery.StatusRequestStarted,
 		},
-		result: ApplyResult{Applied: true},
+		result: ApplyResult{Applied: true, Transitioned: true},
 	}
 	processor, err := NewProcessor(repository)
 	if err != nil {
@@ -57,6 +56,7 @@ func TestProcessorAppliesMonotonicFeedback(t *testing.T) {
 		Provider:          "mnotify",
 		ProviderEventID:   "event-1",
 		ProviderMessageID: "provider-message",
+		EventType:         "delivery_status",
 		Channel:           messaging.ChannelSMS,
 		Status:            delivery.StatusDelivered,
 		OccurredAt:        now,
@@ -65,39 +65,64 @@ func TestProcessorAppliesMonotonicFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Processor.Process() error = %v", err)
 	}
-	if !result.Applied || result.Status != delivery.StatusDelivered {
+	if !result.Applied || !result.Transitioned || result.Status != delivery.StatusDelivered {
 		t.Fatalf("Processor.Process() result = %+v", result)
 	}
-	if repository.update.ExpectedStatus != delivery.StatusSent || repository.update.TerminalAt == nil {
+	if repository.update.Status == nil || *repository.update.Status != delivery.StatusDelivered {
+		t.Fatalf("ApplyEvent() status = %v", repository.update.Status)
+	}
+	if repository.update.ExpectedStatus != delivery.StatusRequestStarted || repository.update.TerminalAt == nil {
 		t.Fatalf("ApplyEvent() update = %+v", repository.update)
 	}
 }
 
-func TestProcessorRejectsBackwardFeedback(t *testing.T) {
+func TestProcessorRecordsBackwardFeedbackWithoutRegressing(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now().UTC()
-	repository := &repositoryStub{attempt: delivery.Attempt{
-		ID:       uuid.New(),
-		Channel:  messaging.ChannelEmail,
-		Provider: "ses",
-		Status:   delivery.StatusDelivered,
-	}}
+	repository := &repositoryStub{
+		attempt: delivery.Attempt{
+			ID:                uuid.New(),
+			Channel:           messaging.ChannelEmail,
+			Provider:          "ses",
+			ProviderMessageID: "provider-message",
+			Status:            delivery.StatusDelivered,
+		},
+		result: ApplyResult{Applied: true},
+	}
 	processor, err := NewProcessor(repository)
 	if err != nil {
 		t.Fatalf("NewProcessor() error = %v", err)
 	}
 
-	_, err = processor.Process(context.Background(), Event{
+	result, err := processor.Process(context.Background(), Event{
 		Provider:          "ses",
 		ProviderEventID:   "event-2",
 		ProviderMessageID: "provider-message",
+		EventType:         "delivery_delay",
 		Channel:           messaging.ChannelEmail,
 		Status:            delivery.StatusSent,
 		OccurredAt:        now,
 		ReceivedAt:        now,
 	})
-	if !errors.Is(err, ErrInvalidTransition) {
-		t.Fatalf("Processor.Process() error = %v, want ErrInvalidTransition", err)
+	if err != nil {
+		t.Fatalf("Processor.Process() error = %v", err)
+	}
+	if !result.Ignored || result.Status != delivery.StatusDelivered {
+		t.Fatalf("Processor.Process() result = %+v", result)
+	}
+	if repository.update.Status != nil {
+		t.Fatalf("ApplyEvent() status = %v, want nil", repository.update.Status)
+	}
+}
+
+func TestEventDedupeKeyIncludesChannel(t *testing.T) {
+	t.Parallel()
+
+	email := Event{Provider: "shared", ProviderEventID: "event-1", Channel: messaging.ChannelEmail}
+	sms := email
+	sms.Channel = messaging.ChannelSMS
+	if email.DedupeKey() == sms.DedupeKey() {
+		t.Fatalf("DedupeKey() collided across channels: %q", email.DedupeKey())
 	}
 }

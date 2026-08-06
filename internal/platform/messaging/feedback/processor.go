@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
 )
-
-var ErrInvalidTransition = errors.New("provider feedback would move the delivery attempt to an invalid status")
 
 // Result summarizes one normalized provider-event application.
 type Result struct {
@@ -21,6 +18,8 @@ type Result struct {
 	Status         delivery.AttemptStatus
 	Applied        bool
 	Duplicate      bool
+	Transitioned   bool
+	Ignored        bool
 }
 
 // Processor validates provider feedback and applies monotonic attempt updates.
@@ -44,6 +43,7 @@ func (processor *Processor) Process(ctx context.Context, event Event) (Result, e
 	}
 
 	attempt, err := processor.repository.FindAttempt(ctx, Lookup{
+		AttemptID:         event.AttemptID,
 		Provider:          event.Provider,
 		ProviderMessageID: event.ProviderMessageID,
 		Channel:           event.Channel,
@@ -60,26 +60,34 @@ func (processor *Processor) Process(ctx context.Context, event Event) (Result, e
 	if attempt.Provider != "" && !strings.EqualFold(attempt.Provider, event.Provider) {
 		return Result{}, errors.New("feedback provider does not match delivery attempt")
 	}
-	if !attempt.Status.CanTransitionTo(event.Status) {
-		return Result{}, fmt.Errorf("%w: %s to %s", ErrInvalidTransition, attempt.Status, event.Status)
-	}
 
-	var terminalAt *time.Time
-	if event.Status.Terminal() {
-		occurredAt := event.OccurredAt
-		terminalAt = &occurredAt
-	}
-	applyResult, err := processor.repository.ApplyEvent(ctx, event, AttemptUpdate{
+	update := AttemptUpdate{
 		AttemptID:      attempt.ID,
 		ExpectedStatus: attempt.Status,
-		Status:         event.Status,
 		ProviderStatus: event.ProviderStatus,
 		ErrorCode:      event.ErrorCode,
 		ErrorMessage:   event.ErrorMessage,
 		OccurredAt:     event.OccurredAt,
-		TerminalAt:     terminalAt,
 		ReconciledAt:   event.ReceivedAt,
-	})
+	}
+	status := attempt.Status
+	ignored := false
+	if attempt.Status.CanTransitionTo(event.Status) {
+		nextStatus := event.Status
+		update.Status = &nextStatus
+		status = nextStatus
+		if event.Status.Terminal() {
+			occurredAt := event.OccurredAt
+			update.TerminalAt = &occurredAt
+		}
+	} else {
+		// Provider callbacks can arrive late or out of order. Record the
+		// observation for idempotency and diagnostics without moving the
+		// canonical attempt backward or reopening a terminal attempt.
+		ignored = true
+	}
+
+	applyResult, err := processor.repository.ApplyEvent(ctx, event, update)
 	if err != nil {
 		return Result{}, fmt.Errorf("apply provider feedback: %w", err)
 	}
@@ -87,8 +95,10 @@ func (processor *Processor) Process(ctx context.Context, event Event) (Result, e
 	return Result{
 		AttemptID:      attempt.ID,
 		PreviousStatus: attempt.Status,
-		Status:         event.Status,
+		Status:         status,
 		Applied:        applyResult.Applied,
 		Duplicate:      applyResult.Duplicate,
+		Transitioned:   applyResult.Transitioned,
+		Ignored:        ignored,
 	}, nil
 }

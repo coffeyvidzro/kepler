@@ -8,29 +8,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
 )
 
-// Event is a normalized provider delivery-status event.
+// Event is a normalized provider delivery-status or engagement event.
 type Event struct {
-	Provider          string
-	ProviderEventID   string
-	ProviderMessageID string
-	Channel           messaging.Channel
-	Status            delivery.AttemptStatus
-	ProviderStatus    string
-	ErrorCode         string
-	ErrorMessage      string
-	OccurredAt        time.Time
-	ReceivedAt        time.Time
-	Metadata          json.RawMessage
+	AttemptID         uuid.UUID              `json:"attempt_id,omitempty"`
+	Provider          string                 `json:"provider"`
+	ProviderEventID   string                 `json:"provider_event_id"`
+	ProviderMessageID string                 `json:"provider_message_id"`
+	EventType         string                 `json:"event_type"`
+	Channel           messaging.Channel      `json:"channel"`
+	Status            delivery.AttemptStatus `json:"status"`
+	ProviderStatus    string                 `json:"provider_status,omitempty"`
+	ErrorCode         string                 `json:"error_code,omitempty"`
+	ErrorMessage      string                 `json:"error_message,omitempty"`
+	OccurredAt        time.Time              `json:"occurred_at"`
+	ReceivedAt        time.Time              `json:"received_at"`
+	Metadata          json.RawMessage        `json:"metadata,omitempty"`
 }
 
 // DedupeKey is stable across retries of the same provider event.
 func (event Event) DedupeKey() string {
 	return strings.Join([]string{
 		strings.ToLower(strings.TrimSpace(event.Provider)),
+		string(event.Channel),
 		strings.TrimSpace(event.ProviderEventID),
 	}, ":")
 }
@@ -44,6 +49,9 @@ func (event Event) Validate() error {
 	}
 	if strings.TrimSpace(event.ProviderMessageID) == "" {
 		return errors.New("feedback provider message ID is required")
+	}
+	if strings.TrimSpace(event.EventType) == "" {
+		return errors.New("feedback event type is required")
 	}
 	if !event.Channel.Valid() {
 		return errors.New("feedback channel is invalid")
