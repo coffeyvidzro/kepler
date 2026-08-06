@@ -1,0 +1,62 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+
+<section class="notice warning">
+  Currency codes are normalized to uppercase. Minor units define the number of decimal places used for stored amounts.
+</section>
+
+<h2>Add currency</h2>
+<form class="control-panel" method="post" action="/billing/currencies">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Code
+    <input type="text" name="code" maxlength="3" placeholder="USD" autocomplete="off" required>
+  </label>
+  <label>Minor unit
+    <input type="number" name="minor_unit" min="0" max="6" value="2" required>
+  </label>
+  <label>Initial status
+    <select name="is_enabled">
+      <option value="true" selected>Enabled</option>
+      <option value="false">Disabled</option>
+    </select>
+  </label>
+  <button type="submit">Add currency</button>
+</form>
+
+<h2>Configured currencies</h2>
+<table>
+  <thead>
+    <tr><th>Code</th><th>Minor unit</th><th>Status</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+  {{range $page.Currencies}}
+    <tr>
+      <td><strong>{{.Code}}</strong></td>
+      <td>{{.MinorUnit}}</td>
+      <td>
+        {{if .IsEnabled}}
+          <span class="status-badge status-current">Enabled</span>
+        {{else}}
+          <span class="status-badge status-archived">Disabled</span>
+        {{end}}
+      </td>
+      <td>
+        <form class="compact-form" method="post" action="/billing/currencies/{{.Code}}/status">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          {{if .IsEnabled}}
+            <input type="hidden" name="is_enabled" value="false">
+            <button class="danger" type="submit">Disable</button>
+          {{else}}
+            <input type="hidden" name="is_enabled" value="true">
+            <button type="submit">Enable</button>
+          {{end}}
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="4">No currencies configured.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+{{template "layout_end" .}}
