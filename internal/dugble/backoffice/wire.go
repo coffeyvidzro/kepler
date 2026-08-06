@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	newrelicmonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
@@ -75,6 +77,12 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		Users:    authRepository,
 	})
 	adminMiddleware := backofficehttp.RequireAdmin(cfg.Backoffice.AdminEmails)
+	csrfMiddleware := httpmiddleware.CSRF(httpmiddleware.CSRFConfig{
+		Development:    cfg.IsDevelopment(),
+		TrustedOrigins: cfg.CORSOrigins,
+		TokenLookup:    "form:csrf,header:" + echo.HeaderXCSRFToken,
+		CookieName:     "dugble_backoffice_csrf",
+	})
 
 	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
 	domainsService := backofficedomains.NewService(backofficedomains.NewRepository(db))
@@ -99,7 +107,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 			Development: cfg.IsDevelopment(),
 			CORSOrigins: cfg.CORSOrigins,
 		},
-		newRouteRegistrar(handlers, authMiddleware, adminMiddleware),
+		backofficehttp.RegisterWeb,
+		newRouteRegistrar(handlers, authMiddleware, adminMiddleware, csrfMiddleware),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice HTTP router: %w", err))
