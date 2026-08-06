@@ -1,4 +1,4 @@
-package backofficeweb
+package htmx
 
 import "embed"
 
