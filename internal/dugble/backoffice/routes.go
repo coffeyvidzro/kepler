@@ -12,6 +12,8 @@ import (
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
+	backofficesenderidshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/senderids"
+	backofficesmshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/sms"
 	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
 	backofficeteamshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/teams"
 	backofficeusershttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/users"
@@ -23,6 +25,8 @@ type routeHandlers struct {
 	dashboard         *backofficedashboardhttp.Handler
 	users             *backofficeusershttp.Handler
 	teams             *backofficeteamshttp.Handler
+	sms               *backofficesmshttp.Handler
+	senderIDs         *backofficesenderidshttp.Handler
 	domains           *backofficedomainhttp.Handler
 	currencies        *backofficecurrencieshttp.Handler
 	billingMarkets    *backofficebillingmarketshttp.Handler
@@ -50,6 +54,8 @@ func newRouteRegistrar(
 		if handlers.dashboard == nil ||
 			handlers.users == nil ||
 			handlers.teams == nil ||
+			handlers.sms == nil ||
+			handlers.senderIDs == nil ||
 			handlers.domains == nil ||
 			handlers.currencies == nil ||
 			handlers.billingMarkets == nil ||
@@ -62,6 +68,8 @@ func newRouteRegistrar(
 		backofficedashboardhttp.RegisterRoutes(router, handlers.dashboard, backofficeAccess...)
 		backofficeusershttp.RegisterRoutes(router, handlers.users, backofficeAccess...)
 		backofficeteamshttp.RegisterRoutes(router, handlers.teams, backofficeAccess...)
+		backofficesmshttp.RegisterRoutes(router, handlers.sms, backofficeAccess...)
+		backofficesenderidshttp.RegisterRoutes(router, handlers.senderIDs, backofficeAccess...)
 		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess...)
 		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess...)
 		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess...)
