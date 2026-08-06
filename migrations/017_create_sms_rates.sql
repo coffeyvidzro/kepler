@@ -3,8 +3,7 @@ CREATE TABLE IF NOT EXISTS sms_rates (
 
     billing_market CHAR(2) NOT NULL,
     destination_country CHAR(2) NOT NULL,
-    provider TEXT NOT NULL,
-    route_type TEXT NOT NULL DEFAULT 'standard',
+    route_type TEXT NOT NULL,
     tier TEXT NOT NULL,
     currency CHAR(3) NOT NULL,
     cost_units BIGINT NOT NULL,
@@ -19,7 +18,6 @@ CREATE TABLE IF NOT EXISTS sms_rates (
             id,
             billing_market,
             destination_country,
-            provider,
             route_type,
             tier,
             currency,
@@ -34,19 +32,8 @@ CREATE TABLE IF NOT EXISTS sms_rates (
     CONSTRAINT chk_sms_rates_destination_country
         CHECK (destination_country ~ '^[A-Z]{2}$'),
 
-    CONSTRAINT chk_sms_rates_provider
-        CHECK (
-            length(trim(provider)) > 0
-            AND provider = lower(trim(provider))
-            AND provider !~ '[[:space:]]'
-        ),
-
     CONSTRAINT chk_sms_rates_route_type
-        CHECK (
-            length(trim(route_type)) > 0
-            AND route_type = lower(trim(route_type))
-            AND route_type !~ '[[:space:]]'
-        ),
+        CHECK (route_type IN ('local', 'intl')),
 
     CONSTRAINT chk_sms_rates_tier
         CHECK (tier IN ('growth', 'scale', 'enterprise')),
@@ -66,7 +53,6 @@ ADD CONSTRAINT ex_sms_rates_no_overlap
 EXCLUDE USING gist (
     billing_market WITH =,
     destination_country WITH =,
-    provider WITH =,
     route_type WITH =,
     tier WITH =,
     tstzrange(
@@ -80,7 +66,6 @@ CREATE INDEX IF NOT EXISTS idx_sms_rates_lookup
     ON sms_rates (
         billing_market,
         destination_country,
-        provider,
         route_type,
         tier,
         effective_from DESC
