@@ -42,10 +42,6 @@ func (service *Service) Check(ctx context.Context, value string, req CheckReques
 		if current.Status != StatusPending {
 			return terminalCheckResponse(current), nil
 		}
-		configured, serviceErr := repository.GetService(ctx, locked.ServiceID, access.Scope.TeamID)
-		if serviceErr != nil {
-			return CheckResponse{}, serviceErr
-		}
 		challenge, challengeErr := repository.GetActiveChallengeForUpdate(ctx, id, access.Scope.TeamID)
 		if challengeErr != nil {
 			return CheckResponse{}, challengeErr
@@ -87,7 +83,7 @@ func (service *Service) Check(ctx context.Context, value string, req CheckReques
 			}
 			return CheckResponse{ID: approved.ID, Status: approved.Status, Valid: true}, nil
 		}
-		if incremented.AttemptCount >= configured.MaxAttempts {
+		if incremented.AttemptCount >= current.MaxAttempts {
 			if attemptErr := repository.RecordAttempt(ctx, id, challenge.ID, access.Scope.TeamID, StatusMaxAttemptsReached, validated); attemptErr != nil {
 				return CheckResponse{}, attemptErr
 			}
@@ -144,12 +140,8 @@ func (service *Service) Resend(ctx context.Context, value string) (Verification,
 			return Verification{}, lockErr
 		}
 		current := verificationFromSQLC(locked)
-		configured, serviceErr := repository.GetService(ctx, locked.ServiceID, access.Scope.TeamID)
-		if serviceErr != nil {
-			return Verification{}, serviceErr
-		}
 		now := service.now().UTC()
-		if policyErr := validateResendVerification(current, configured, now); policyErr != nil {
+		if policyErr := validateResendVerification(current, now); policyErr != nil {
 			return Verification{}, policyErr
 		}
 		challenge, challengeErr := repository.GetActiveChallengeForUpdate(ctx, id, access.Scope.TeamID)
@@ -159,14 +151,14 @@ func (service *Service) Resend(ctx context.Context, value string) (Verification,
 		if policyErr := validateResendChallenge(
 			challenge.CreatedAt.Time,
 			challenge.ExpiresAt.Time,
-			configured.ResendCooldownSeconds,
+			current.ResendCooldownSeconds,
 			now,
 		); policyErr != nil {
 			return Verification{}, policyErr
 		}
 		sequence := challenge.Sequence + 1
-		expiresAt := now.Add(time.Duration(configured.TTLSeconds) * time.Second)
-		generated, codeErr := service.codes.Generate(access.Scope.TeamID, id, sequence, configured.CodeLength)
+		expiresAt := now.Add(time.Duration(current.TTLSeconds) * time.Second)
+		generated, codeErr := service.codes.Generate(access.Scope.TeamID, id, sequence, current.CodeLength)
 		if codeErr != nil {
 			return Verification{}, codeErr
 		}
