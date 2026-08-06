@@ -43,32 +43,11 @@ market_record AS MATERIALIZED (
     JOIN team_record AS team ON team.market_code = market.code
     WHERE market.is_enabled = true
 ),
-locked_wallet AS MATERIALIZED (
+wallet_record AS MATERIALIZED (
     SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
     FROM team_wallets AS wallet
     WHERE wallet.team_id = $2
     FOR UPDATE
-),
-activated_wallet AS MATERIALIZED (
-    UPDATE team_wallets AS wallet
-    SET tier = locked.pending_tier,
-        pending_tier = NULL,
-        pending_tier_effective_at = NULL,
-        updated_at = clock.priced_at
-    FROM locked_wallet AS locked
-    CROSS JOIN clock
-    WHERE wallet.team_id = locked.team_id
-      AND locked.pending_tier IS NOT NULL
-      AND locked.pending_tier_effective_at <= clock.priced_at
-    RETURNING wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
-),
-wallet_record AS MATERIALIZED (
-    SELECT team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
-    FROM activated_wallet
-    UNION ALL
-    SELECT team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
-    FROM locked_wallet
-    WHERE NOT EXISTS (SELECT 1 FROM activated_wallet)
 ),
 existing_authorization AS MATERIALIZED (
     SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at
@@ -78,61 +57,18 @@ existing_authorization AS MATERIALIZED (
       AND usage_auth.meter = 'sms_segment'
       AND usage_auth.reference_id = $4
 ),
-policy_record AS MATERIALIZED (
-    SELECT policy.id, policy.product, policy.meter, policy.billing_market, policy.tier, policy.included_quantity, policy.cadence, policy.effective_from, policy.effective_until, policy.created_at, policy.updated_at
-    FROM allowance_policies AS policy
-    CROSS JOIN clock
-    JOIN wallet_record AS wallet
-      ON wallet.billing_market = policy.billing_market
-     AND wallet.tier = policy.tier
-    WHERE policy.product = 'sms'
-      AND policy.meter = 'sms_segment'
-      AND policy.cadence = 'monthly'
-      AND policy.effective_from <= clock.period_start
-      AND (
-          policy.effective_until IS NULL
-          OR policy.effective_until > clock.period_start
-      )
-    ORDER BY policy.effective_from DESC
-    LIMIT 1
-),
 allowance_record AS MATERIALIZED (
-    INSERT INTO usage_allowances (
-        team_id,
-        allowance_policy_id,
-        product,
-        meter,
-        billing_market,
-        tier,
-        period_start,
-        period_end,
-        included_quantity
-    )
-    SELECT
-        wallet.team_id,
-        policy.id,
-        policy.product,
-        policy.meter,
-        wallet.billing_market,
-        wallet.tier,
-        clock.period_start,
-        clock.period_end,
-        policy.included_quantity
-    FROM wallet_record AS wallet
+    SELECT allowance.id, allowance.team_id, allowance.allowance_policy_id, allowance.product, allowance.meter, allowance.billing_market, allowance.tier, allowance.period_start, allowance.period_end, allowance.included_quantity, allowance.consumed_quantity, allowance.created_at, allowance.updated_at
+    FROM usage_allowances AS allowance
     CROSS JOIN clock
-    JOIN policy_record AS policy
-      ON policy.billing_market = wallet.billing_market
-     AND policy.tier = wallet.tier
-    WHERE NOT EXISTS (SELECT 1 FROM existing_authorization)
-    ON CONFLICT (
-        team_id,
-        product,
-        meter,
-        period_start,
-        period_end
-    ) DO UPDATE SET
-        updated_at = usage_allowances.updated_at
-    RETURNING id, team_id, allowance_policy_id, product, meter, billing_market, tier, period_start, period_end, included_quantity, consumed_quantity, created_at, updated_at
+    WHERE allowance.team_id = $2
+      AND allowance.product = 'sms'
+      AND allowance.meter = 'sms_segment'
+      AND allowance.period_start = clock.period_start
+      AND allowance.period_end = clock.period_end
+      AND allowance.consumed_quantity < allowance.included_quantity
+    LIMIT 1
+    FOR UPDATE
 ),
 rate_record AS MATERIALIZED (
     SELECT rate.id, rate.billing_market, rate.destination_country, rate.route_type, rate.tier, rate.currency, rate.cost_units, rate.effective_from, rate.effective_until, rate.created_at
