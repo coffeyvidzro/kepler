@@ -1,7 +1,98 @@
+CREATE TABLE IF NOT EXISTS allowance_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product TEXT NOT NULL,
+    meter TEXT NOT NULL,
+    billing_market CHAR(2) NOT NULL
+        REFERENCES billing_markets(code)
+        ON DELETE RESTRICT,
+    tier TEXT NOT NULL,
+    included_quantity BIGINT NOT NULL,
+    cadence TEXT NOT NULL DEFAULT 'monthly',
+    effective_from TIMESTAMPTZ NOT NULL,
+    effective_until TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_allowance_policies_grant_context
+        UNIQUE (
+            id,
+            product,
+            meter,
+            billing_market,
+            tier,
+            included_quantity
+        ),
+    CONSTRAINT chk_allowance_policies_product
+        CHECK (
+            length(trim(product)) > 0
+            AND product = lower(trim(product))
+            AND product !~ '[[:space:]]'
+        ),
+    CONSTRAINT chk_allowance_policies_meter
+        CHECK (
+            length(trim(meter)) > 0
+            AND meter = lower(trim(meter))
+            AND meter !~ '[[:space:]]'
+        ),
+    CONSTRAINT chk_allowance_policies_tier
+        CHECK (tier IN ('growth', 'scale', 'enterprise')),
+    CONSTRAINT chk_allowance_policies_quantity
+        CHECK (included_quantity > 0),
+    CONSTRAINT chk_allowance_policies_cadence
+        CHECK (cadence = 'monthly'),
+    CONSTRAINT chk_allowance_policies_period
+        CHECK (
+            effective_from = (
+                date_trunc(
+                    'month',
+                    effective_from AT TIME ZONE 'UTC'
+                ) AT TIME ZONE 'UTC'
+            )
+            AND (
+                effective_until IS NULL
+                OR (
+                    effective_until > effective_from
+                    AND effective_until = (
+                        date_trunc(
+                            'month',
+                            effective_until AT TIME ZONE 'UTC'
+                        ) AT TIME ZONE 'UTC'
+                    )
+                )
+            )
+        ),
+    CONSTRAINT ex_allowance_policies_no_overlap
+        EXCLUDE USING gist (
+            product WITH =,
+            meter WITH =,
+            billing_market WITH =,
+            tier WITH =,
+            cadence WITH =,
+            tstzrange(
+                effective_from,
+                COALESCE(effective_until, 'infinity'::timestamptz),
+                '[)'
+            ) WITH &&
+        )
+);
+
+CREATE INDEX IF NOT EXISTS idx_allowance_policies_lookup
+    ON allowance_policies (
+        product,
+        meter,
+        billing_market,
+        tier,
+        effective_from DESC
+    );
+
 CREATE TABLE IF NOT EXISTS usage_allowances (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE RESTRICT,
+    team_id UUID NOT NULL,
+    allowance_policy_id UUID NOT NULL,
+    product TEXT NOT NULL,
     meter TEXT NOT NULL,
+    billing_market CHAR(2) NOT NULL,
+    tier TEXT NOT NULL,
     period_start TIMESTAMPTZ NOT NULL,
     period_end TIMESTAMPTZ NOT NULL,
     included_quantity BIGINT NOT NULL,
@@ -9,20 +100,76 @@ CREATE TABLE IF NOT EXISTS usage_allowances (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_usage_allowances_team_meter_period
-        UNIQUE (team_id, meter, period_start, period_end),
-    CONSTRAINT uq_usage_allowances_id_team_meter
-        UNIQUE (id, team_id, meter),
+    CONSTRAINT uq_usage_allowances_team_product_meter_period
+        UNIQUE (
+            team_id,
+            product,
+            meter,
+            period_start,
+            period_end
+        ),
+    CONSTRAINT uq_usage_allowances_authorization_context
+        UNIQUE (
+            id,
+            team_id,
+            product,
+            meter,
+            billing_market,
+            tier
+        ),
+    CONSTRAINT fk_usage_allowances_policy_context
+        FOREIGN KEY (
+            allowance_policy_id,
+            product,
+            meter,
+            billing_market,
+            tier,
+            included_quantity
+        )
+        REFERENCES allowance_policies (
+            id,
+            product,
+            meter,
+            billing_market,
+            tier,
+            included_quantity
+        )
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_usage_allowances_team_market
+        FOREIGN KEY (team_id, billing_market)
+        REFERENCES teams(id, market_code)
+        ON DELETE RESTRICT,
+    CONSTRAINT chk_usage_allowances_product
+        CHECK (
+            length(trim(product)) > 0
+            AND product = lower(trim(product))
+            AND product !~ '[[:space:]]'
+        ),
     CONSTRAINT chk_usage_allowances_meter
         CHECK (
             length(trim(meter)) > 0
             AND meter = lower(trim(meter))
             AND meter !~ '[[:space:]]'
         ),
+    CONSTRAINT chk_usage_allowances_tier
+        CHECK (tier IN ('growth', 'scale', 'enterprise')),
     CONSTRAINT chk_usage_allowances_period
-        CHECK (period_end > period_start),
+        CHECK (
+            period_start = (
+                date_trunc(
+                    'month',
+                    period_start AT TIME ZONE 'UTC'
+                ) AT TIME ZONE 'UTC'
+            )
+            AND period_end = (
+                date_trunc(
+                    'month',
+                    period_start AT TIME ZONE 'UTC'
+                ) + interval '1 month'
+            ) AT TIME ZONE 'UTC'
+        ),
     CONSTRAINT chk_usage_allowances_included_quantity
-        CHECK (included_quantity >= 0),
+        CHECK (included_quantity > 0),
     CONSTRAINT chk_usage_allowances_consumed_quantity
         CHECK (
             consumed_quantity >= 0
@@ -31,17 +178,25 @@ CREATE TABLE IF NOT EXISTS usage_allowances (
     CONSTRAINT ex_usage_allowances_no_overlap
         EXCLUDE USING gist (
             team_id WITH =,
+            product WITH =,
             meter WITH =,
             tstzrange(period_start, period_end, '[)') WITH &&
         )
 );
 
-CREATE INDEX IF NOT EXISTS idx_usage_allowances_team_meter_period
+CREATE INDEX IF NOT EXISTS idx_usage_allowances_team_product_meter_period
     ON usage_allowances (
         team_id,
+        product,
         meter,
         period_start DESC,
         period_end DESC
+    );
+
+CREATE INDEX IF NOT EXISTS idx_usage_allowances_policy
+    ON usage_allowances (
+        allowance_policy_id,
+        period_start DESC
     );
 
 CREATE TABLE IF NOT EXISTS usage_authorizations (
@@ -70,14 +225,28 @@ CREATE TABLE IF NOT EXISTS usage_authorizations (
     priced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_usage_authorizations_team_meter_reference
-        UNIQUE (team_id, meter, reference_id),
+    CONSTRAINT uq_usage_authorizations_team_product_meter_reference
+        UNIQUE (team_id, product, meter, reference_id),
     CONSTRAINT uq_usage_authorizations_id_team
         UNIQUE (id, team_id),
 
-    CONSTRAINT fk_usage_authorizations_allowance_same_team_meter
-        FOREIGN KEY (usage_allowance_id, team_id, meter)
-        REFERENCES usage_allowances (id, team_id, meter)
+    CONSTRAINT fk_usage_authorizations_allowance_context
+        FOREIGN KEY (
+            usage_allowance_id,
+            team_id,
+            product,
+            meter,
+            billing_market,
+            tier
+        )
+        REFERENCES usage_allowances (
+            id,
+            team_id,
+            product,
+            meter,
+            billing_market,
+            tier
+        )
         ON DELETE RESTRICT,
 
     CONSTRAINT fk_usage_authorizations_wallet_market_currency
@@ -221,8 +390,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_wallet_ledger_usage_authorization
 CREATE INDEX IF NOT EXISTS idx_usage_authorizations_team_created
     ON usage_authorizations (team_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_usage_authorizations_team_meter_created
-    ON usage_authorizations (team_id, meter, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_authorizations_team_product_meter_created
+    ON usage_authorizations (
+        team_id,
+        product,
+        meter,
+        created_at DESC
+    );
 
 CREATE INDEX IF NOT EXISTS idx_usage_authorizations_usage_allowance
     ON usage_authorizations (usage_allowance_id, created_at DESC)

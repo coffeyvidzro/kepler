@@ -14,7 +14,14 @@ import (
 
 const authorizeSMSCharge = `-- name: AuthorizeSMSCharge :one
 WITH clock AS MATERIALIZED (
-    SELECT now() AS priced_at
+    SELECT
+        now() AS priced_at,
+        date_trunc('month', now() AT TIME ZONE 'UTC')
+            AT TIME ZONE 'UTC' AS period_start,
+        (
+            date_trunc('month', now() AT TIME ZONE 'UTC')
+            + interval '1 month'
+        ) AT TIME ZONE 'UTC' AS period_end
 ),
 team_record AS MATERIALIZED (
     SELECT team.id, team.status, team.market_code
@@ -37,7 +44,7 @@ market_record AS MATERIALIZED (
     WHERE market.is_enabled = true
 ),
 wallet_record AS MATERIALIZED (
-    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.created_at, wallet.updated_at
+    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
     FROM team_wallets AS wallet
     WHERE wallet.team_id = $2
     FOR UPDATE
@@ -46,19 +53,20 @@ existing_authorization AS MATERIALIZED (
     SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at
     FROM usage_authorizations AS usage_auth
     WHERE usage_auth.team_id = $2
+      AND usage_auth.product = 'sms'
       AND usage_auth.meter = 'sms_segment'
       AND usage_auth.reference_id = $4
 ),
 allowance_record AS MATERIALIZED (
-    SELECT allowance.id, allowance.team_id, allowance.meter, allowance.period_start, allowance.period_end, allowance.included_quantity, allowance.consumed_quantity, allowance.created_at, allowance.updated_at
+    SELECT allowance.id, allowance.team_id, allowance.allowance_policy_id, allowance.product, allowance.meter, allowance.billing_market, allowance.tier, allowance.period_start, allowance.period_end, allowance.included_quantity, allowance.consumed_quantity, allowance.created_at, allowance.updated_at
     FROM usage_allowances AS allowance
     CROSS JOIN clock
     WHERE allowance.team_id = $2
+      AND allowance.product = 'sms'
       AND allowance.meter = 'sms_segment'
-      AND allowance.period_start <= clock.priced_at
-      AND allowance.period_end > clock.priced_at
+      AND allowance.period_start = clock.period_start
+      AND allowance.period_end = clock.period_end
       AND allowance.consumed_quantity < allowance.included_quantity
-    ORDER BY allowance.period_start DESC
     LIMIT 1
     FOR UPDATE
 ),
@@ -90,7 +98,10 @@ plan AS MATERIALIZED (
         LEAST(
             $1::bigint,
             GREATEST(
-                COALESCE(allowance.included_quantity - allowance.consumed_quantity, 0),
+                COALESCE(
+                    allowance.included_quantity - allowance.consumed_quantity,
+                    0
+                ),
                 0
             )
         )::bigint AS allowance_quantity,
@@ -106,11 +117,16 @@ plan AS MATERIALIZED (
 priced_plan AS MATERIALIZED (
     SELECT
         plan.team_id, plan.billing_market, plan.currency, plan.tier, plan.balance_units, plan.route_type, plan.usage_allowance_id, plan.allowance_quantity, plan.sms_rate_id, plan.unit_cost_units, plan.priced_at,
-        ($1::bigint - plan.allowance_quantity)::bigint AS billable_quantity,
+        ($1::bigint - plan.allowance_quantity)::bigint
+            AS billable_quantity,
         CASE
-            WHEN $1::bigint - plan.allowance_quantity = 0 THEN 0::bigint
+            WHEN $1::bigint - plan.allowance_quantity = 0
+                THEN 0::bigint
             WHEN plan.unit_cost_units > 9223372036854775807 /
-                NULLIF($1::bigint - plan.allowance_quantity, 0)
+                NULLIF(
+                    $1::bigint - plan.allowance_quantity,
+                    0
+                )
                 THEN NULL::bigint
             ELSE plan.unit_cost_units *
                 ($1::bigint - plan.allowance_quantity)
@@ -156,24 +172,32 @@ inserted_authorization AS (
         plan.tier,
         plan.priced_at
     FROM priced_plan AS plan
-    JOIN team_record AS team ON team.id = plan.team_id AND team.status = 'active'
-    JOIN market_record AS market ON market.code = plan.billing_market AND market.currency = plan.currency
+    JOIN team_record AS team
+      ON team.id = plan.team_id
+     AND team.status = 'active'
+    JOIN market_record AS market
+      ON market.code = plan.billing_market
+     AND market.currency = plan.currency
     WHERE $1::bigint > 0
       AND NOT EXISTS (SELECT 1 FROM existing_authorization)
       AND plan.amount_units IS NOT NULL
       AND (plan.billable_quantity = 0 OR plan.sms_rate_id IS NOT NULL)
       AND plan.balance_units >= plan.amount_units
-    ON CONFLICT (team_id, meter, reference_id) DO NOTHING
+    ON CONFLICT (team_id, product, meter, reference_id) DO NOTHING
     RETURNING id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at
 ),
 updated_allowance AS (
     UPDATE usage_allowances AS allowance
-    SET consumed_quantity = allowance.consumed_quantity + usage_auth.allowance_quantity,
+    SET consumed_quantity = allowance.consumed_quantity
+            + usage_auth.allowance_quantity,
         updated_at = now()
     FROM inserted_authorization AS usage_auth
     WHERE allowance.id = usage_auth.usage_allowance_id
       AND usage_auth.allowance_quantity > 0
-    RETURNING allowance.id, allowance.included_quantity, allowance.consumed_quantity
+    RETURNING
+        allowance.id,
+        allowance.included_quantity,
+        allowance.consumed_quantity
 ),
 inserted_ledger AS (
     INSERT INTO wallet_ledger (
@@ -202,43 +226,83 @@ updated_wallet AS (
     RETURNING wallet.balance_units
 ),
 resolved_authorization AS MATERIALIZED (
-    SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at FROM existing_authorization
+    SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at
+    FROM existing_authorization
     UNION ALL
-    SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at FROM inserted_authorization
+    SELECT id, team_id, product, meter, reference_id, usage_allowance_id, sms_rate_id, product_rate_id, billing_market, destination_country, route_type, total_quantity, allowance_quantity, billable_quantity, unit_cost_units, amount_units, currency, tier, priced_at, created_at
+    FROM inserted_authorization
     LIMIT 1
 )
 SELECT
     CASE
         WHEN NOT EXISTS (SELECT 1 FROM team_record) THEN 'team_not_found'
-        WHEN EXISTS (SELECT 1 FROM team_record WHERE status <> 'active') THEN 'team_inactive'
+        WHEN EXISTS (
+            SELECT 1
+            FROM team_record
+            WHERE status <> 'active'
+        ) THEN 'team_inactive'
         WHEN NOT EXISTS (SELECT 1 FROM market_record) THEN 'unsupported_market'
         WHEN NOT EXISTS (SELECT 1 FROM wallet_record) THEN 'wallet_not_found'
         WHEN EXISTS (SELECT 1 FROM existing_authorization) THEN 'already_applied'
         WHEN EXISTS (
-            SELECT 1 FROM priced_plan
-            WHERE billable_quantity > 0 AND sms_rate_id IS NULL
+            SELECT 1
+            FROM priced_plan
+            WHERE billable_quantity > 0
+              AND sms_rate_id IS NULL
         ) THEN 'rate_not_found'
-        WHEN EXISTS (SELECT 1 FROM priced_plan WHERE amount_units IS NULL) THEN 'amount_overflow'
         WHEN EXISTS (
-            SELECT 1 FROM priced_plan
-            WHERE amount_units IS NOT NULL AND balance_units < amount_units
+            SELECT 1
+            FROM priced_plan
+            WHERE amount_units IS NULL
+        ) THEN 'amount_overflow'
+        WHEN EXISTS (
+            SELECT 1
+            FROM priced_plan
+            WHERE amount_units IS NOT NULL
+              AND balance_units < amount_units
         ) THEN 'insufficient_balance'
         WHEN EXISTS (
-            SELECT 1 FROM inserted_authorization
+            SELECT 1
+            FROM inserted_authorization
             WHERE allowance_quantity = total_quantity
         ) THEN 'allowance_applied'
         WHEN EXISTS (SELECT 1 FROM inserted_authorization) THEN 'applied'
         ELSE 'already_applied'
     END AS outcome,
-    COALESCE((SELECT billing_market FROM resolved_authorization), (SELECT billing_market FROM wallet_record), '')::text AS market_code,
-    COALESCE((SELECT currency FROM resolved_authorization), (SELECT currency FROM wallet_record), '')::text AS currency,
-    COALESCE((SELECT tier FROM resolved_authorization), (SELECT tier FROM wallet_record), '')::text AS tier,
+    COALESCE(
+        (SELECT billing_market FROM resolved_authorization),
+        (SELECT billing_market FROM wallet_record),
+        ''
+    )::text AS market_code,
+    COALESCE(
+        (SELECT currency FROM resolved_authorization),
+        (SELECT currency FROM wallet_record),
+        ''
+    )::text AS currency,
+    COALESCE(
+        (SELECT tier FROM resolved_authorization),
+        (SELECT tier FROM wallet_record),
+        ''
+    )::text AS tier,
     'sms'::text AS product,
-    COALESCE((SELECT unit_cost_units FROM resolved_authorization), 0)::bigint AS unit_cost_units,
+    COALESCE(
+        (SELECT unit_cost_units FROM resolved_authorization),
+        0
+    )::bigint AS unit_cost_units,
     $1::bigint AS quantity,
-    COALESCE((SELECT amount_units FROM resolved_authorization), 0)::bigint AS amount_units,
-    COALESCE((SELECT balance_units FROM updated_wallet), (SELECT balance_units FROM wallet_record), 0)::bigint AS balance_units,
-    COALESCE((SELECT allowance_quantity > 0 FROM resolved_authorization), false)::boolean AS covered_by_allowance,
+    COALESCE(
+        (SELECT amount_units FROM resolved_authorization),
+        0
+    )::bigint AS amount_units,
+    COALESCE(
+        (SELECT balance_units FROM updated_wallet),
+        (SELECT balance_units FROM wallet_record),
+        0
+    )::bigint AS balance_units,
+    COALESCE(
+        (SELECT allowance_quantity > 0 FROM resolved_authorization),
+        false
+    )::boolean AS covered_by_allowance,
     COALESCE(
         (SELECT included_quantity - consumed_quantity FROM updated_allowance),
         (SELECT included_quantity - consumed_quantity FROM allowance_record),
@@ -293,7 +357,7 @@ func (q *Queries) AuthorizeSMSCharge(ctx context.Context, arg AuthorizeSMSCharge
 
 const creditTeamWallet = `-- name: CreditTeamWallet :one
 WITH locked_wallet AS MATERIALIZED (
-    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.created_at, wallet.updated_at
+    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
     FROM team_wallets AS wallet
     WHERE wallet.team_id = $1
     FOR UPDATE
@@ -322,9 +386,9 @@ updated_wallet AS (
         updated_at = now()
     FROM inserted_ledger AS ledger
     WHERE wallet.team_id = ledger.team_id
-    RETURNING wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.created_at, wallet.updated_at
+    RETURNING wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
 )
-SELECT team_id, billing_market, currency, balance_units, tier, created_at, updated_at
+SELECT team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
 FROM updated_wallet
 `
 
@@ -336,13 +400,15 @@ type CreditTeamWalletParams struct {
 }
 
 type CreditTeamWalletRow struct {
-	TeamID        uuid.UUID          `db:"team_id" json:"team_id"`
-	BillingMarket string             `db:"billing_market" json:"billing_market"`
-	Currency      string             `db:"currency" json:"currency"`
-	BalanceUnits  int64              `db:"balance_units" json:"balance_units"`
-	Tier          string             `db:"tier" json:"tier"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	TeamID                 uuid.UUID          `db:"team_id" json:"team_id"`
+	BillingMarket          string             `db:"billing_market" json:"billing_market"`
+	Currency               string             `db:"currency" json:"currency"`
+	BalanceUnits           int64              `db:"balance_units" json:"balance_units"`
+	Tier                   string             `db:"tier" json:"tier"`
+	PendingTier            *string            `db:"pending_tier" json:"pending_tier"`
+	PendingTierEffectiveAt pgtype.Timestamptz `db:"pending_tier_effective_at" json:"pending_tier_effective_at"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) CreditTeamWallet(ctx context.Context, arg CreditTeamWalletParams) (CreditTeamWalletRow, error) {
@@ -359,6 +425,8 @@ func (q *Queries) CreditTeamWallet(ctx context.Context, arg CreditTeamWalletPara
 		&i.Currency,
 		&i.BalanceUnits,
 		&i.Tier,
+		&i.PendingTier,
+		&i.PendingTierEffectiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -367,7 +435,7 @@ func (q *Queries) CreditTeamWallet(ctx context.Context, arg CreditTeamWalletPara
 
 const debitTeamWallet = `-- name: DebitTeamWallet :one
 WITH locked_wallet AS MATERIALIZED (
-    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.created_at, wallet.updated_at
+    SELECT wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
     FROM team_wallets AS wallet
     WHERE wallet.team_id = $1
     FOR UPDATE
@@ -397,9 +465,9 @@ updated_wallet AS (
         updated_at = now()
     FROM inserted_ledger AS ledger
     WHERE wallet.team_id = ledger.team_id
-    RETURNING wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.created_at, wallet.updated_at
+    RETURNING wallet.team_id, wallet.billing_market, wallet.currency, wallet.balance_units, wallet.tier, wallet.pending_tier, wallet.pending_tier_effective_at, wallet.created_at, wallet.updated_at
 )
-SELECT team_id, billing_market, currency, balance_units, tier, created_at, updated_at
+SELECT team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
 FROM updated_wallet
 `
 
@@ -411,13 +479,15 @@ type DebitTeamWalletParams struct {
 }
 
 type DebitTeamWalletRow struct {
-	TeamID        uuid.UUID          `db:"team_id" json:"team_id"`
-	BillingMarket string             `db:"billing_market" json:"billing_market"`
-	Currency      string             `db:"currency" json:"currency"`
-	BalanceUnits  int64              `db:"balance_units" json:"balance_units"`
-	Tier          string             `db:"tier" json:"tier"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	TeamID                 uuid.UUID          `db:"team_id" json:"team_id"`
+	BillingMarket          string             `db:"billing_market" json:"billing_market"`
+	Currency               string             `db:"currency" json:"currency"`
+	BalanceUnits           int64              `db:"balance_units" json:"balance_units"`
+	Tier                   string             `db:"tier" json:"tier"`
+	PendingTier            *string            `db:"pending_tier" json:"pending_tier"`
+	PendingTierEffectiveAt pgtype.Timestamptz `db:"pending_tier_effective_at" json:"pending_tier_effective_at"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) DebitTeamWallet(ctx context.Context, arg DebitTeamWalletParams) (DebitTeamWalletRow, error) {
@@ -434,6 +504,8 @@ func (q *Queries) DebitTeamWallet(ctx context.Context, arg DebitTeamWalletParams
 		&i.Currency,
 		&i.BalanceUnits,
 		&i.Tier,
+		&i.PendingTier,
+		&i.PendingTierEffectiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -486,7 +558,7 @@ func (q *Queries) GetActiveProductRate(ctx context.Context, arg GetActiveProduct
 }
 
 const getTeamWallet = `-- name: GetTeamWallet :one
-SELECT team_id, billing_market, currency, balance_units, tier, created_at, updated_at
+SELECT team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
 FROM team_wallets
 WHERE team_id = $1
 `
@@ -504,6 +576,8 @@ func (q *Queries) GetTeamWallet(ctx context.Context, arg GetTeamWalletParams) (T
 		&i.Currency,
 		&i.BalanceUnits,
 		&i.Tier,
+		&i.PendingTier,
+		&i.PendingTierEffectiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -555,10 +629,20 @@ func (q *Queries) ListWalletLedger(ctx context.Context, arg ListWalletLedgerPara
 
 const updateTeamWalletTier = `-- name: UpdateTeamWalletTier :one
 UPDATE team_wallets
-SET tier = $1,
+SET pending_tier = CASE
+        WHEN tier = $1::text THEN NULL
+        ELSE $1::text
+    END,
+    pending_tier_effective_at = CASE
+        WHEN tier = $1::text THEN NULL
+        ELSE (
+            date_trunc('month', now() AT TIME ZONE 'UTC')
+            + interval '1 month'
+        ) AT TIME ZONE 'UTC'
+    END,
     updated_at = now()
 WHERE team_id = $2
-RETURNING team_id, billing_market, currency, balance_units, tier, created_at, updated_at
+RETURNING team_id, billing_market, currency, balance_units, tier, pending_tier, pending_tier_effective_at, created_at, updated_at
 `
 
 type UpdateTeamWalletTierParams struct {
@@ -575,6 +659,8 @@ func (q *Queries) UpdateTeamWalletTier(ctx context.Context, arg UpdateTeamWallet
 		&i.Currency,
 		&i.BalanceUnits,
 		&i.Tier,
+		&i.PendingTier,
+		&i.PendingTierEffectiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

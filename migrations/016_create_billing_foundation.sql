@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS team_wallets (
     currency CHAR(3) NOT NULL,
     balance_units BIGINT NOT NULL DEFAULT 0,
     tier TEXT NOT NULL DEFAULT 'growth',
+    pending_tier TEXT,
+    pending_tier_effective_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
@@ -50,7 +52,32 @@ CREATE TABLE IF NOT EXISTS team_wallets (
         CHECK (balance_units >= 0),
 
     CONSTRAINT chk_team_wallets_tier
-        CHECK (tier IN ('growth', 'scale', 'enterprise'))
+        CHECK (tier IN ('growth', 'scale', 'enterprise')),
+
+    CONSTRAINT chk_team_wallets_pending_tier
+        CHECK (
+            pending_tier IS NULL
+            OR pending_tier IN ('growth', 'scale', 'enterprise')
+        ),
+
+    CONSTRAINT chk_team_wallets_pending_tier_schedule
+        CHECK (
+            (
+                pending_tier IS NULL
+                AND pending_tier_effective_at IS NULL
+            )
+            OR
+            (
+                pending_tier IS NOT NULL
+                AND pending_tier_effective_at IS NOT NULL
+                AND pending_tier_effective_at = (
+                    date_trunc(
+                        'month',
+                        pending_tier_effective_at AT TIME ZONE 'UTC'
+                    ) AT TIME ZONE 'UTC'
+                )
+            )
+        )
 );
 
 CREATE TABLE IF NOT EXISTS wallet_ledger (

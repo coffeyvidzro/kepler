@@ -28,6 +28,16 @@ func (r *Repository) ChargeSMS(
 	if err := lockTeamBilling(ctx, tx, input.TeamID); err != nil {
 		return Charge{}, err
 	}
+	if err := prepareUsageAllowance(
+		ctx,
+		tx,
+		input.TeamID,
+		ProductSMS,
+		"sms_segment",
+		input.MessageID.String(),
+	); err != nil {
+		return Charge{}, err
+	}
 	row, err := r.queries.WithTx(tx).AuthorizeSMSCharge(ctx, dbsqlc.AuthorizeSMSChargeParams{
 		TeamID: input.TeamID, ReferenceID: input.MessageID.String(),
 		DestinationCountry: input.destinationCountry, Quantity: int64(input.Segments),
@@ -49,6 +59,16 @@ func (r *Repository) ChargeEmail(
 	input EmailChargeInput,
 ) (Charge, error) {
 	if err := lockTeamBilling(ctx, tx, input.TeamID); err != nil {
+		return Charge{}, err
+	}
+	if err := prepareUsageAllowance(
+		ctx,
+		tx,
+		input.TeamID,
+		ProductEmail,
+		"email_recipient",
+		input.MessageID.String(),
+	); err != nil {
 		return Charge{}, err
 	}
 	charge, err := chargeEmailUsage(ctx, tx, input)
