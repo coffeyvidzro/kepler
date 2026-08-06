@@ -845,7 +845,7 @@ type emailLifecyclePayload struct {
 }
 
 func NewRepositoryWithWebhookEmitter(db *pgxpool.Pool, emitter webhookEmitter) *Repository {
-	repository := NewRepository(db, nil)
+	repository := NewRepository(db, outbox.NewRepository(db))
 	repository.emitter = emitter
 	return repository
 }
