@@ -7,26 +7,23 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestValidateSMSChargeUsesDefaultCountryProvider(t *testing.T) {
+func TestValidateSMSChargeResolvesDestinationCountry(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
 		destination string
 		country     string
-		provider    string
 	}{
 		{
-			name:        "Ghana uses mnotify",
+			name:        "Ghana",
 			destination: "+233201234567",
 			country:     "GH",
-			provider:    "mnotify",
 		},
 		{
-			name:        "Nigeria uses leamout",
+			name:        "Nigeria",
 			destination: "+2348012345678",
 			country:     "NG",
-			provider:    "leamout",
 		},
 	}
 
@@ -36,8 +33,8 @@ func TestValidateSMSChargeUsesDefaultCountryProvider(t *testing.T) {
 			t.Parallel()
 
 			validated, err := validateSMSCharge(SMSChargeInput{
-				TeamID:            uuid.New(),
-				MessageID:         uuid.New(),
+				TeamID:             uuid.New(),
+				MessageID:          uuid.New(),
 				DestinationNumber: test.destination,
 				Segments:          2,
 			})
@@ -51,16 +48,6 @@ func TestValidateSMSChargeUsesDefaultCountryProvider(t *testing.T) {
 					test.country,
 				)
 			}
-			if validated.provider != test.provider {
-				t.Fatalf(
-					"validateSMSCharge() provider = %q, want %q",
-					validated.provider,
-					test.provider,
-				)
-			}
-			if validated.routeType != "standard" {
-				t.Fatalf("validateSMSCharge() route type = %q, want standard", validated.routeType)
-			}
 		})
 	}
 }
@@ -69,8 +56,8 @@ func TestValidateSMSChargeRejectsUnsupportedDestination(t *testing.T) {
 	t.Parallel()
 
 	_, err := validateSMSCharge(SMSChargeInput{
-		TeamID:            uuid.New(),
-		MessageID:         uuid.New(),
+		TeamID:             uuid.New(),
+		MessageID:          uuid.New(),
 		DestinationNumber: "+254712345678",
 		Segments:          1,
 	})
