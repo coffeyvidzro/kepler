@@ -149,35 +149,58 @@ func (service *Service) Send(ctx context.Context, request SendRequest) (*SendRes
 	}
 
 	attempts := make([]ProviderAttempt, 0, len(providerIDs))
-	for _, rawProviderID := range providerIDs {
-		providerID := normalizeProviderID(rawProviderID)
-		upstream, exists := service.providers[providerID]
-		if providerID == "" || !exists || upstream == nil {
-			attempts = append(attempts, ProviderAttempt{
-				ProviderID: providerID,
-				Err:        fmt.Errorf("%w: %s", ErrProviderNotFound, providerID),
-			})
-			break
-		}
-
-		response, attemptErr := upstream.Send(ctx, request)
+	for _, providerID := range providerIDs {
+		response, attemptErr := service.SendWithProvider(ctx, providerID, request)
 		if attemptErr == nil {
-			attemptErr = validateSendResponse(providerID, response)
-			if attemptErr == nil {
-				return response, nil
-			}
+			return response, nil
 		}
-
-		attempts = append(attempts, ProviderAttempt{
-			ProviderID: providerID,
-			Err:        attemptErr,
-		})
-		if !service.router.ShouldFallback(ctx, providerID, attemptErr) {
+		providerID = normalizeProviderID(providerID)
+		attempts = append(attempts, ProviderAttempt{ProviderID: providerID, Err: attemptErr})
+		if !service.ShouldFallback(ctx, providerID, attemptErr) {
 			break
 		}
 	}
-
 	return nil, &SendError{Attempts: attempts}
+}
+
+func (service *Service) SendWithProvider(
+	ctx context.Context,
+	providerID string,
+	request SendRequest,
+) (*SendResponse, error) {
+	if service == nil || service.router == nil {
+		return nil, ErrRouterRequired
+	}
+	if ctx == nil {
+		return nil, errors.New("SMS send context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	request = request.Normalize()
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	providerID = normalizeProviderID(providerID)
+	upstream, exists := service.providers[providerID]
+	if providerID == "" || !exists || upstream == nil {
+		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerID)
+	}
+	response, err := upstream.Send(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSendResponse(providerID, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (service *Service) ShouldFallback(ctx context.Context, providerID string, err error) bool {
+	if service == nil || service.router == nil {
+		return false
+	}
+	return service.router.ShouldFallback(ctx, providerID, err)
 }
 
 func (service *Service) CheckStatus(ctx context.Context, providerID, providerMessageID string) (*StatusResponse, error) {

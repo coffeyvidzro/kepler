@@ -14,6 +14,7 @@ import (
 type Request struct {
 	TeamID               uuid.UUID
 	Channel              messaging.Channel
+	SenderAssetID        *uuid.UUID
 	DestinationCountry   string
 	DestinationRegion    string
 	RequiredCapabilities []sender.Capability
@@ -25,6 +26,9 @@ func (request Request) Validate() error {
 	}
 	if !request.Channel.Valid() {
 		return errors.New("routing channel is invalid")
+	}
+	if request.SenderAssetID != nil && *request.SenderAssetID == uuid.Nil {
+		return errors.New("routing sender asset ID is invalid")
 	}
 	country := strings.TrimSpace(request.DestinationCountry)
 	if country != "" && !validCountryCode(country) {
@@ -51,6 +55,7 @@ type RejectionCode string
 
 const (
 	RejectionInvalidCandidate      RejectionCode = "invalid_candidate"
+	RejectionSenderAssetMismatch   RejectionCode = "sender_asset_mismatch"
 	RejectionAssetUnavailable      RejectionCode = "asset_unavailable"
 	RejectionAssetUnhealthy        RejectionCode = "asset_unhealthy"
 	RejectionGrantUnavailable      RejectionCode = "grant_unavailable"
@@ -84,8 +89,12 @@ func Evaluate(request Request, candidate Candidate) Evaluation {
 	if asset.ID == uuid.Nil || grant.ID == uuid.Nil || binding.ID == uuid.Nil ||
 		grant.SenderAssetID != asset.ID || binding.SenderAssetID != asset.ID ||
 		grant.TeamID != request.TeamID || grant.Channel != request.Channel ||
-		asset.Channel != request.Channel {
+		asset.Channel != request.Channel || strings.TrimSpace(binding.Provider) == "" ||
+		strings.TrimSpace(binding.ProviderAccount) == "" {
 		rejections = append(rejections, Rejection{Code: RejectionInvalidCandidate})
+	}
+	if request.SenderAssetID != nil && asset.ID != *request.SenderAssetID {
+		rejections = append(rejections, Rejection{Code: RejectionSenderAssetMismatch})
 	}
 	if asset.Status != sender.AssetStatusActive {
 		rejections = append(rejections, Rejection{Code: RejectionAssetUnavailable})

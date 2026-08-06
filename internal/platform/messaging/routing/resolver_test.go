@@ -98,3 +98,29 @@ func candidate(teamID uuid.UUID, provider string, defaultGrant, verified bool, c
 		Capabilities: capabilities,
 	}
 }
+
+func TestResolverResolveAllRestrictsSenderAsset(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+	selected := candidate(teamID, "alpha", false, true, "GH")
+	other := candidate(teamID, "beta", true, true, "GH")
+	assetID := selected.Asset.ID
+	resolver, err := NewResolver(repositoryStub{candidates: []Candidate{other, selected}}, DeterministicStrategy{})
+	if err != nil {
+		t.Fatalf("NewResolver() error = %v", err)
+	}
+
+	routes, err := resolver.ResolveAll(context.Background(), Request{
+		TeamID:             teamID,
+		Channel:            messaging.ChannelSMS,
+		SenderAssetID:      &assetID,
+		DestinationCountry: "GH",
+	})
+	if err != nil {
+		t.Fatalf("Resolver.ResolveAll() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].SenderAssetID != assetID {
+		t.Fatalf("Resolver.ResolveAll() routes = %#v, want only asset %s", routes, assetID)
+	}
+}
