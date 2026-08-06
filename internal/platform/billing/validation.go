@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
+	platformsmsrouting "github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
 )
 
 var (
@@ -29,18 +30,13 @@ func validateSMSCharge(input SMSChargeInput) (SMSChargeInput, error) {
 	if err != nil {
 		return SMSChargeInput{}, ErrInvalidDestination
 	}
-	input.destinationCountry = destinationCountry
-	input.routeType = "standard"
-	switch destinationCountry {
-	case "GH":
-		input.provider = "mnotify"
-	case "KE":
-		input.provider = "celcom"
-	case "NG":
-		input.provider = "arkesel"
-	default:
+	provider, ok := platformsmsrouting.DefaultProviderID(destinationCountry)
+	if !ok {
 		return SMSChargeInput{}, ErrInvalidDestination
 	}
+	input.destinationCountry = destinationCountry
+	input.provider = provider
+	input.routeType = "standard"
 	if input.Segments <= 0 {
 		return SMSChargeInput{}, ErrInvalidSegments
 	}
