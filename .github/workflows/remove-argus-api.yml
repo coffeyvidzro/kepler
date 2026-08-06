@@ -78,6 +78,7 @@ jobs:
               '''\targusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"\n''',
               '''\targusmodule "github.com/coffeyvidzro/dugble/server/internal/modules/argus"\n''',
               '''\targushttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/argus"\n''',
+              '''\tproductRuntime, err := New(Dependencies{WebhookEmitter: webhookEmitter})\n\tif err != nil {\n\t\treturn fail(fmt.Errorf("initialize product runtime: %w", err))\n\t}\n\n''',
               '''\n\targusSecret := []byte(cfg.Argus.HMACSecret)\n\targusCodes, err := argusmodule.NewCodeManager(argusSecret, mfaCipher)\n\tif err != nil {\n\t\treturn fail(fmt.Errorf("initialize verify code manager: %w", err))\n\t}\n\targusService := argusmodule.NewService(\n\t\targusmodule.NewRepository(db),\n\t\targusCodes,\n\t\targusdispatch.NewQueue(outboxRepository),\n\t\tproductRuntime.Events,\n\t)\n''',
               '''\t\targushttp.RegisterRoutes(router, argushttp.NewHandler(argusService), tenantAccess)\n''',
           ], "internal/dugble/server/wire.go"))
