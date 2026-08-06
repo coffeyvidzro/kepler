@@ -21,7 +21,7 @@ WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
   AND expires_at > now()
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type ApproveVerificationParams struct {
@@ -35,10 +35,14 @@ func (q *Queries) ApproveVerification(ctx context.Context, arg ApproveVerificati
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -63,7 +67,7 @@ SET status = 'canceled',
 WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type CancelVerificationParams struct {
@@ -77,10 +81,14 @@ func (q *Queries) CancelVerification(ctx context.Context, arg CancelVerification
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -99,31 +107,34 @@ func (q *Queries) CancelVerification(ctx context.Context, arg CancelVerification
 
 const createVerification = `-- name: CreateVerification :one
 INSERT INTO verifications (
-    team_id, service_id, channel, recipient, recipient_normalized,
+    team_id, channel, recipient, recipient_normalized,
+    code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends,
     status, locale, metadata, expires_at
 )
 SELECT
-    service.team_id, service.id, $1, $2,
-    $3, 'pending', $4,
-    $5, $6
-FROM verification_services AS service
-JOIN teams AS team ON team.id = service.team_id
-WHERE service.id = $7
-  AND service.team_id = $8
-  AND service.enabled = true
+    team.id, $1, $2, $3,
+    $4, $5, $6,
+    $7, $8,
+    'pending', $9, $10, $11
+FROM teams AS team
+WHERE team.id = $12
   AND team.status = 'active'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type CreateVerificationParams struct {
-	Channel             string             `db:"channel" json:"channel"`
-	Recipient           string             `db:"recipient" json:"recipient"`
-	RecipientNormalized string             `db:"recipient_normalized" json:"recipient_normalized"`
-	Locale              *string            `db:"locale" json:"locale"`
-	Metadata            []byte             `db:"metadata" json:"metadata"`
-	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ServiceID           uuid.UUID          `db:"service_id" json:"service_id"`
-	TeamID              uuid.UUID          `db:"team_id" json:"team_id"`
+	Channel               string             `db:"channel" json:"channel"`
+	Recipient             string             `db:"recipient" json:"recipient"`
+	RecipientNormalized   string             `db:"recipient_normalized" json:"recipient_normalized"`
+	CodeLength            int32              `db:"code_length" json:"code_length"`
+	TtlSeconds            int32              `db:"ttl_seconds" json:"ttl_seconds"`
+	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
+	ResendCooldownSeconds int32              `db:"resend_cooldown_seconds" json:"resend_cooldown_seconds"`
+	MaxResends            int32              `db:"max_resends" json:"max_resends"`
+	Locale                *string            `db:"locale" json:"locale"`
+	Metadata              []byte             `db:"metadata" json:"metadata"`
+	ExpiresAt             pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	TeamID                uuid.UUID          `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) CreateVerification(ctx context.Context, arg CreateVerificationParams) (Verification, error) {
@@ -131,20 +142,28 @@ func (q *Queries) CreateVerification(ctx context.Context, arg CreateVerification
 		arg.Channel,
 		arg.Recipient,
 		arg.RecipientNormalized,
+		arg.CodeLength,
+		arg.TtlSeconds,
+		arg.MaxAttempts,
+		arg.ResendCooldownSeconds,
+		arg.MaxResends,
 		arg.Locale,
 		arg.Metadata,
 		arg.ExpiresAt,
-		arg.ServiceID,
 		arg.TeamID,
 	)
 	var i Verification
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -168,7 +187,7 @@ SET status = 'expired',
     updated_at = now()
 WHERE status = 'pending'
   AND expires_at <= now()
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 func (q *Queries) ExpirePendingVerifications(ctx context.Context) ([]Verification, error) {
@@ -183,10 +202,14 @@ func (q *Queries) ExpirePendingVerifications(ctx context.Context) ([]Verificatio
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
-			&i.ServiceID,
 			&i.Channel,
 			&i.Recipient,
 			&i.RecipientNormalized,
+			&i.CodeLength,
+			&i.TtlSeconds,
+			&i.MaxAttempts,
+			&i.ResendCooldownSeconds,
+			&i.MaxResends,
 			&i.Status,
 			&i.Locale,
 			&i.Metadata,
@@ -218,7 +241,7 @@ SET status = 'expired',
 WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type ExpireVerificationParams struct {
@@ -232,10 +255,14 @@ func (q *Queries) ExpireVerification(ctx context.Context, arg ExpireVerification
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -253,7 +280,7 @@ func (q *Queries) ExpireVerification(ctx context.Context, arg ExpireVerification
 }
 
 const getVerification = `-- name: GetVerification :one
-SELECT verification.id, verification.team_id, verification.service_id, verification.channel, verification.recipient, verification.recipient_normalized, verification.status, verification.locale, verification.metadata, verification.attempt_count, verification.resend_count, verification.expires_at, verification.approved_at, verification.expired_at, verification.canceled_at, verification.failed_at, verification.created_at, verification.updated_at
+SELECT verification.id, verification.team_id, verification.channel, verification.recipient, verification.recipient_normalized, verification.code_length, verification.ttl_seconds, verification.max_attempts, verification.resend_cooldown_seconds, verification.max_resends, verification.status, verification.locale, verification.metadata, verification.attempt_count, verification.resend_count, verification.expires_at, verification.approved_at, verification.expired_at, verification.canceled_at, verification.failed_at, verification.created_at, verification.updated_at
 FROM verifications AS verification
 JOIN teams AS team ON team.id = verification.team_id
 WHERE verification.id = $1
@@ -272,10 +299,14 @@ func (q *Queries) GetVerification(ctx context.Context, arg GetVerificationParams
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -293,7 +324,7 @@ func (q *Queries) GetVerification(ctx context.Context, arg GetVerificationParams
 }
 
 const getVerificationForUpdate = `-- name: GetVerificationForUpdate :one
-SELECT id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+SELECT id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 FROM verifications
 WHERE id = $1
   AND team_id = $2
@@ -311,10 +342,14 @@ func (q *Queries) GetVerificationForUpdate(ctx context.Context, arg GetVerificat
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -338,7 +373,7 @@ SET attempt_count = attempt_count + 1,
 WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type IncrementVerificationAttemptCountParams struct {
@@ -352,10 +387,14 @@ func (q *Queries) IncrementVerificationAttemptCount(ctx context.Context, arg Inc
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -380,7 +419,7 @@ SET resend_count = resend_count + 1,
 WHERE id = $2
   AND team_id = $3
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type IncrementVerificationResendCountParams struct {
@@ -395,10 +434,14 @@ func (q *Queries) IncrementVerificationResendCount(ctx context.Context, arg Incr
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -416,7 +459,7 @@ func (q *Queries) IncrementVerificationResendCount(ctx context.Context, arg Incr
 }
 
 const listVerifications = `-- name: ListVerifications :many
-SELECT verification.id, verification.team_id, verification.service_id, verification.channel, verification.recipient, verification.recipient_normalized, verification.status, verification.locale, verification.metadata, verification.attempt_count, verification.resend_count, verification.expires_at, verification.approved_at, verification.expired_at, verification.canceled_at, verification.failed_at, verification.created_at, verification.updated_at
+SELECT verification.id, verification.team_id, verification.channel, verification.recipient, verification.recipient_normalized, verification.code_length, verification.ttl_seconds, verification.max_attempts, verification.resend_cooldown_seconds, verification.max_resends, verification.status, verification.locale, verification.metadata, verification.attempt_count, verification.resend_count, verification.expires_at, verification.approved_at, verification.expired_at, verification.canceled_at, verification.failed_at, verification.created_at, verification.updated_at
 FROM verifications AS verification
 JOIN teams AS team ON team.id = verification.team_id
 WHERE verification.team_id = $1
@@ -444,10 +487,14 @@ func (q *Queries) ListVerifications(ctx context.Context, arg ListVerificationsPa
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
-			&i.ServiceID,
 			&i.Channel,
 			&i.Recipient,
 			&i.RecipientNormalized,
+			&i.CodeLength,
+			&i.TtlSeconds,
+			&i.MaxAttempts,
+			&i.ResendCooldownSeconds,
+			&i.MaxResends,
 			&i.Status,
 			&i.Locale,
 			&i.Metadata,
@@ -479,7 +526,7 @@ SET status = 'delivery_failed',
 WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type MarkVerificationDeliveryFailedParams struct {
@@ -493,10 +540,14 @@ func (q *Queries) MarkVerificationDeliveryFailed(ctx context.Context, arg MarkVe
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
@@ -521,7 +572,7 @@ SET status = 'max_attempts_reached',
 WHERE id = $1
   AND team_id = $2
   AND status = 'pending'
-RETURNING id, team_id, service_id, channel, recipient, recipient_normalized, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
+RETURNING id, team_id, channel, recipient, recipient_normalized, code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends, status, locale, metadata, attempt_count, resend_count, expires_at, approved_at, expired_at, canceled_at, failed_at, created_at, updated_at
 `
 
 type MarkVerificationMaxAttemptsReachedParams struct {
@@ -535,10 +586,14 @@ func (q *Queries) MarkVerificationMaxAttemptsReached(ctx context.Context, arg Ma
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.ServiceID,
 		&i.Channel,
 		&i.Recipient,
 		&i.RecipientNormalized,
+		&i.CodeLength,
+		&i.TtlSeconds,
+		&i.MaxAttempts,
+		&i.ResendCooldownSeconds,
+		&i.MaxResends,
 		&i.Status,
 		&i.Locale,
 		&i.Metadata,
