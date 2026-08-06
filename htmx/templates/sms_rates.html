@@ -1,0 +1,78 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+
+<section class="notice warning">
+  SMS rates are append-only. Add a new effective period for a price change; close an existing period instead of editing historical values.
+</section>
+
+<h2>Add SMS rate</h2>
+<form class="control-panel" method="post" action="/billing/sms-rates">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Billing market
+    <input type="text" name="billing_market" maxlength="2" placeholder="GH" required>
+  </label>
+  <label>Destination country
+    <input type="text" name="destination_country" maxlength="2" placeholder="GH" required>
+  </label>
+  <label>Route type
+    <input type="text" name="route_type" placeholder="transactional" required>
+  </label>
+  <label>Tier
+    <input type="text" name="tier" placeholder="standard" required>
+  </label>
+  <label>Currency
+    <input type="text" name="currency" maxlength="3" placeholder="GHS" required>
+  </label>
+  <label>Cost per segment
+    <input type="number" name="cost" min="0" step="0.000001" placeholder="0.050000" required>
+  </label>
+  <label>Effective from (UTC)
+    <input type="datetime-local" name="effective_from" required>
+  </label>
+  <label>Effective until (UTC)
+    <input type="datetime-local" name="effective_until">
+  </label>
+  <button type="submit">Add SMS rate</button>
+</form>
+
+<h2>SMS rate periods</h2>
+<table>
+  <thead>
+    <tr><th>Market</th><th>Destination</th><th>Route</th><th>Tier</th><th>Price</th><th>Effective period</th><th>Status</th><th>Close</th></tr>
+  </thead>
+  <tbody>
+  {{range $page.SMSRates}}
+    <tr>
+      <td>{{.BillingMarket}}</td>
+      <td>{{.DestinationCountry}}</td>
+      <td>{{.RouteType}}</td>
+      <td>{{.Tier}}</td>
+      <td>{{.Currency}} {{microsInput .CostUnits}}</td>
+      <td>
+        {{.EffectiveFrom.Format "2006-01-02 15:04"}}
+        <br><small>to {{if .EffectiveUntil}}{{.EffectiveUntil.Format "2006-01-02 15:04"}}{{else}}open-ended{{end}}</small>
+      </td>
+      <td>
+        {{if .EffectiveUntil}}
+          <span class="status-badge status-expired">Closed</span>
+        {{else}}
+          <span class="status-badge status-current">Open</span>
+        {{end}}
+      </td>
+      <td>
+        {{if not .EffectiveUntil}}
+        <form class="compact-form" method="post" action="/billing/sms-rates/{{.ID}}/close">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="datetime-local" name="effective_until" aria-label="Effective until" required>
+          <button class="danger" type="submit">Close</button>
+        </form>
+        {{else}}—{{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="8">No SMS rates configured.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+{{template "layout_end" .}}
