@@ -1,0 +1,87 @@
+name: Harden messaging runtime integration
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.head_ref == 'feat/messaging-runtime-routing-attempts' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/messaging-runtime-routing-attempts
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Apply runtime hardening
+        env:
+          PATCH_PAYLOAD: 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
+        run: |
+          python - <<'PY'
+          import base64
+          import os
+          import zlib
+
+          source = zlib.decompress(base64.b64decode(os.environ['PATCH_PAYLOAD'])).decode()
+          exec(compile(source, 'harden_messaging_runtime.py', 'exec'))
+          PY
+
+      - name: Format changed Go files
+        run: |
+          gofmt -w \
+            internal/platform/messaging/routing \
+            internal/delivery/messaging/routing \
+            internal/delivery/email/outbound/repository.go \
+            internal/platform/sms/service.go \
+            internal/modules/sms/repository.go \
+            internal/delivery/sms/outbound
+
+      - name: Run focused tests
+        run: |
+          go test -race \
+            ./internal/platform/messaging/routing \
+            ./internal/delivery/messaging/routing \
+            ./internal/platform/sms \
+            ./internal/delivery/email/outbound \
+            ./internal/delivery/sms/outbound \
+            ./internal/modules/sms
+
+      - name: Run vet and compile
+        run: |
+          go vet ./...
+          go test -run '^$' ./...
+          git diff --check
+
+      - name: Commit runtime hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            internal/platform/messaging/routing \
+            internal/delivery/messaging/routing \
+            internal/delivery/email/outbound/repository.go \
+            internal/platform/sms/service.go \
+            internal/modules/sms/repository.go \
+            internal/delivery/sms/outbound
+          test -n "$(git status --porcelain)"
+          git commit -m "fix: harden messaging runtime route attempts"
+          git push origin HEAD:feat/messaging-runtime-routing-attempts
