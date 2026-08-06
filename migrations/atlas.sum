@@ -1,4 +1,4 @@
-h1:QmoQk7kV7K8N45HXQFEtcMSt10UxjgtoXtFnGH2B96g=
+h1:hxHIudTcNELSUz2RikbXV+XZgA/GZe3beRg0F6EnPbk=
 001_create_users.sql h1:SzmfDnKV7pBVweNm8IRsVvEKfzDN7VsSIdAckXWPOvM=
 002_create_sessions.sql h1:mfuQWhqrJwMca/G2R2DOzDoDjNojK/TXxjbs5FYtLuI=
 003_create_oauth_identities.sql h1:RzP5llfQylzwmKxDbJc77FSg+7OizsFzdqQKbQ+n8EY=
@@ -22,5 +22,4 @@ h1:QmoQk7kV7K8N45HXQFEtcMSt10UxjgtoXtFnGH2B96g=
 021_create_email_recipients.sql h1:q0iU+Ga0P1jXCA5Fo/z5ryITSz14PN0z5eCnal369co=
 022_create_email_tenants.sql h1:6YeFMxL18uiOXMhn6mw3ic9nDRt5h9H3lipnLvnh0vg=
 023_enforce_customer_email_tenant_routes.sql h1:6VmIih2mMlMQ5hHZrXTXfiN5bEEpl+ixKjhNnFUeN6A=
-024_create_verify.sql h1:MlCIj0y6tNdf6QGEdx79JrfNOdHVQV/+gikniep0+3U=
-025_create_message_delivery_attempts.sql h1:HS1ivLdB5vXn6CrS72m6eD5MU4q31vn1risdIUnN+6E=
+024_create_message_delivery_attempts.sql h1:+v4eGhdTYbEQONRXO5XyIzuJF53/YyQ8sXlp/PIjcb0=

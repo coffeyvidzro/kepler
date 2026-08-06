@@ -477,61 +477,6 @@ type User struct {
 	SecurityUpdatedAt pgtype.Timestamptz `db:"security_updated_at" json:"security_updated_at"`
 }
 
-type Verification struct {
-	ID                    uuid.UUID          `db:"id" json:"id"`
-	TeamID                uuid.UUID          `db:"team_id" json:"team_id"`
-	Channel               string             `db:"channel" json:"channel"`
-	Recipient             string             `db:"recipient" json:"recipient"`
-	RecipientNormalized   string             `db:"recipient_normalized" json:"recipient_normalized"`
-	CodeLength            int32              `db:"code_length" json:"code_length"`
-	TtlSeconds            int32              `db:"ttl_seconds" json:"ttl_seconds"`
-	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
-	ResendCooldownSeconds int32              `db:"resend_cooldown_seconds" json:"resend_cooldown_seconds"`
-	MaxResends            int32              `db:"max_resends" json:"max_resends"`
-	Status                string             `db:"status" json:"status"`
-	Locale                *string            `db:"locale" json:"locale"`
-	Metadata              []byte             `db:"metadata" json:"metadata"`
-	AttemptCount          int32              `db:"attempt_count" json:"attempt_count"`
-	ResendCount           int32              `db:"resend_count" json:"resend_count"`
-	ExpiresAt             pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ApprovedAt            pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
-	ExpiredAt             pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
-	CanceledAt            pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
-	FailedAt              pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type VerificationAttempt struct {
-	ID             uuid.UUID          `db:"id" json:"id"`
-	TeamID         uuid.UUID          `db:"team_id" json:"team_id"`
-	VerificationID uuid.UUID          `db:"verification_id" json:"verification_id"`
-	ChallengeID    uuid.UUID          `db:"challenge_id" json:"challenge_id"`
-	Result         string             `db:"result" json:"result"`
-	IpAddressHash  []byte             `db:"ip_address_hash" json:"ip_address_hash"`
-	UserAgent      *string            `db:"user_agent" json:"user_agent"`
-	Metadata       []byte             `db:"metadata" json:"metadata"`
-	AttemptedAt    pgtype.Timestamptz `db:"attempted_at" json:"attempted_at"`
-}
-
-type VerificationChallenge struct {
-	ID               uuid.UUID          `db:"id" json:"id"`
-	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
-	VerificationID   uuid.UUID          `db:"verification_id" json:"verification_id"`
-	Sequence         int32              `db:"sequence" json:"sequence"`
-	CodeHmac         []byte             `db:"code_hmac" json:"code_hmac"`
-	Status           string             `db:"status" json:"status"`
-	Channel          string             `db:"channel" json:"channel"`
-	EmailMessageID   *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	SmsMessageID     *uuid.UUID         `db:"sms_message_id" json:"sms_message_id"`
-	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	SupersededAt     pgtype.Timestamptz `db:"superseded_at" json:"superseded_at"`
-	DispatchedAt     pgtype.Timestamptz `db:"dispatched_at" json:"dispatched_at"`
-	DeliveryFailedAt pgtype.Timestamptz `db:"delivery_failed_at" json:"delivery_failed_at"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
 type VerificationToken struct {
 	Identifier string             `db:"identifier" json:"identifier"`
 	TokenHash  string             `db:"token_hash" json:"token_hash"`
