@@ -17,7 +17,7 @@ type VerificationSMSInput struct {
 	ChallengeID    uuid.UUID
 	Recipient      string
 	Sender         string
-	Code           string
+	Body           string
 }
 
 func (s *Service) EnqueueVerificationTx(ctx context.Context, tx pgx.Tx, input VerificationSMSInput) (platformbilling.CommittedAuthorization, error) {
@@ -30,7 +30,7 @@ func (s *Service) EnqueueVerificationTx(ctx context.Context, tx pgx.Tx, input Ve
 	if err != nil {
 		return platformbilling.CommittedAuthorization{}, err
 	}
-	request, err := validateSend(SendRequest{To: input.Recipient, From: input.Sender, Body: "Your Dugble verification code is " + input.Code, Metadata: metadata})
+	request, err := validateSend(SendRequest{To: input.Recipient, From: input.Sender, Body: input.Body, Metadata: metadata})
 	if err != nil {
 		return platformbilling.CommittedAuthorization{}, err
 	}
