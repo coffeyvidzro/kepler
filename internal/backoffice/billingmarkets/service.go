@@ -21,21 +21,11 @@ var marketCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
 var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 type Service struct {
-	repository store
+	repository *Repository
 }
 
-type store interface {
-	List(context.Context, int32, int32) ([]BillingMarket, error)
-	Get(context.Context, string) (BillingMarket, error)
-	Create(context.Context, CreateInput) (BillingMarket, error)
-	SetEnabled(context.Context, string, bool) (BillingMarket, error)
-}
-
-func NewService(repository store) (*Service, error) {
-	if repository == nil {
-		return nil, errors.New("backoffice billing markets repository is required")
-	}
-	return &Service{repository: repository}, nil
+func NewService(repository *Repository) *Service {
+	return &Service{repository: repository}
 }
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {
