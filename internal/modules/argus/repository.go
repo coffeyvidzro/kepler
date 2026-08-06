@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -15,10 +14,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
 )
 
-var (
-	ErrNotFound     = errors.New("verify resource not found")
-	ErrDuplicateKey = errors.New("verification service key already exists")
-)
+var ErrNotFound = errors.New("verify resource not found")
 
 type Repository struct {
 	db      *pgxpool.Pool
@@ -34,89 +30,13 @@ func (repository *Repository) WithTx(tx pgx.Tx) *Repository {
 	return &Repository{db: repository.db, queries: repository.queries.WithTx(tx), tx: tx}
 }
 
-func (repository *Repository) CreateService(ctx context.Context, teamID uuid.UUID, value validatedService) (VerificationService, error) {
-	row, err := repository.queries.CreateVerificationService(ctx, dbsqlc.CreateVerificationServiceParams{
-		Key: value.Key, Name: value.Name, DefaultChannel: value.DefaultChannel,
-		CodeLength: value.CodeLength, TtlSeconds: value.TTLSeconds, MaxAttempts: value.MaxAttempts,
-		ResendCooldownSeconds: value.ResendCooldownSeconds, MaxResends: value.MaxResends,
-		Enabled: value.Enabled, Metadata: value.Metadata, TeamID: teamID,
-	})
-	if isUniqueViolation(err) {
-		return VerificationService{}, ErrDuplicateKey
-	}
-	if err != nil {
-		return VerificationService{}, fmt.Errorf("create verification service: %w", err)
-	}
-	return serviceFromSQLC(row), nil
-}
-
-func (repository *Repository) GetService(ctx context.Context, id, teamID uuid.UUID) (VerificationService, error) {
-	row, err := repository.queries.GetVerificationService(ctx, dbsqlc.GetVerificationServiceParams{ID: id, TeamID: teamID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return VerificationService{}, ErrNotFound
-	}
-	if err != nil {
-		return VerificationService{}, fmt.Errorf("get verification service: %w", err)
-	}
-	return serviceFromSQLC(row), nil
-}
-
-func (repository *Repository) GetServiceByKey(ctx context.Context, teamID uuid.UUID, key string) (VerificationService, error) {
-	row, err := repository.queries.GetVerificationServiceByKey(ctx, dbsqlc.GetVerificationServiceByKeyParams{TeamID: teamID, Key: key})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return VerificationService{}, ErrNotFound
-	}
-	if err != nil {
-		return VerificationService{}, fmt.Errorf("get verification service by key: %w", err)
-	}
-	return serviceFromSQLC(row), nil
-}
-
-func (repository *Repository) ListServices(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]VerificationService, error) {
-	rows, err := repository.queries.ListVerificationServices(ctx, dbsqlc.ListVerificationServicesParams{
-		TeamID: teamID, LimitCount: limit, OffsetCount: offset,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list verification services: %w", err)
-	}
-	result := make([]VerificationService, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, serviceFromSQLC(row))
-	}
-	return result, nil
-}
-
-func (repository *Repository) UpdateService(ctx context.Context, id, teamID uuid.UUID, value validatedService) (VerificationService, error) {
-	row, err := repository.queries.UpdateVerificationService(ctx, dbsqlc.UpdateVerificationServiceParams{
-		Name: value.Name, DefaultChannel: value.DefaultChannel, CodeLength: value.CodeLength,
+func (repository *Repository) CreateVerification(ctx context.Context, teamID uuid.UUID, value validatedVerification, expiresAt pgtype.Timestamptz) (Verification, error) {
+	row, err := repository.queries.CreateVerification(ctx, dbsqlc.CreateVerificationParams{
+		TeamID: teamID, Channel: value.Channel, Recipient: value.Recipient,
+		RecipientNormalized: value.RecipientNormalized, CodeLength: value.CodeLength,
 		TtlSeconds: value.TTLSeconds, MaxAttempts: value.MaxAttempts,
 		ResendCooldownSeconds: value.ResendCooldownSeconds, MaxResends: value.MaxResends,
-		Metadata: value.Metadata, ID: id, TeamID: teamID,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return VerificationService{}, ErrNotFound
-	}
-	if err != nil {
-		return VerificationService{}, fmt.Errorf("update verification service: %w", err)
-	}
-	if row.Enabled != value.Enabled {
-		row, err = repository.queries.SetVerificationServiceEnabled(ctx, dbsqlc.SetVerificationServiceEnabledParams{
-			Enabled: value.Enabled, ID: id, TeamID: teamID,
-		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return VerificationService{}, ErrNotFound
-		}
-		if err != nil {
-			return VerificationService{}, fmt.Errorf("set verification service enabled: %w", err)
-		}
-	}
-	return serviceFromSQLC(row), nil
-}
-
-func (repository *Repository) CreateVerification(ctx context.Context, teamID, serviceID uuid.UUID, value validatedVerification, expiresAt pgtype.Timestamptz) (Verification, error) {
-	row, err := repository.queries.CreateVerification(ctx, dbsqlc.CreateVerificationParams{
-		Channel: value.Channel, Recipient: value.Recipient, RecipientNormalized: value.RecipientNormalized,
-		Locale: value.Locale, Metadata: value.Metadata, ExpiresAt: expiresAt, ServiceID: serviceID, TeamID: teamID,
+		Locale: value.Locale, Metadata: value.Metadata, ExpiresAt: expiresAt,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Verification{}, ErrNotFound
@@ -287,21 +207,13 @@ func (repository *Repository) MarkChallengeExpired(ctx context.Context, id, team
 	return nil
 }
 
-func serviceFromSQLC(row dbsqlc.VerificationService) VerificationService {
-	return VerificationService{
-		ID: row.ID.String(), TeamID: row.TeamID.String(), Key: row.Key, Name: row.Name,
-		DefaultChannel: row.DefaultChannel, CodeLength: row.CodeLength, TTLSeconds: row.TtlSeconds,
-		MaxAttempts: row.MaxAttempts, ResendCooldownSeconds: row.ResendCooldownSeconds,
-		MaxResends: row.MaxResends, Enabled: row.Enabled, Metadata: ensureMetadata(row.Metadata),
-		CreatedAt: pgconv.TimestamptzToTime(row.CreatedAt), UpdatedAt: pgconv.TimestamptzToTime(row.UpdatedAt),
-	}
-}
-
 func verificationFromSQLC(row dbsqlc.Verification) Verification {
 	return Verification{
-		ID: row.ID.String(), TeamID: row.TeamID.String(), ServiceID: row.ServiceID.String(),
-		Channel: row.Channel, Recipient: row.Recipient, Status: row.Status, Locale: row.Locale,
-		Metadata: ensureMetadata(row.Metadata), AttemptCount: row.AttemptCount, ResendCount: row.ResendCount,
+		ID: row.ID.String(), TeamID: row.TeamID.String(), Channel: row.Channel, Recipient: row.Recipient,
+		CodeLength: row.CodeLength, TTLSeconds: row.TtlSeconds, MaxAttempts: row.MaxAttempts,
+		ResendCooldownSeconds: row.ResendCooldownSeconds, MaxResends: row.MaxResends,
+		Status: row.Status, Locale: row.Locale, Metadata: ensureMetadata(row.Metadata),
+		AttemptCount: row.AttemptCount, ResendCount: row.ResendCount,
 		ExpiresAt: pgconv.TimestamptzToTime(row.ExpiresAt), ApprovedAt: pgconv.TimestamptzToTimePtr(row.ApprovedAt),
 		ExpiredAt: pgconv.TimestamptzToTimePtr(row.ExpiredAt), CanceledAt: pgconv.TimestamptzToTimePtr(row.CanceledAt),
 		FailedAt: pgconv.TimestamptzToTimePtr(row.FailedAt), CreatedAt: pgconv.TimestamptzToTime(row.CreatedAt),
@@ -314,9 +226,4 @@ func ensureMetadata(value []byte) []byte {
 		return []byte(`{}`)
 	}
 	return value
-}
-
-func isUniqueViolation(err error) bool {
-	var postgresError *pgconn.PgError
-	return errors.As(err, &postgresError) && postgresError.Code == "23505"
 }
