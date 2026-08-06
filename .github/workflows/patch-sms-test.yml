@@ -1,0 +1,109 @@
+name: Patch SMS Allowance Test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/patch-sms-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Patch test to use public billing flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("internal/integration/messaging/billing_test.go")
+          text = path.read_text()
+          old = '''\ttx, err := pool.Begin(ctx)
+\tif err != nil {
+\t\tt.Fatalf("begin SMS transaction: %v", err)
+\t}
+\tdefer func() { _ = tx.Rollback(ctx) }()
+\trow, err := dbsqlc.New(pool).WithTx(tx).AuthorizeSMSCharge(
+\t\tctx,
+\t\tdbsqlc.AuthorizeSMSChargeParams{
+\t\t\tQuantity:           5,
+\t\t\tTeamID:             teamID,
+\t\t\tDestinationCountry: "GH",
+\t\t\tReferenceID:        uuid.NewString(),
+\t\t},
+\t)
+\tif err != nil {
+\t\tt.Fatalf("authorize SMS charge: %v", err)
+\t}
+\tif err := tx.Commit(ctx); err != nil {
+\t\tt.Fatalf("commit SMS transaction: %v", err)
+\t}
+
+\tif row.Outcome != "applied" || !row.CoveredByAllowance {
+\t\tt.Fatalf(
+\t\t\t"unexpected SMS outcome=%q covered=%t",
+\t\t\trow.Outcome,
+\t\t\trow.CoveredByAllowance,
+\t\t)
+\t}
+\tif row.AmountUnits != 30 || row.BalanceUnits != 970 {
+\t\tt.Fatalf(
+\t\t\t"unexpected SMS amount=%d balance=%d",
+\t\t\trow.AmountUnits,
+\t\t\trow.BalanceUnits,
+\t\t)
+\t}
+'''
+          new = '''\ttx, err := pool.Begin(ctx)
+\tif err != nil {
+\t\tt.Fatalf("begin SMS transaction: %v", err)
+\t}
+\tdefer func() { _ = tx.Rollback(ctx) }()
+\tcharge, err := billing.NewService(billing.NewRepository(pool)).ChargeSMS(
+\t\tctx,
+\t\ttx,
+\t\tbilling.SMSChargeInput{
+\t\t\tTeamID:            teamID,
+\t\t\tMessageID:         uuid.New(),
+\t\t\tDestinationNumber: "+233200000003",
+\t\t\tSegments:          5,
+\t\t},
+\t)
+\tif err != nil {
+\t\tt.Fatalf("charge SMS: %v", err)
+\t}
+\tif err := tx.Commit(ctx); err != nil {
+\t\tt.Fatalf("commit SMS transaction: %v", err)
+\t}
+
+\tif charge.Outcome != billing.OutcomeApplied || !charge.CoveredByAllowance {
+\t\tt.Fatalf(
+\t\t\t"unexpected SMS outcome=%q covered=%t",
+\t\t\tcharge.Outcome,
+\t\t\tcharge.CoveredByAllowance,
+\t\t)
+\t}
+\tif charge.AmountUnits != 30 || charge.RemainingBalance != 970 {
+\t\tt.Fatalf(
+\t\t\t"unexpected SMS amount=%d balance=%d",
+\t\t\tcharge.AmountUnits,
+\t\t\tcharge.RemainingBalance,
+\t\t)
+\t}
+'''
+          if old not in text:
+              raise SystemExit("target SMS test block not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/integration/messaging/billing_test.go
+          git commit -m "Test SMS allowances through billing service"
+          git push
