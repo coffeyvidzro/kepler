@@ -1,0 +1,291 @@
+@import "tailwindcss" source("../templates");
+
+@layer base {
+  :root {
+    color-scheme: light;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body {
+    margin: 0;
+    background: #f8fafc;
+    color: #0f172a;
+  }
+
+  a {
+    color: #2563eb;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  h1 {
+    margin: 0 0 1.5rem;
+  }
+
+  h2 {
+    margin: 2rem 0 1rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #e2e8f0;
+    background: white;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 0.875rem;
+  }
+
+  code {
+    color: #475569;
+    font-size: 0.8125rem;
+  }
+
+  small {
+    color: #64748b;
+  }
+
+  pre {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: white;
+    padding: 1rem;
+    white-space: pre-wrap;
+  }
+}
+
+@layer components {
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    background: #0f172a;
+    color: white;
+    padding: 1rem 1.5rem;
+  }
+
+  .topbar nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .topbar a {
+    color: #dbeafe;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+  }
+
+  .cards article,
+  .detail-grid article {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: white;
+    padding: 1rem;
+  }
+
+  .cards span,
+  .detail-grid span {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+
+  .cards strong {
+    display: block;
+    font-size: 2rem;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-grid strong {
+    overflow-wrap: anywhere;
+  }
+
+  .filters,
+  .control-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+  }
+
+  .control-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: white;
+    padding: 1rem;
+  }
+
+  .filters label,
+  .control-panel label {
+    display: grid;
+    gap: 0.25rem;
+    color: #475569;
+    font-size: 0.875rem;
+  }
+
+  .filters input,
+  .control-panel input,
+  .control-panel select,
+  .compact-form input,
+  .actions input {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    font: inherit;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .filters button,
+  .control-panel button,
+  .button-link {
+    border: 0;
+    border-radius: 0.5rem;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    padding: 0.55rem 0.9rem;
+  }
+
+  .filters button:hover,
+  .button-link:hover {
+    background: #1d4ed8;
+    text-decoration: none;
+  }
+
+  .actions,
+  .actions form,
+  .compact-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .actions button,
+  .compact-form button {
+    border: 0;
+    border-radius: 0.5rem;
+    background: #16a34a;
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    padding: 0.45rem 0.7rem;
+  }
+
+  .actions button.danger,
+  .compact-form button.danger,
+  .control-panel button.danger {
+    background: #dc2626;
+  }
+
+  .compact-form {
+    margin-bottom: 0.45rem;
+  }
+
+  .compact-form input {
+    max-width: 155px;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .control-panel .checkbox-label {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.55rem;
+  }
+
+  .control-panel .checkbox-label input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+  }
+
+  .muted {
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+
+  .button-link {
+    display: inline-block;
+  }
+
+  .status-badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .status-current {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .status-scheduled {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .status-expired {
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  .status-archived {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .notice {
+    margin-bottom: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    padding: 1rem;
+  }
+
+  .notice.warning {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    color: #92400e;
+  }
+
+  .pricing-actions {
+    margin-bottom: 1rem;
+  }
+}
