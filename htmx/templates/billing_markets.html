@@ -1,0 +1,63 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+
+<section class="notice warning">
+  Market and currency codes are normalized to uppercase. Disabling a market prevents new billing activity without deleting its history.
+</section>
+
+<h2>Add billing market</h2>
+<form class="control-panel" method="post" action="/billing/markets">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Market code
+    <input type="text" name="code" maxlength="2" placeholder="GH" autocomplete="off" required>
+  </label>
+  <label>Currency
+    <input type="text" name="currency" maxlength="3" placeholder="GHS" autocomplete="off" required>
+  </label>
+  <label>Initial status
+    <select name="is_enabled">
+      <option value="true" selected>Enabled</option>
+      <option value="false">Disabled</option>
+    </select>
+  </label>
+  <button type="submit">Add market</button>
+</form>
+
+<h2>Configured markets</h2>
+<table>
+  <thead>
+    <tr><th>Market</th><th>Currency</th><th>Minor unit</th><th>Status</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+  {{range $page.BillingMarkets}}
+    <tr>
+      <td><strong>{{.Code}}</strong></td>
+      <td>{{.Currency}}</td>
+      <td>{{.MinorUnit}}</td>
+      <td>
+        {{if .IsEnabled}}
+          <span class="status-badge status-current">Enabled</span>
+        {{else}}
+          <span class="status-badge status-archived">Disabled</span>
+        {{end}}
+      </td>
+      <td>
+        <form class="compact-form" method="post" action="/billing/markets/{{.Code}}/status">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          {{if .IsEnabled}}
+            <input type="hidden" name="is_enabled" value="false">
+            <button class="danger" type="submit">Disable</button>
+          {{else}}
+            <input type="hidden" name="is_enabled" value="true">
+            <button type="submit">Enable</button>
+          {{end}}
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5">No billing markets configured.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+{{template "layout_end" .}}
