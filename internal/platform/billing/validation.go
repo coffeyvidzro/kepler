@@ -30,17 +30,6 @@ func validateSMSCharge(input SMSChargeInput) (SMSChargeInput, error) {
 		return SMSChargeInput{}, ErrInvalidDestination
 	}
 	input.destinationCountry = destinationCountry
-	input.routeType = "standard"
-	switch destinationCountry {
-	case "GH":
-		input.provider = "mnotify"
-	case "KE":
-		input.provider = "celcom"
-	case "NG":
-		input.provider = "arkesel"
-	default:
-		return SMSChargeInput{}, ErrInvalidDestination
-	}
 	if input.Segments <= 0 {
 		return SMSChargeInput{}, ErrInvalidSegments
 	}

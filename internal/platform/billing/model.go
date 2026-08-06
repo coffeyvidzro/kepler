@@ -27,8 +27,6 @@ type SMSChargeInput struct {
 	DestinationNumber  string
 	Segments           int32
 	destinationCountry string
-	provider           string
-	routeType          string
 }
 
 type Charge struct {

@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS teams (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    market_code VARCHAR(2) NOT NULL,
+    market_code CHAR(2) NOT NULL,
     phone TEXT NOT NULL,
     address TEXT NOT NULL,
     website TEXT,
@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS teams (
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_teams_id_market
+        UNIQUE (id, market_code),
 
     CONSTRAINT chk_teams_status CHECK (status IN ('active', 'disabled'))
 );

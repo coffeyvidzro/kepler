@@ -10,14 +10,6 @@ CREATE TABLE IF NOT EXISTS currencies (
         CHECK (minor_unit BETWEEN 0 AND 6)
 );
 
-INSERT INTO currencies (code, minor_unit, is_enabled)
-VALUES
-    ('GHS', 2, true),
-    ('KES', 2, true)
-ON CONFLICT (code) DO UPDATE SET
-    minor_unit = EXCLUDED.minor_unit,
-    is_enabled = EXCLUDED.is_enabled;
-
 CREATE TABLE IF NOT EXISTS billing_markets (
     code CHAR(2) PRIMARY KEY,
     currency CHAR(3) NOT NULL
@@ -32,16 +24,8 @@ CREATE TABLE IF NOT EXISTS billing_markets (
         UNIQUE (code, currency)
 );
 
-INSERT INTO billing_markets (code, currency, is_enabled)
-VALUES
-    ('GH', 'GHS', true),
-    ('KE', 'KES', true)
-ON CONFLICT (code) DO UPDATE SET
-    currency = EXCLUDED.currency,
-    is_enabled = EXCLUDED.is_enabled;
-
 CREATE TABLE IF NOT EXISTS team_wallets (
-    team_id UUID PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+    team_id UUID PRIMARY KEY,
     billing_market CHAR(2) NOT NULL,
     currency CHAR(3) NOT NULL,
     balance_units BIGINT NOT NULL DEFAULT 0,
@@ -51,6 +35,11 @@ CREATE TABLE IF NOT EXISTS team_wallets (
 
     CONSTRAINT uq_team_wallets_team_market_currency
         UNIQUE (team_id, billing_market, currency),
+
+    CONSTRAINT fk_wallet_team_market
+        FOREIGN KEY (team_id, billing_market)
+        REFERENCES teams (id, market_code)
+        ON DELETE CASCADE,
 
     CONSTRAINT fk_team_wallets_billing_market_currency
         FOREIGN KEY (billing_market, currency)

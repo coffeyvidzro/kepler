@@ -348,7 +348,6 @@ type SmsRate struct {
 	ID                 uuid.UUID          `db:"id" json:"id"`
 	BillingMarket      string             `db:"billing_market" json:"billing_market"`
 	DestinationCountry string             `db:"destination_country" json:"destination_country"`
-	Provider           string             `db:"provider" json:"provider"`
 	RouteType          string             `db:"route_type" json:"route_type"`
 	Tier               string             `db:"tier" json:"tier"`
 	Currency           string             `db:"currency" json:"currency"`
@@ -452,7 +451,6 @@ type UsageAuthorization struct {
 	ProductRateID      *uuid.UUID         `db:"product_rate_id" json:"product_rate_id"`
 	BillingMarket      string             `db:"billing_market" json:"billing_market"`
 	DestinationCountry *string            `db:"destination_country" json:"destination_country"`
-	Provider           *string            `db:"provider" json:"provider"`
 	RouteType          *string            `db:"route_type" json:"route_type"`
 	TotalQuantity      int64              `db:"total_quantity" json:"total_quantity"`
 	AllowanceQuantity  int64              `db:"allowance_quantity" json:"allowance_quantity"`
