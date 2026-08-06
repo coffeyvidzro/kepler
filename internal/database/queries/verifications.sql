@@ -1,17 +1,16 @@
 -- name: CreateVerification :one
 INSERT INTO verifications (
-    team_id, service_id, channel, recipient, recipient_normalized,
+    team_id, channel, recipient, recipient_normalized,
+    code_length, ttl_seconds, max_attempts, resend_cooldown_seconds, max_resends,
     status, locale, metadata, expires_at
 )
 SELECT
-    service.team_id, service.id, sqlc.arg(channel), sqlc.arg(recipient),
-    sqlc.arg(recipient_normalized), 'pending', sqlc.narg(locale),
-    sqlc.arg(metadata), sqlc.arg(expires_at)
-FROM verification_services AS service
-JOIN teams AS team ON team.id = service.team_id
-WHERE service.id = sqlc.arg(service_id)
-  AND service.team_id = sqlc.arg(team_id)
-  AND service.enabled = true
+    team.id, sqlc.arg(channel), sqlc.arg(recipient), sqlc.arg(recipient_normalized),
+    sqlc.arg(code_length), sqlc.arg(ttl_seconds), sqlc.arg(max_attempts),
+    sqlc.arg(resend_cooldown_seconds), sqlc.arg(max_resends),
+    'pending', sqlc.narg(locale), sqlc.arg(metadata), sqlc.arg(expires_at)
+FROM teams AS team
+WHERE team.id = sqlc.arg(team_id)
   AND team.status = 'active'
 RETURNING *;
 
