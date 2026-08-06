@@ -46,8 +46,8 @@ type Charge struct {
 }
 
 type EmailChargeInput struct {
-	TeamID        uuid.UUID
-	MessageID     uuid.UUID
+	TeamID         uuid.UUID
+	MessageID      uuid.UUID
 	RecipientCount int64
 }
 
