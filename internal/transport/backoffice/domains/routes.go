@@ -10,5 +10,5 @@ func RegisterRoutes(
 	domains := router.Group("/domains")
 	domains.Use(middleware...)
 	domains.GET("", handler.List)
-	domains.GET("/:domain_id", handler.Get)
+	domains.GET("/:domain_id", handler.Detail)
 }
