@@ -7,7 +7,8 @@ func RegisterRoutes(
 	handler *Handler,
 	middleware ...echo.MiddlewareFunc,
 ) {
-	domains := router.Group("/domains", middleware...)
+	domains := router.Group("/domains")
+	domains.Use(middleware...)
 	domains.GET("", handler.List)
 	domains.GET("/:domain_id", handler.Get)
 }
