@@ -33,7 +33,7 @@ func NewArgusRenderer() (*ArgusRenderer, error) {
 
 func (renderer *ArgusRenderer) RenderVerification(data ArgusVerificationTemplateData) (string, error) {
 	if renderer == nil || renderer.tmpl == nil {
-		return "", errors.New("Argus email renderer is not configured")
+		return "", errors.New("argus email renderer is not configured")
 	}
 	var body bytes.Buffer
 	if err := renderer.tmpl.ExecuteTemplate(&body, argusVerificationTemplate, data); err != nil {
