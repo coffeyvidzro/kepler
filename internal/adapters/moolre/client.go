@@ -50,10 +50,10 @@ func (client *Client) Post(ctx context.Context, path string, payload, result any
 		return ErrClientUnavailable
 	}
 	if ctx == nil {
-		return fmt.Errorf("Moolre request context is required")
+		return fmt.Errorf("moolre request context is required")
 	}
 	if client.vasKey == "" {
-		return fmt.Errorf("Moolre VAS key is required")
+		return fmt.Errorf("moolre VAS key is required")
 	}
 
 	requestURL, err := buildRequestURL(client.baseURL, path)
@@ -106,7 +106,7 @@ func buildRequestURL(baseURL, path string) (string, error) {
 		return "", err
 	}
 	if requestURL.Scheme == "" || requestURL.Host == "" {
-		return "", fmt.Errorf("Moolre base URL must include scheme and host")
+		return "", fmt.Errorf("moolre base URL must include scheme and host")
 	}
 	return requestURL.String(), nil
 }

@@ -74,17 +74,17 @@ func (r *Repository) Create(ctx context.Context, params createMessageParams) (Me
 		return Message{}, fmt.Errorf("encode SMS tags: %w", err)
 	}
 	row, err := r.queries.CreateSMSMessage(ctx, dbsqlc.CreateSMSMessageParams{
-		TeamID:             params.TeamID,
-		SenderID:           params.SenderID,
-		ToNumber:           params.To,
-		FromName:           params.From,
-		Body:               params.Body,
-		Status:             params.Status,
-		Segments:           params.Segments,
-		Metadata:           ensureMetadata(params.Metadata),
-		Tags:               tags,
-		ScheduledAt:        pgconv.NullableTimestamptz(params.ScheduledAt),
-		DestinationCountry: params.DestinationCountry,
+		TeamID:                  params.TeamID,
+		SenderProviderBindingID: params.SenderID,
+		ToNumber:                params.To,
+		FromName:                params.From,
+		Body:                    params.Body,
+		Status:                  params.Status,
+		Segments:                params.Segments,
+		Metadata:                ensureMetadata(params.Metadata),
+		Tags:                    tags,
+		ScheduledAt:             pgconv.NullableTimestamptz(params.ScheduledAt),
+		DestinationCountry:      params.DestinationCountry,
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("create sms message: %w", err)
@@ -324,8 +324,8 @@ func messageFromSQLC(row dbsqlc.SmsMessage) Message {
 		UpdatedAt:          row.UpdatedAt.Time,
 		DestinationCountry: row.DestinationCountry,
 	}
-	if row.SenderID != nil {
-		value := row.SenderID.String()
+	if row.SenderProviderBindingID != nil {
+		value := row.SenderProviderBindingID.String()
 		message.SenderID = &value
 	}
 	if row.SubmittedAt.Valid {

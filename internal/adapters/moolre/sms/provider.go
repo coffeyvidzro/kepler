@@ -24,7 +24,7 @@ func (provider *Provider) ID() string             { return ProviderID }
 
 func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequest) (*platformsms.SendResponse, error) {
 	if provider == nil || provider.client == nil {
-		return nil, fmt.Errorf("Moolre SMS send failed: %w", moolre.ErrClientUnavailable)
+		return nil, fmt.Errorf("moolre SMS send failed: %w", moolre.ErrClientUnavailable)
 	}
 	request = request.Normalize()
 	if err := request.Validate(); err != nil {
@@ -36,11 +36,11 @@ func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequ
 
 	var response sendResponse
 	if err := provider.client.Post(ctx, sendPath, newSendRequest(request), &response); err != nil {
-		return nil, fmt.Errorf("Moolre SMS send failed: %w", err)
+		return nil, fmt.Errorf("moolre SMS send failed: %w", err)
 	}
 	mapped, err := mapSendResponse(request.Reference, &response)
 	if err != nil {
-		return nil, fmt.Errorf("Moolre SMS send failed: %w", err)
+		return nil, fmt.Errorf("moolre SMS send failed: %w", err)
 	}
 	return mapped, nil
 }
@@ -55,20 +55,20 @@ func (provider *Provider) CheckStatus(ctx context.Context, reference string) (*p
 
 func (provider *Provider) CheckStatuses(ctx context.Context, references []string) ([]platformsms.StatusResponse, error) {
 	if provider == nil || provider.client == nil {
-		return nil, fmt.Errorf("Moolre SMS status check failed: %w", moolre.ErrClientUnavailable)
+		return nil, fmt.Errorf("moolre SMS status check failed: %w", moolre.ErrClientUnavailable)
 	}
 	normalized, err := normalizeReferences(references)
 	if err != nil {
-		return nil, fmt.Errorf("Moolre SMS status check failed: %w", err)
+		return nil, fmt.Errorf("moolre SMS status check failed: %w", err)
 	}
 
 	var response statusResponse
 	if err := provider.client.Post(ctx, statusPath, newStatusRequest(normalized), &response); err != nil {
-		return nil, fmt.Errorf("Moolre SMS status check failed: %w", err)
+		return nil, fmt.Errorf("moolre SMS status check failed: %w", err)
 	}
 	mapped, err := mapStatusResponse(normalized, &response)
 	if err != nil {
-		return nil, fmt.Errorf("Moolre SMS status check failed: %w", err)
+		return nil, fmt.Errorf("moolre SMS status check failed: %w", err)
 	}
 	return mapped, nil
 }

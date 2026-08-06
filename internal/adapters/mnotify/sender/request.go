@@ -19,7 +19,7 @@ func validateCreateRequest(request platformsenderid.CreateRequest) error {
 		return err
 	}
 	if strings.TrimSpace(request.Purpose) == "" {
-		return fmt.Errorf("Sender ID purpose is required")
+		return fmt.Errorf("sender ID purpose is required")
 	}
 	return nil
 }

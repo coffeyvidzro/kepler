@@ -13,7 +13,7 @@ import (
 // New creates and verifies a Redis client.
 func New(ctx context.Context, redisURL string) (*goredis.Client, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("Redis context is required")
+		return nil, fmt.Errorf("redis context is required")
 	}
 	redisURL = strings.TrimSpace(redisURL)
 	if redisURL == "" {

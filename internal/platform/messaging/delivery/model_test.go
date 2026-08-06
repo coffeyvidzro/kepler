@@ -1,0 +1,86 @@
+package delivery
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
+)
+
+func TestAttemptValidate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	messageID := uuid.New()
+	attempt := Attempt{
+		ID:              uuid.New(),
+		TeamID:          uuid.New(),
+		Channel:         messaging.ChannelSMS,
+		SMSMessageID:    &messageID,
+		AttemptNumber:   1,
+		Status:          StatusClaimed,
+		ProviderAccount: "default",
+		ClaimedAt:       now,
+		Metadata:        json.RawMessage(`{}`),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := attempt.Validate(); err != nil {
+		t.Fatalf("Attempt.Validate() error = %v", err)
+	}
+
+	attempt.Channel = messaging.ChannelEmail
+	if err := attempt.Validate(); err == nil {
+		t.Fatal("Attempt.Validate() error = nil for mismatched channel and message")
+	}
+}
+
+func TestAttemptTerminalRequiresTimestamp(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	messageID := uuid.New()
+	attempt := Attempt{
+		ID:              uuid.New(),
+		TeamID:          uuid.New(),
+		Channel:         messaging.ChannelEmail,
+		EmailMessageID:  &messageID,
+		AttemptNumber:   1,
+		Status:          StatusDelivered,
+		Provider:        "ses",
+		ProviderAccount: "default",
+		ClaimedAt:       now,
+		SubmittedAt:     &now,
+		Metadata:        json.RawMessage(`{}`),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := attempt.Validate(); err == nil {
+		t.Fatal("Attempt.Validate() error = nil for terminal status without terminal time")
+	}
+
+	attempt.TerminalAt = &now
+	if err := attempt.Validate(); err != nil {
+		t.Fatalf("Attempt.Validate() error = %v", err)
+	}
+}
+
+func TestAttemptStatusTransitions(t *testing.T) {
+	t.Parallel()
+
+	if !StatusRequestStarted.CanTransitionTo(StatusSubmissionUnknown) {
+		t.Fatal("request_started should transition to submission_unknown")
+	}
+	if !StatusSent.CanTransitionTo(StatusDelivered) {
+		t.Fatal("sent should transition to delivered")
+	}
+	if StatusDelivered.CanTransitionTo(StatusSent) {
+		t.Fatal("terminal delivered status must not move backward")
+	}
+	if !StatusSubmitted.NeedsReconciliation() {
+		t.Fatal("submitted status should require reconciliation")
+	}
+}

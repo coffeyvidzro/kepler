@@ -70,11 +70,11 @@ func NewConsumer(
 	registry := make(map[string]platformsenderid.Provider, len(providers))
 	for _, provider := range providers {
 		if provider == nil {
-			return nil, errors.New("Sender ID provider is required")
+			return nil, errors.New("sender ID provider is required")
 		}
 		providerID := strings.ToLower(strings.TrimSpace(provider.ID()))
 		if providerID == "" {
-			return nil, errors.New("Sender ID provider ID is required")
+			return nil, errors.New("sender ID provider ID is required")
 		}
 		if _, exists := registry[providerID]; exists {
 			return nil, fmt.Errorf("duplicate Sender ID provider %q", providerID)

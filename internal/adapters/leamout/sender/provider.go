@@ -12,7 +12,7 @@ import (
 
 const ProviderID = platformsenderid.ProviderLeamout
 
-var ErrSenderIDNotFound = errors.New("Leamout Sender ID was not found")
+var ErrSenderIDNotFound = errors.New("leamout sender ID was not found")
 
 type Config struct {
 	StatusSequence []string
@@ -58,10 +58,10 @@ func (provider *Provider) ID() string { return ProviderID }
 
 func (provider *Provider) Create(ctx context.Context, request platformsenderid.CreateRequest) (*platformsenderid.CreateResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Leamout Sender ID provider is unavailable")
+		return nil, errors.New("leamout sender ID provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Leamout Sender ID context is required")
+		return nil, errors.New("leamout sender ID context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -90,10 +90,10 @@ func (provider *Provider) Create(ctx context.Context, request platformsenderid.C
 
 func (provider *Provider) CheckStatus(ctx context.Context, senderID string) (*platformsenderid.StatusResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Leamout Sender ID provider is unavailable")
+		return nil, errors.New("leamout sender ID provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Leamout Sender ID context is required")
+		return nil, errors.New("leamout sender ID context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func normalizeStatuses(statuses []string) ([]string, error) {
 		case platformsenderid.StatusPending, platformsenderid.StatusApproved, platformsenderid.StatusRejected:
 			normalized[index] = status
 		default:
-			return nil, fmt.Errorf("Leamout Sender ID status sequence contains invalid status %q", status)
+			return nil, fmt.Errorf("leamout sender ID status sequence contains invalid status %q", status)
 		}
 	}
 	return normalized, nil

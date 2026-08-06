@@ -12,7 +12,7 @@ import (
 
 const ProviderID = "leamout"
 
-var ErrMessageNotFound = errors.New("Leamout SMS message was not found")
+var ErrMessageNotFound = errors.New("leamout SMS message was not found")
 
 type Config struct {
 	StatusSequence []string
@@ -58,10 +58,10 @@ func (provider *Provider) ID() string { return ProviderID }
 
 func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequest) (*platformsms.SendResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Leamout SMS provider is unavailable")
+		return nil, errors.New("leamout SMS provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Leamout SMS context is required")
+		return nil, errors.New("leamout SMS context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -86,17 +86,17 @@ func (provider *Provider) Send(ctx context.Context, request platformsms.SendRequ
 
 func (provider *Provider) CheckStatus(ctx context.Context, messageID string) (*platformsms.StatusResponse, error) {
 	if provider == nil {
-		return nil, errors.New("Leamout SMS provider is unavailable")
+		return nil, errors.New("leamout SMS provider is unavailable")
 	}
 	if ctx == nil {
-		return nil, errors.New("Leamout SMS context is required")
+		return nil, errors.New("leamout SMS context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	messageID = strings.TrimSpace(messageID)
 	if messageID == "" {
-		return nil, errors.New("Leamout SMS message ID is required")
+		return nil, errors.New("leamout SMS message ID is required")
 	}
 
 	provider.mu.Lock()
@@ -131,7 +131,7 @@ func normalizeStatuses(statuses []string) ([]string, error) {
 	for index, status := range statuses {
 		status = strings.ToLower(strings.TrimSpace(status))
 		if !platformsms.IsKnownStatus(status) || status == platformsms.StatusUnknown {
-			return nil, fmt.Errorf("Leamout SMS status sequence contains invalid status %q", status)
+			return nil, fmt.Errorf("leamout SMS status sequence contains invalid status %q", status)
 		}
 		normalized[index] = status
 	}

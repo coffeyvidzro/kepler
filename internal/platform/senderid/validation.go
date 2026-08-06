@@ -11,7 +11,7 @@ const MaxNameCharacters = 11
 
 var (
 	nameCharactersPattern = regexp.MustCompile(`^[A-Za-z0-9]+$`)
-	nameHasLetterPattern   = regexp.MustCompile(`[A-Za-z]`)
+	nameHasLetterPattern  = regexp.MustCompile(`[A-Za-z]`)
 )
 
 func NormalizeName(name string) string {

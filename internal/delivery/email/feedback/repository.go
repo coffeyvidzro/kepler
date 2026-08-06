@@ -326,9 +326,10 @@ func linkAndLockMessage(
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS (
 				SELECT 1
-				FROM email_delivery_attempts
+				FROM message_delivery_attempts
 				WHERE id = $1
 				  AND email_message_id = $2
+				  AND channel = 'email'
 			)
 		`, attemptID, messageID).Scan(&attemptExists); err != nil {
 			return uuid.Nil, "", fmt.Errorf("verify tagged email delivery attempt %s: %w", attemptID, err)
@@ -337,14 +338,14 @@ func linkAndLockMessage(
 			return uuid.Nil, "", fmt.Errorf("%w: internal attempt %q", ErrProviderEventUnlinked, attemptID)
 		}
 		if _, err := tx.Exec(ctx, `
-			UPDATE email_delivery_attempts
+			UPDATE message_delivery_attempts
 			SET status = 'submitted',
 				provider_message_id = COALESCE(provider_message_id, $2),
 				error_code = NULL,
 				error_message = NULL,
-				completed_at = COALESCE(completed_at, now()),
-				updated_at = now()
-			WHERE id = $1
+				request_completed_at = COALESCE(request_completed_at, now()),
+				submitted_at = COALESCE(submitted_at, now()), updated_at = now()
+			WHERE id = $1 AND channel = 'email'
 		`, attemptID, providerMessageID); err != nil {
 			return uuid.Nil, "", fmt.Errorf("reconcile tagged email delivery attempt %s: %w", attemptID, err)
 		}

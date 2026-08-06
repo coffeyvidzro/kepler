@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,34 +59,44 @@ func (repository *Repository) ClaimPendingRegistrations(
 
 	rows, err := repository.db.Query(ctx, `
 		WITH candidates AS (
-			SELECT id
-			FROM sender_ids
-			WHERE country_code = 'GH'
-			  AND lower(provider) = $1
-			  AND status = 'pending'
-			  AND next_status_check_at <= now()
+			SELECT binding.id
+			FROM sender_provider_bindings AS binding
+			JOIN sender_assets AS asset
+			  ON asset.id = binding.sender_asset_id
+			WHERE asset.channel = 'sms'
+			  AND asset.owner_type = 'team'
+			  AND binding.country_code = 'GH'
+			  AND lower(binding.provider) = $1
+			  AND binding.status = 'pending'
+			  AND binding.next_check_at <= now()
 			  AND (
-				registration_locked_at IS NULL
-				OR registration_locked_at < $4
+				binding.reconcile_locked_at IS NULL
+				OR binding.reconcile_locked_at < $4
 			  )
-			ORDER BY next_status_check_at, created_at, id
-			FOR UPDATE SKIP LOCKED
+			ORDER BY binding.next_check_at, binding.created_at, binding.id
+			FOR UPDATE OF binding SKIP LOCKED
 			LIMIT $3
+		), updated AS (
+			UPDATE sender_provider_bindings AS binding
+			SET reconcile_locked_at = now(),
+				reconcile_locked_by = $2,
+				attempts = binding.attempts + 1,
+				updated_at = now()
+			FROM candidates
+			WHERE binding.id = candidates.id
+			RETURNING binding.*
 		)
-		UPDATE sender_ids AS sender
-		SET registration_locked_at = now(),
-			registration_locked_by = $2,
-			provider_attempts = sender.provider_attempts + 1,
-			updated_at = now()
-		FROM candidates
-		WHERE sender.id = candidates.id
-		RETURNING sender.id,
-			sender.name,
-			sender.country_code,
-			sender.provider,
-			COALESCE(sender.provider_status, ''),
-			sender.provider_submitted_at,
-			sender.provider_attempts
+		SELECT binding.id,
+			asset.identity,
+			COALESCE(binding.country_code::text, ''),
+			COALESCE(binding.provider, ''),
+			COALESCE(binding.provider_status, ''),
+			binding.submitted_at,
+			binding.attempts
+		FROM updated AS binding
+		JOIN sender_assets AS asset
+		  ON asset.id = binding.sender_asset_id
+		ORDER BY binding.next_check_at, binding.created_at, binding.id
 	`, providerID, workerID, limit, staleBefore)
 	if err != nil {
 		return nil, fmt.Errorf("claim pending Sender ID registrations: %w", err)
@@ -126,20 +137,30 @@ func (repository *Repository) CompleteSubmission(
 	providerStatus string,
 	nextCheckAt time.Time,
 ) error {
-	return repository.completeClaim(ctx, id, workerID, `
-		UPDATE sender_ids
+	if repository == nil || repository.db == nil {
+		return errors.New("sender ID repository is not configured")
+	}
+	result, err := repository.db.Exec(ctx, `
+		UPDATE sender_provider_bindings
 		SET provider_status = $3,
-			provider_submitted_at = COALESCE(provider_submitted_at, now()),
-			provider_last_checked_at = now(),
-			next_status_check_at = $4,
-			provider_attempts = 0,
-			provider_error = NULL,
-			registration_locked_at = NULL,
-			registration_locked_by = NULL,
+			submitted_at = COALESCE(submitted_at, now()),
+			last_checked_at = now(),
+			next_check_at = $4,
+			attempts = 0,
+			last_error = NULL,
+			reconcile_locked_at = NULL,
+			reconcile_locked_by = NULL,
 			updated_at = now()
 		WHERE id = $1
-		  AND registration_locked_by = $2
-	`, strings.TrimSpace(providerStatus), nextCheckAt)
+		  AND reconcile_locked_by = $2
+	`, id, strings.TrimSpace(workerID), strings.TrimSpace(providerStatus), nextCheckAt)
+	if err != nil {
+		return fmt.Errorf("complete Sender ID registration claim: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrRegistrationClaimLost
+	}
+	return nil
 }
 
 func (repository *Repository) CompleteStatus(
@@ -155,37 +176,85 @@ func (repository *Repository) CompleteStatus(
 	if repository == nil || repository.db == nil {
 		return errors.New("sender ID repository is not configured")
 	}
-	result, err := repository.db.Exec(ctx, `
-		UPDATE sender_ids
-		SET status = $3,
+	status = strings.ToLower(strings.TrimSpace(status))
+	tx, err := repository.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin Sender ID status completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var assetID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE sender_provider_bindings
+		SET status = CASE $3
+				WHEN 'approved' THEN 'active'
+				WHEN 'inactive' THEN 'disabled'
+				ELSE $3
+			END,
 			provider_status = $4,
+			verified = $3 = 'approved',
 			provider_whitelisted = $5,
-			provider_submitted_at = COALESCE(provider_submitted_at, now()),
-			provider_last_checked_at = now(),
-			next_status_check_at = $7,
-			provider_attempts = 0,
-			provider_error = NULL,
+			health_status = CASE
+				WHEN $3 = 'approved' AND $5 THEN 'healthy'
+				WHEN $3 IN ('rejected', 'suspended') THEN 'degraded'
+				ELSE health_status
+			END,
+			submitted_at = COALESCE(submitted_at, now()),
+			last_checked_at = now(),
+			next_check_at = $7,
+			attempts = 0,
+			last_error = NULL,
 			rejection_reason = CASE WHEN $3 = 'rejected' THEN $6 ELSE NULL END,
-			approved_at = CASE
-				WHEN $3 = 'approved' THEN COALESCE(approved_at, now())
-				ELSE approved_at
+			verified_at = CASE
+				WHEN $3 = 'approved' THEN COALESCE(verified_at, now())
+				ELSE verified_at
 			END,
 			rejected_at = CASE
 				WHEN $3 = 'rejected' THEN COALESCE(rejected_at, now())
 				ELSE rejected_at
 			END,
-			registration_locked_at = NULL,
-			registration_locked_by = NULL,
+			suspended_at = CASE
+				WHEN $3 = 'suspended' THEN COALESCE(suspended_at, now())
+				ELSE suspended_at
+			END,
+			disabled_at = CASE
+				WHEN $3 = 'inactive' THEN COALESCE(disabled_at, now())
+				ELSE disabled_at
+			END,
+			reconcile_locked_at = NULL,
+			reconcile_locked_by = NULL,
 			updated_at = now()
 		WHERE id = $1
-		  AND registration_locked_by = $2
-	`, id, strings.TrimSpace(workerID), strings.ToLower(strings.TrimSpace(status)),
-		strings.TrimSpace(providerStatus), whitelisted, rejectionReason, nextCheckAt)
+		  AND reconcile_locked_by = $2
+		RETURNING sender_asset_id
+	`, id, strings.TrimSpace(workerID), status, strings.TrimSpace(providerStatus), whitelisted, rejectionReason, nextCheckAt).Scan(&assetID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrRegistrationClaimLost
+	}
 	if err != nil {
 		return fmt.Errorf("complete Sender ID provider status: %w", err)
 	}
-	if result.RowsAffected() != 1 {
-		return ErrRegistrationClaimLost
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE sender_assets
+		SET status = CASE $2
+				WHEN 'approved' THEN 'active'
+				WHEN 'rejected' THEN 'failed'
+				WHEN 'inactive' THEN 'disabled'
+				ELSE $2
+			END,
+			health_status = CASE
+				WHEN $2 = 'approved' AND $3 THEN 'healthy'
+				WHEN $2 IN ('rejected', 'suspended') THEN 'degraded'
+				ELSE health_status
+			END,
+			updated_at = now()
+		WHERE id = $1
+	`, assetID, status, whitelisted); err != nil {
+		return fmt.Errorf("update Sender ID asset status: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit Sender ID status completion: %w", err)
 	}
 	return nil
 }
@@ -201,45 +270,24 @@ func (repository *Repository) RecordProviderFailure(
 	if repository == nil || repository.db == nil {
 		return errors.New("sender ID repository is not configured")
 	}
-	message := "Sender ID provider operation failed"
+	message := "sender ID provider operation failed"
 	if providerError != nil {
 		message = providerError.Error()
 	}
 	result, err := repository.db.Exec(ctx, `
-		UPDATE sender_ids
+		UPDATE sender_provider_bindings
 		SET provider_status = COALESCE(NULLIF($3, ''), provider_status),
-			provider_last_checked_at = now(),
-			next_status_check_at = $5,
-			provider_error = $4,
-			registration_locked_at = NULL,
-			registration_locked_by = NULL,
+			last_checked_at = now(),
+			next_check_at = $5,
+			last_error = $4,
+			reconcile_locked_at = NULL,
+			reconcile_locked_by = NULL,
 			updated_at = now()
 		WHERE id = $1
-		  AND registration_locked_by = $2
+		  AND reconcile_locked_by = $2
 	`, id, strings.TrimSpace(workerID), strings.TrimSpace(providerStatus), message, nextCheckAt)
 	if err != nil {
 		return fmt.Errorf("record Sender ID provider failure: %w", err)
-	}
-	if result.RowsAffected() != 1 {
-		return ErrRegistrationClaimLost
-	}
-	return nil
-}
-
-func (repository *Repository) completeClaim(
-	ctx context.Context,
-	id uuid.UUID,
-	workerID string,
-	query string,
-	value any,
-	nextCheckAt time.Time,
-) error {
-	if repository == nil || repository.db == nil {
-		return errors.New("sender ID repository is not configured")
-	}
-	result, err := repository.db.Exec(ctx, query, id, strings.TrimSpace(workerID), value, nextCheckAt)
-	if err != nil {
-		return fmt.Errorf("complete Sender ID registration claim: %w", err)
 	}
 	if result.RowsAffected() != 1 {
 		return ErrRegistrationClaimLost

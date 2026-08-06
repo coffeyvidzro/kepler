@@ -15,7 +15,7 @@ import (
 const createEmailMessage = `-- name: CreateEmailMessage :one
 INSERT INTO email_messages (
     team_id,
-    sender_domain_id,
+    sender_provider_binding_id,
     delivery_provider,
     provider_region,
     message_type,
@@ -59,34 +59,34 @@ SELECT
 FROM teams AS team
 WHERE team.id = $19
   AND team.status = 'active'
-RETURNING id, team_id, sender_domain_id, delivery_provider, provider_region, message_type, from_email, from_name, reply_to_email, to_email, to_name, subject, html_body, text_body, status, provider, provider_message_id, error_code, error_message, metadata, recipients, headers, attachments, tags, scheduled_at, queued_at, processing_at, submitted_at, delivered_at, failed_at, created_at, updated_at, current_delivery_attempt_id
+RETURNING id, team_id, sender_provider_binding_id, delivery_provider, provider_region, message_type, from_email, from_name, reply_to_email, to_email, to_name, subject, html_body, text_body, status, provider, provider_message_id, current_delivery_attempt_id, error_code, error_message, metadata, recipients, headers, attachments, tags, scheduled_at, queued_at, processing_at, submitted_at, delivered_at, failed_at, created_at, updated_at
 `
 
 type CreateEmailMessageParams struct {
-	SenderDomainID   *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
-	DeliveryProvider string             `db:"delivery_provider" json:"delivery_provider"`
-	ProviderRegion   string             `db:"provider_region" json:"provider_region"`
-	MessageType      string             `db:"message_type" json:"message_type"`
-	FromEmail        string             `db:"from_email" json:"from_email"`
-	FromName         *string            `db:"from_name" json:"from_name"`
-	ReplyToEmail     *string            `db:"reply_to_email" json:"reply_to_email"`
-	ToEmail          string             `db:"to_email" json:"to_email"`
-	ToName           *string            `db:"to_name" json:"to_name"`
-	Subject          string             `db:"subject" json:"subject"`
-	HtmlBody         *string            `db:"html_body" json:"html_body"`
-	TextBody         *string            `db:"text_body" json:"text_body"`
-	Metadata         []byte             `db:"metadata" json:"metadata"`
-	Recipients       []byte             `db:"recipients" json:"recipients"`
-	Headers          []byte             `db:"headers" json:"headers"`
-	Attachments      []byte             `db:"attachments" json:"attachments"`
-	Tags             []byte             `db:"tags" json:"tags"`
-	ScheduledAt      pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
+	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
+	DeliveryProvider        string             `db:"delivery_provider" json:"delivery_provider"`
+	ProviderRegion          string             `db:"provider_region" json:"provider_region"`
+	MessageType             string             `db:"message_type" json:"message_type"`
+	FromEmail               string             `db:"from_email" json:"from_email"`
+	FromName                *string            `db:"from_name" json:"from_name"`
+	ReplyToEmail            *string            `db:"reply_to_email" json:"reply_to_email"`
+	ToEmail                 string             `db:"to_email" json:"to_email"`
+	ToName                  *string            `db:"to_name" json:"to_name"`
+	Subject                 string             `db:"subject" json:"subject"`
+	HtmlBody                *string            `db:"html_body" json:"html_body"`
+	TextBody                *string            `db:"text_body" json:"text_body"`
+	Metadata                []byte             `db:"metadata" json:"metadata"`
+	Recipients              []byte             `db:"recipients" json:"recipients"`
+	Headers                 []byte             `db:"headers" json:"headers"`
+	Attachments             []byte             `db:"attachments" json:"attachments"`
+	Tags                    []byte             `db:"tags" json:"tags"`
+	ScheduledAt             pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	TeamID                  uuid.UUID          `db:"team_id" json:"team_id"`
 }
 
 func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessageParams) (EmailMessage, error) {
 	row := q.db.QueryRow(ctx, createEmailMessage,
-		arg.SenderDomainID,
+		arg.SenderProviderBindingID,
 		arg.DeliveryProvider,
 		arg.ProviderRegion,
 		arg.MessageType,
@@ -110,7 +110,7 @@ func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessage
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderDomainID,
+		&i.SenderProviderBindingID,
 		&i.DeliveryProvider,
 		&i.ProviderRegion,
 		&i.MessageType,
@@ -125,6 +125,7 @@ func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessage
 		&i.Status,
 		&i.Provider,
 		&i.ProviderMessageID,
+		&i.CurrentDeliveryAttemptID,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.Metadata,
@@ -140,13 +141,12 @@ func (q *Queries) CreateEmailMessage(ctx context.Context, arg CreateEmailMessage
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CurrentDeliveryAttemptID,
 	)
 	return i, err
 }
 
 const getEmailMessage = `-- name: GetEmailMessage :one
-SELECT message.id, message.team_id, message.sender_domain_id, message.delivery_provider, message.provider_region, message.message_type, message.from_email, message.from_name, message.reply_to_email, message.to_email, message.to_name, message.subject, message.html_body, message.text_body, message.status, message.provider, message.provider_message_id, message.error_code, message.error_message, message.metadata, message.recipients, message.headers, message.attachments, message.tags, message.scheduled_at, message.queued_at, message.processing_at, message.submitted_at, message.delivered_at, message.failed_at, message.created_at, message.updated_at, message.current_delivery_attempt_id
+SELECT message.id, message.team_id, message.sender_provider_binding_id, message.delivery_provider, message.provider_region, message.message_type, message.from_email, message.from_name, message.reply_to_email, message.to_email, message.to_name, message.subject, message.html_body, message.text_body, message.status, message.provider, message.provider_message_id, message.current_delivery_attempt_id, message.error_code, message.error_message, message.metadata, message.recipients, message.headers, message.attachments, message.tags, message.scheduled_at, message.queued_at, message.processing_at, message.submitted_at, message.delivered_at, message.failed_at, message.created_at, message.updated_at
 FROM email_messages AS message
 JOIN teams AS team ON team.id = message.team_id
 WHERE message.id = $1
@@ -165,7 +165,7 @@ func (q *Queries) GetEmailMessage(ctx context.Context, arg GetEmailMessageParams
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
-		&i.SenderDomainID,
+		&i.SenderProviderBindingID,
 		&i.DeliveryProvider,
 		&i.ProviderRegion,
 		&i.MessageType,
@@ -180,6 +180,7 @@ func (q *Queries) GetEmailMessage(ctx context.Context, arg GetEmailMessageParams
 		&i.Status,
 		&i.Provider,
 		&i.ProviderMessageID,
+		&i.CurrentDeliveryAttemptID,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.Metadata,
@@ -195,7 +196,6 @@ func (q *Queries) GetEmailMessage(ctx context.Context, arg GetEmailMessageParams
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CurrentDeliveryAttemptID,
 	)
 	return i, err
 }

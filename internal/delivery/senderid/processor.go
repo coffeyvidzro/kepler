@@ -126,13 +126,13 @@ func validateCreateResponse(
 	response *platformsenderid.CreateResponse,
 ) error {
 	if response == nil {
-		return errors.New("Sender ID provider returned an empty creation response")
+		return errors.New("sender ID provider returned an empty creation response")
 	}
 	if !strings.EqualFold(strings.TrimSpace(response.ProviderID), strings.TrimSpace(provider.ID())) {
-		return fmt.Errorf("Sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
+		return fmt.Errorf("sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
 	}
 	if !strings.EqualFold(strings.TrimSpace(response.SenderID), strings.TrimSpace(claim.Name)) {
-		return fmt.Errorf("Sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
+		return fmt.Errorf("sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
 	}
 	return nil
 }
@@ -143,13 +143,13 @@ func validateStatusResponse(
 	response *platformsenderid.StatusResponse,
 ) error {
 	if response == nil {
-		return errors.New("Sender ID provider returned an empty status response")
+		return errors.New("sender ID provider returned an empty status response")
 	}
 	if !strings.EqualFold(strings.TrimSpace(response.ProviderID), strings.TrimSpace(provider.ID())) {
-		return fmt.Errorf("Sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
+		return fmt.Errorf("sender ID provider response ID %q does not match %q", response.ProviderID, provider.ID())
 	}
 	if !strings.EqualFold(strings.TrimSpace(response.SenderID), strings.TrimSpace(claim.Name)) {
-		return fmt.Errorf("Sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
+		return fmt.Errorf("sender ID provider response name %q does not match %q", response.SenderID, claim.Name)
 	}
 	return nil
 }
