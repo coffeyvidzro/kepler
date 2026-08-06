@@ -1,0 +1,81 @@
+{{template "layout_start" .}}
+{{$page := .Data}}
+
+<section class="notice warning">
+  Allowance policies are append-only monthly periods. Add a new policy for a change and close an existing period without rewriting historical allowances.
+</section>
+
+<h2>Add allowance policy</h2>
+<form class="control-panel" method="post" action="/billing/allowance-policies">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Product
+    <input type="text" name="product" placeholder="sms" required>
+  </label>
+  <label>Meter
+    <input type="text" name="meter" placeholder="segment" required>
+  </label>
+  <label>Billing market
+    <input type="text" name="billing_market" maxlength="2" placeholder="GH" required>
+  </label>
+  <label>Tier
+    <input type="text" name="tier" placeholder="starter" required>
+  </label>
+  <label>Included quantity
+    <input type="number" name="included_quantity" min="0" step="1" placeholder="1000" required>
+  </label>
+  <label>Cadence
+    <select name="cadence">
+      <option value="monthly" selected>Monthly</option>
+    </select>
+  </label>
+  <label>Effective from (UTC month boundary)
+    <input type="datetime-local" name="effective_from" required>
+  </label>
+  <label>Effective until (UTC month boundary)
+    <input type="datetime-local" name="effective_until">
+  </label>
+  <button type="submit">Add allowance policy</button>
+</form>
+
+<h2>Allowance policy periods</h2>
+<table>
+  <thead>
+    <tr><th>Product</th><th>Meter</th><th>Market</th><th>Tier</th><th>Included</th><th>Cadence</th><th>Effective period</th><th>Status</th><th>Close</th></tr>
+  </thead>
+  <tbody>
+  {{range $page.AllowancePolicies}}
+    <tr>
+      <td>{{.Product}}</td>
+      <td>{{.Meter}}</td>
+      <td>{{.BillingMarket}}</td>
+      <td>{{.Tier}}</td>
+      <td>{{.IncludedQuantity}}</td>
+      <td>{{.Cadence}}</td>
+      <td>
+        {{.EffectiveFrom.Format "2006-01-02 15:04"}}
+        <br><small>to {{if .EffectiveUntil}}{{.EffectiveUntil.Format "2006-01-02 15:04"}}{{else}}open-ended{{end}}</small>
+      </td>
+      <td>
+        {{if .EffectiveUntil}}
+          <span class="status-badge status-expired">Closed</span>
+        {{else}}
+          <span class="status-badge status-current">Open</span>
+        {{end}}
+      </td>
+      <td>
+        {{if not .EffectiveUntil}}
+        <form class="compact-form" method="post" action="/billing/allowance-policies/{{.ID}}/close">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="datetime-local" name="effective_until" aria-label="Effective until" required>
+          <button class="danger" type="submit">Close</button>
+        </form>
+        {{else}}—{{end}}
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="9">No allowance policies configured.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+{{template "layout_end" .}}
