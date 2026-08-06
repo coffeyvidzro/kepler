@@ -29,7 +29,7 @@ type routeHandlers struct {
 
 func newRouteRegistrar(
 	handlers routeHandlers,
-	backofficeAccess echo.MiddlewareFunc,
+	backofficeAccess ...echo.MiddlewareFunc,
 ) httptransport.Registrar {
 	return func(router *echo.Echo) error {
 		if router == nil {
@@ -40,9 +40,7 @@ func newRouteRegistrar(
 		}
 		backofficehealthhttp.RegisterRoutes(router, handlers.health)
 
-		// Administrative routes remain unavailable until authentication and
-		// authorization supply this middleware boundary.
-		if backofficeAccess == nil {
+		if len(backofficeAccess) == 0 {
 			return nil
 		}
 		if handlers.dashboard == nil ||
@@ -55,13 +53,13 @@ func newRouteRegistrar(
 			return errors.New("backoffice administrative handlers are required")
 		}
 
-		backofficedashboardhttp.RegisterRoutes(router, handlers.dashboard, backofficeAccess)
-		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess)
-		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess)
-		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess)
-		backofficesmsrateshttp.RegisterRoutes(router, handlers.smsRates, backofficeAccess)
-		backofficeproductrateshttp.RegisterRoutes(router, handlers.productRates, backofficeAccess)
-		backofficeallowancepolicieshttp.RegisterRoutes(router, handlers.allowancePolicies, backofficeAccess)
+		backofficedashboardhttp.RegisterRoutes(router, handlers.dashboard, backofficeAccess...)
+		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess...)
+		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess...)
+		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess...)
+		backofficesmsrateshttp.RegisterRoutes(router, handlers.smsRates, backofficeAccess...)
+		backofficeproductrateshttp.RegisterRoutes(router, handlers.productRates, backofficeAccess...)
+		backofficeallowancepolicieshttp.RegisterRoutes(router, handlers.allowancePolicies, backofficeAccess...)
 		return nil
 	}
 }
