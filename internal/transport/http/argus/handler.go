@@ -18,47 +18,6 @@ type Handler struct{ service *Service }
 
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
-func (handler *Handler) CreateService(c *echo.Context) error {
-	var req CreateServiceRequest
-	if err := decodeJSON(c, &req); err != nil {
-		return err
-	}
-	result, err := handler.service.CreateService(c.Request().Context(), req)
-	if err != nil {
-		return httputil.Error(c, err)
-	}
-	c.Response().Header().Set("Location", "/verification-services/"+result.ID)
-	return httputil.Created(c, result)
-}
-
-func (handler *Handler) ListServices(c *echo.Context) error {
-	result, err := handler.service.ListServices(c.Request().Context(), listRequest(c))
-	if err != nil {
-		return httputil.Error(c, err)
-	}
-	return httputil.OK(c, result)
-}
-
-func (handler *Handler) GetService(c *echo.Context) error {
-	result, err := handler.service.GetService(c.Request().Context(), c.Param("service_id"))
-	if err != nil {
-		return httputil.Error(c, err)
-	}
-	return httputil.OK(c, result)
-}
-
-func (handler *Handler) UpdateService(c *echo.Context) error {
-	var req UpdateServiceRequest
-	if err := decodeJSON(c, &req); err != nil {
-		return err
-	}
-	result, err := handler.service.UpdateService(c.Request().Context(), c.Param("service_id"), req)
-	if err != nil {
-		return httputil.Error(c, err)
-	}
-	return httputil.OK(c, result)
-}
-
 func (handler *Handler) Create(c *echo.Context) error {
 	if err := requireIdempotencyKey(c); err != nil {
 		return err
