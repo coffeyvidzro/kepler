@@ -78,11 +78,15 @@ func TestFreshDatabaseAppliesCanonicalMigrationsAndRoutes(t *testing.T) {
 	if _, err := pool.Exec(ctx, `
 		UPDATE sender_asset_grants
 		SET status = 'active', revoked_at = NULL, is_default = true
-		WHERE id = $1;
+		WHERE id = $1
+	`, fixture.SMSGrantID); err != nil {
+		t.Fatalf("restore SMS grant: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
 		UPDATE sender_provider_bindings
 		SET health_status = 'degraded'
-		WHERE id = $2
-	`, fixture.SMSGrantID, fixture.SMSBindingID); err != nil {
+		WHERE id = $1
+	`, fixture.SMSBindingID); err != nil {
 		t.Fatalf("degrade SMS binding: %v", err)
 	}
 	_, err = messagingrouting.Resolve(ctx, pool, platformrouting.Request{
