@@ -15,12 +15,6 @@ type MoolreConfig struct {
 	VASKey string `env:"VAS_KEY"`
 }
 
-type ArgusConfig struct {
-	HMACSecret string `env:"HMAC_SECRET"`
-	SenderID   string `env:"SENDER_ID" envDefault:"Dugble"`
-	FromEmail  string `env:"FROM_EMAIL" envDefault:"argus@dugble.com"`
-}
-
 type AWSConfig struct {
 	FromEmail                        string `env:"FROM_EMAIL,required,notEmpty"`
 	Region                           string `env:"REGION,required,notEmpty"`
@@ -57,7 +51,6 @@ type Config struct {
 	BackendURL     string         `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
 	CookieDomain   string         `env:"COOKIE_DOMAIN"`
 	EncryptionKeys []string       `env:"ENCRYPTION_KEYS" envSeparator:","`
-	Argus          ArgusConfig    `envPrefix:"ARGUS_"`
 	AWS            AWSConfig      `envPrefix:"AWS_"`
 	NATSURL        string         `env:"NATS_URL" envDefault:"nats://localhost:4222"`
 	MNotify        ProviderConfig `envPrefix:"MNOTIFY_"`
@@ -88,9 +81,6 @@ func (c *Config) normalize() {
 	c.BackendURL = strings.TrimRight(strings.TrimSpace(c.BackendURL), "/")
 	c.CookieDomain = strings.TrimSpace(c.CookieDomain)
 	c.EncryptionKeys = normalizeStrings(c.EncryptionKeys)
-	c.Argus.HMACSecret = strings.TrimSpace(c.Argus.HMACSecret)
-	c.Argus.SenderID = strings.TrimSpace(c.Argus.SenderID)
-	c.Argus.FromEmail = strings.ToLower(strings.TrimSpace(c.Argus.FromEmail))
 	c.AWS.FromEmail = strings.TrimSpace(c.AWS.FromEmail)
 	c.AWS.Region = strings.TrimSpace(c.AWS.Region)
 	c.AWS.AccessKey = strings.TrimSpace(c.AWS.AccessKey)

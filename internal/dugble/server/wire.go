@@ -23,12 +23,10 @@ import (
 	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
 	arcjetadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/security/arcjet"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
-	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
 	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
 	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
-	argusmodule "github.com/coffeyvidzro/dugble/server/internal/modules/argus"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
@@ -56,7 +54,6 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
-	argushttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/argus"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
 	authhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auth"
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
@@ -217,11 +214,6 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	senderIDRepository := senderidmodule.NewRepository(db)
 	webhookRepository := webhooksmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookRepository)
-	productRuntime, err := New(Dependencies{WebhookEmitter: webhookEmitter})
-	if err != nil {
-		return fail(fmt.Errorf("initialize product runtime: %w", err))
-	}
-
 	smsRepository := smsmodule.NewRepositoryWithWebhookEmitter(db, webhookEmitter)
 	billingService := platformbilling.NewService(platformbilling.NewRepository(db))
 	smsService := smsmodule.NewService(
@@ -240,18 +232,6 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 			DefaultRegion:    cfg.AWS.Region,
 		},
 		billingService,
-	)
-
-	argusSecret := []byte(cfg.Argus.HMACSecret)
-	argusCodes, err := argusmodule.NewCodeManager(argusSecret, mfaCipher)
-	if err != nil {
-		return fail(fmt.Errorf("initialize verify code manager: %w", err))
-	}
-	argusService := argusmodule.NewService(
-		argusmodule.NewRepository(db),
-		argusCodes,
-		argusdispatch.NewQueue(outboxRepository),
-		productRuntime.Events,
 	)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
 
@@ -362,7 +342,6 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		)
 		smshttp.RegisterRoutes(router, smshttp.NewHandler(smsService), tenantAccess)
 		emailhttp.RegisterRoutes(router, emailhttp.NewHandler(emailAPIService), tenantAccess)
-		argushttp.RegisterRoutes(router, argushttp.NewHandler(argusService), tenantAccess)
 		webhookshttp.RegisterRoutes(
 			router,
 			webhookshttp.NewHandler(webhookService),

@@ -21,9 +21,6 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
-	arguscleanup "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/cleanup"
-	argusdispatch "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/dispatch"
-	argusexpiry "github.com/coffeyvidzro/dugble/server/internal/delivery/argus/expiry"
 	domainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
@@ -33,14 +30,10 @@ import (
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
-	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant/provisioning"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
-	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
-	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
@@ -89,9 +82,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	processedEvents := outboxRepository
 	webhookModuleRepository := webhookmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)
-	events := platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter))
 	lifecycleEmitter := webhookEmitter
-	billingService := platformbilling.NewService(platformbilling.NewRepository(db))
 
 	emailSender, err := awsses.NewSESSender(
 		startupCtx,
@@ -254,46 +245,6 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		smsfeedback.ConsumerConfig{PollInterval: 30 * time.Second},
 	)
 
-	argusCipher, err := authnz.NewSecretCipherKeyring(cfg.EncryptionKeys)
-	if err != nil {
-		return fail(fmt.Errorf("initialize verification code cipher: %w", err))
-	}
-	emailAPIService := emailmodule.NewService(
-		emailmodule.NewRepository(db),
-		emaildelivery.NewQueue(outboxRepository),
-		emailmodule.ServiceConfig{
-			DefaultFromEmail: cfg.Argus.FromEmail,
-			DefaultFromName:  "Dugble",
-			DefaultProvider:  "ses",
-			DefaultRegion:    cfg.AWS.Region,
-		},
-		billingService,
-	)
-	smsAPIService := smsmodule.NewService(
-		smsRepository,
-		smsSender,
-		smsdelivery.NewQueue(outboxRepository),
-		billingService,
-	)
-	argusProcessor := argusdispatch.NewProcessor(
-		argusdispatch.NewRepository(db),
-		argusCipher,
-		argusdispatch.NewEmailChannel(emailAPIService),
-		argusdispatch.NewSMSChannel(smsAPIService, cfg.Argus.SenderID),
-		events,
-	)
-	argusConsumer := argusdispatch.NewConsumer(
-		messagingClient,
-		processedEvents,
-		argusProcessor,
-		argusdispatch.DefaultConsumerConfig(),
-	)
-	argusExpiryScanner := argusexpiry.NewScanner(
-		argusexpiry.NewProcessor(db, events),
-		argusexpiry.DefaultConfig(),
-	)
-	argusCleanupWorker := arguscleanup.NewWorker(db, arguscleanup.DefaultConfig())
-
 	outboxRelay := outbox.NewRelay(
 		outboxRepository,
 		messagingClient,
@@ -337,9 +288,6 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		job{name: "email feedback metrics collector", run: emailFeedbackMetricsCollector.Run},
 		job{name: "SMS delivery consumer", run: smsConsumer.Run},
 		job{name: "SMS feedback reconciler", run: smsFeedbackConsumer.Run},
-		job{name: "verification dispatch consumer", run: argusConsumer.Run},
-		job{name: "verification expiry scanner", run: argusExpiryScanner.Run},
-		job{name: "verification cleanup worker", run: argusCleanupWorker.Run},
 		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
 		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
 		senderIDReconciliationJob,

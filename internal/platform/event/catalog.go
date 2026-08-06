@@ -33,16 +33,6 @@ const (
 	TypeEmailClicked             Type = "email.clicked"
 	TypeEmailSubscriptionChanged Type = "email.subscription_changed"
 
-	TypeVerificationCreated            Type = "verification.created"
-	TypeVerificationDispatched         Type = "verification.dispatched"
-	TypeVerificationApproved           Type = "verification.approved"
-	TypeVerificationIncorrect          Type = "verification.incorrect"
-	TypeVerificationResent             Type = "verification.resent"
-	TypeVerificationExpired            Type = "verification.expired"
-	TypeVerificationDeliveryFailed     Type = "verification.delivery_failed"
-	TypeVerificationMaxAttemptsReached Type = "verification.max_attempts_reached"
-	TypeVerificationCanceled           Type = "verification.canceled"
-
 	TypeWebhookTest Type = "webhook.test"
 )
 
@@ -62,15 +52,6 @@ var definitions = []Definition{
 	{Type: TypeEmailOpened, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeEmailClicked, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeEmailSubscriptionChanged, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationCreated, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationDispatched, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationApproved, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationIncorrect, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationResent, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationExpired, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationDeliveryFailed, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationMaxAttemptsReached, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
-	{Type: TypeVerificationCanceled, ObjectType: "verification", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeWebhookTest, ObjectType: "webhook_endpoint", ObjectIDRequired: true},
 }
 
