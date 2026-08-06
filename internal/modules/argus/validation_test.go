@@ -73,6 +73,21 @@ func TestValidateCreateVerificationCustomPolicy(t *testing.T) {
 	}
 }
 
+func TestValidateCreateVerificationEmailRecipient(t *testing.T) {
+	t.Parallel()
+
+	validated, err := validateCreateVerification(CreateVerificationRequest{
+		Recipient: "Argus User <ARGUS@example.com>",
+		Channel:   ChannelEmail,
+	})
+	if err != nil {
+		t.Fatalf("validate email verification: %v", err)
+	}
+	if validated.RecipientNormalized != "argus@example.com" {
+		t.Fatalf("normalized recipient = %q, want argus@example.com", validated.RecipientNormalized)
+	}
+}
+
 func TestValidateCreateVerificationRejectsInvalidPolicy(t *testing.T) {
 	t.Parallel()
 
