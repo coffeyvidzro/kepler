@@ -14,21 +14,6 @@ import (
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )
 
-func (service *Service) resolveService(ctx context.Context, repository *Repository, teamID uuid.UUID, req CreateVerificationRequest) (VerificationService, error) {
-	if strings.TrimSpace(req.ServiceID) != "" {
-		id, err := parseID(req.ServiceID, "Verification service")
-		if err != nil {
-			return VerificationService{}, err
-		}
-		return repository.GetService(ctx, id, teamID)
-	}
-	key := strings.ToLower(strings.TrimSpace(req.Service))
-	if key == "" {
-		return VerificationService{}, apperrors.NewBadRequest("Exactly one of service_id or service is required")
-	}
-	return repository.GetServiceByKey(ctx, teamID, key)
-}
-
 func (service *Service) emit(ctx context.Context, tx pgx.Tx, eventType platformevent.Type, verification Verification) error {
 	data, err := json.Marshal(verification)
 	if err != nil {
