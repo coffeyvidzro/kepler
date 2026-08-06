@@ -1,0 +1,78 @@
+name: Messaging Fresh Database E2E
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/messaging-e2e.yml"
+      - "migrations/**"
+      - "internal/delivery/**"
+      - "internal/integration/messaging/**"
+      - "internal/modules/sms/**"
+      - "internal/modules/webhooks/**"
+      - "internal/platform/messaging/**"
+      - "internal/platform/webhook/**"
+      - "go.mod"
+      - "go.sum"
+  pull_request:
+    paths:
+      - ".github/workflows/messaging-e2e.yml"
+      - "migrations/**"
+      - "internal/delivery/**"
+      - "internal/integration/messaging/**"
+      - "internal/modules/sms/**"
+      - "internal/modules/webhooks/**"
+      - "internal/platform/messaging/**"
+      - "internal/platform/webhook/**"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: messaging-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fresh-database:
+    name: Fresh PostgreSQL messaging lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kepler_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kepler_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/kepler_e2e?sslmode=disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run fresh-database messaging lifecycle tests
+        run: go test -race -count=1 ./internal/integration/messaging
