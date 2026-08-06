@@ -9,6 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AllowancePolicy struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	Product          string             `db:"product" json:"product"`
+	Meter            string             `db:"meter" json:"meter"`
+	BillingMarket    string             `db:"billing_market" json:"billing_market"`
+	Tier             string             `db:"tier" json:"tier"`
+	IncludedQuantity int64              `db:"included_quantity" json:"included_quantity"`
+	Cadence          string             `db:"cadence" json:"cadence"`
+	EffectiveFrom    pgtype.Timestamptz `db:"effective_from" json:"effective_from"`
+	EffectiveUntil   pgtype.Timestamptz `db:"effective_until" json:"effective_until"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type AuditEvent struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	TeamID         *uuid.UUID         `db:"team_id" json:"team_id"`
@@ -410,13 +424,15 @@ type TeamToken struct {
 }
 
 type TeamWallet struct {
-	TeamID        uuid.UUID          `db:"team_id" json:"team_id"`
-	BillingMarket string             `db:"billing_market" json:"billing_market"`
-	Currency      string             `db:"currency" json:"currency"`
-	BalanceUnits  int64              `db:"balance_units" json:"balance_units"`
-	Tier          string             `db:"tier" json:"tier"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	TeamID                 uuid.UUID          `db:"team_id" json:"team_id"`
+	BillingMarket          string             `db:"billing_market" json:"billing_market"`
+	Currency               string             `db:"currency" json:"currency"`
+	BalanceUnits           int64              `db:"balance_units" json:"balance_units"`
+	Tier                   string             `db:"tier" json:"tier"`
+	PendingTier            *string            `db:"pending_tier" json:"pending_tier"`
+	PendingTierEffectiveAt pgtype.Timestamptz `db:"pending_tier_effective_at" json:"pending_tier_effective_at"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type TotpCredential struct {
@@ -429,15 +445,19 @@ type TotpCredential struct {
 }
 
 type UsageAllowance struct {
-	ID               uuid.UUID          `db:"id" json:"id"`
-	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
-	Meter            string             `db:"meter" json:"meter"`
-	PeriodStart      pgtype.Timestamptz `db:"period_start" json:"period_start"`
-	PeriodEnd        pgtype.Timestamptz `db:"period_end" json:"period_end"`
-	IncludedQuantity int64              `db:"included_quantity" json:"included_quantity"`
-	ConsumedQuantity int64              `db:"consumed_quantity" json:"consumed_quantity"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                uuid.UUID          `db:"id" json:"id"`
+	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
+	AllowancePolicyID uuid.UUID          `db:"allowance_policy_id" json:"allowance_policy_id"`
+	Product           string             `db:"product" json:"product"`
+	Meter             string             `db:"meter" json:"meter"`
+	BillingMarket     string             `db:"billing_market" json:"billing_market"`
+	Tier              string             `db:"tier" json:"tier"`
+	PeriodStart       pgtype.Timestamptz `db:"period_start" json:"period_start"`
+	PeriodEnd         pgtype.Timestamptz `db:"period_end" json:"period_end"`
+	IncludedQuantity  int64              `db:"included_quantity" json:"included_quantity"`
+	ConsumedQuantity  int64              `db:"consumed_quantity" json:"consumed_quantity"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type UsageAuthorization struct {
