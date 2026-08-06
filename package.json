@@ -1,0 +1,15 @@
+{
+  "name": "kepler-backoffice-assets",
+  "private": true,
+  "scripts": {
+    "assets:build": "npm run htmx:vendor && npm run css:build",
+    "css:build": "tailwindcss -i ./htmx/styles/app.css -o ./htmx/static/dugble.css --minify",
+    "css:dev": "tailwindcss -i ./htmx/styles/app.css -o ./htmx/static/dugble.css --watch",
+    "htmx:vendor": "cp ./node_modules/htmx.org/dist/htmx.min.js ./htmx/static/htmx.min.js"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.1.10",
+    "htmx.org": "2.0.10",
+    "tailwindcss": "4.1.10"
+  }
+}
