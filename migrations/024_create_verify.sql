@@ -1,56 +1,14 @@
-CREATE TABLE IF NOT EXISTS verification_services (
+CREATE TABLE IF NOT EXISTS verifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    default_channel TEXT NOT NULL DEFAULT 'sms',
+    channel TEXT NOT NULL DEFAULT 'sms',
+    recipient TEXT NOT NULL,
+    recipient_normalized TEXT NOT NULL,
     code_length INTEGER NOT NULL DEFAULT 6,
     ttl_seconds INTEGER NOT NULL DEFAULT 300,
     max_attempts INTEGER NOT NULL DEFAULT 5,
     resend_cooldown_seconds INTEGER NOT NULL DEFAULT 30,
     max_resends INTEGER NOT NULL DEFAULT 3,
-    enabled BOOLEAN NOT NULL DEFAULT true,
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    CONSTRAINT uq_verification_services_team_key UNIQUE (team_id, key),
-    CONSTRAINT uq_verification_services_id_team UNIQUE (id, team_id),
-    CONSTRAINT chk_verification_services_key CHECK (
-        length(trim(key)) > 0 AND key !~ '[[:space:]]'
-    ),
-    CONSTRAINT chk_verification_services_name CHECK (length(trim(name)) > 0),
-    CONSTRAINT chk_verification_services_channel CHECK (
-        default_channel IN ('email', 'sms')
-    ),
-    CONSTRAINT chk_verification_services_code_length CHECK (
-        code_length BETWEEN 4 AND 10
-    ),
-    CONSTRAINT chk_verification_services_ttl CHECK (ttl_seconds > 0),
-    CONSTRAINT chk_verification_services_max_attempts CHECK (max_attempts > 0),
-    CONSTRAINT chk_verification_services_resend_cooldown CHECK (
-        resend_cooldown_seconds >= 0
-    ),
-    CONSTRAINT chk_verification_services_max_resends CHECK (max_resends >= 0),
-    CONSTRAINT chk_verification_services_metadata CHECK (
-        jsonb_typeof(metadata) = 'object'
-    )
-);
-
-CREATE INDEX IF NOT EXISTS idx_verification_services_team_created
-    ON verification_services (team_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_verification_services_team_enabled
-    ON verification_services (team_id, key)
-    WHERE enabled;
-
-CREATE TABLE IF NOT EXISTS verifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    service_id UUID NOT NULL,
-    channel TEXT NOT NULL,
-    recipient TEXT NOT NULL,
-    recipient_normalized TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     locale TEXT,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -65,14 +23,25 @@ CREATE TABLE IF NOT EXISTS verifications (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_verifications_id_team UNIQUE (id, team_id),
-    CONSTRAINT fk_verifications_service_same_team
-        FOREIGN KEY (service_id, team_id)
-        REFERENCES verification_services (id, team_id)
-        ON DELETE RESTRICT,
     CONSTRAINT chk_verifications_channel CHECK (channel IN ('email', 'sms')),
     CONSTRAINT chk_verifications_recipient CHECK (length(trim(recipient)) > 0),
     CONSTRAINT chk_verifications_recipient_normalized CHECK (
         length(trim(recipient_normalized)) > 0
+    ),
+    CONSTRAINT chk_verifications_code_length CHECK (
+        code_length BETWEEN 4 AND 10
+    ),
+    CONSTRAINT chk_verifications_ttl CHECK (
+        ttl_seconds BETWEEN 30 AND 3600
+    ),
+    CONSTRAINT chk_verifications_max_attempts CHECK (
+        max_attempts BETWEEN 1 AND 20
+    ),
+    CONSTRAINT chk_verifications_resend_cooldown CHECK (
+        resend_cooldown_seconds BETWEEN 0 AND 3600
+    ),
+    CONSTRAINT chk_verifications_max_resends CHECK (
+        max_resends BETWEEN 0 AND 20
     ),
     CONSTRAINT chk_verifications_status CHECK (status IN (
         'pending',
