@@ -17,9 +17,12 @@ import (
 type VerificationSnapshot struct {
 	ID           string          `json:"id"`
 	TeamID       string          `json:"team_id"`
-	ServiceID    string          `json:"service_id"`
 	Channel      string          `json:"channel"`
 	Recipient    string          `json:"recipient"`
+	CodeLength   int32           `json:"code_length"`
+	TTLSeconds   int32           `json:"ttl_seconds"`
+	MaxAttempts  int32           `json:"max_attempts"`
+	MaxResends   int32           `json:"max_resends"`
 	Status       string          `json:"status"`
 	Locale       *string         `json:"locale,omitempty"`
 	Metadata     json.RawMessage `json:"metadata"`
@@ -58,7 +61,8 @@ func (repository *Repository) ExpireBatch(ctx context.Context, batchSize int32) 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx, `
-		SELECT id, team_id, service_id, channel, recipient, status, locale, metadata,
+		SELECT id, team_id, channel, recipient, code_length, ttl_seconds,
+		       max_attempts, max_resends, status, locale, metadata,
 		       attempt_count, resend_count, expires_at, approved_at, expired_at,
 		       canceled_at, failed_at, created_at, updated_at
 		FROM verifications
@@ -75,21 +79,21 @@ func (repository *Repository) ExpireBatch(ctx context.Context, batchSize int32) 
 	snapshots := make([]VerificationSnapshot, 0, batchSize)
 	for rows.Next() {
 		var snapshot VerificationSnapshot
-		var id, teamID, serviceID uuid.UUID
+		var id, teamID uuid.UUID
 		var metadata []byte
 		if err := rows.Scan(
-			&id, &teamID, &serviceID, &snapshot.Channel, &snapshot.Recipient,
-			&snapshot.Status, &snapshot.Locale, &metadata, &snapshot.AttemptCount,
-			&snapshot.ResendCount, &snapshot.ExpiresAt, &snapshot.ApprovedAt,
-			&snapshot.ExpiredAt, &snapshot.CanceledAt, &snapshot.FailedAt,
-			&snapshot.CreatedAt, &snapshot.UpdatedAt,
+			&id, &teamID, &snapshot.Channel, &snapshot.Recipient,
+			&snapshot.CodeLength, &snapshot.TTLSeconds, &snapshot.MaxAttempts,
+			&snapshot.MaxResends, &snapshot.Status, &snapshot.Locale, &metadata,
+			&snapshot.AttemptCount, &snapshot.ResendCount, &snapshot.ExpiresAt,
+			&snapshot.ApprovedAt, &snapshot.ExpiredAt, &snapshot.CanceledAt,
+			&snapshot.FailedAt, &snapshot.CreatedAt, &snapshot.UpdatedAt,
 		); err != nil {
 			rows.Close()
 			return 0, fmt.Errorf("scan expired verification: %w", err)
 		}
 		snapshot.ID = id.String()
 		snapshot.TeamID = teamID.String()
-		snapshot.ServiceID = serviceID.String()
 		if len(metadata) == 0 {
 			metadata = []byte(`{}`)
 		}
