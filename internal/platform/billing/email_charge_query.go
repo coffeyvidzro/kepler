@@ -8,7 +8,14 @@ import (
 
 const chargeEmailUsageSQL = `
 WITH clock AS MATERIALIZED (
-    SELECT now() AS priced_at
+    SELECT
+        now() AS priced_at,
+        date_trunc('month', now() AT TIME ZONE 'UTC')
+            AT TIME ZONE 'UTC' AS period_start,
+        (
+            date_trunc('month', now() AT TIME ZONE 'UTC')
+            + interval '1 month'
+        ) AT TIME ZONE 'UTC' AS period_end
 ),
 team_record AS MATERIALIZED (
     SELECT team.id, team.status, team.market_code
@@ -21,31 +28,96 @@ market_record AS MATERIALIZED (
     JOIN team_record AS team ON team.market_code = market.code
     WHERE market.is_enabled = true
 ),
-wallet_record AS MATERIALIZED (
+locked_wallet AS MATERIALIZED (
     SELECT wallet.*
     FROM team_wallets AS wallet
     WHERE wallet.team_id = $2
     FOR UPDATE
 ),
+activated_wallet AS MATERIALIZED (
+    UPDATE team_wallets AS wallet
+    SET tier = locked.pending_tier,
+        pending_tier = NULL,
+        pending_tier_effective_at = NULL,
+        updated_at = clock.priced_at
+    FROM locked_wallet AS locked
+    CROSS JOIN clock
+    WHERE wallet.team_id = locked.team_id
+      AND locked.pending_tier IS NOT NULL
+      AND locked.pending_tier_effective_at <= clock.priced_at
+    RETURNING wallet.*
+),
+wallet_record AS MATERIALIZED (
+    SELECT *
+    FROM activated_wallet
+    UNION ALL
+    SELECT *
+    FROM locked_wallet
+    WHERE NOT EXISTS (SELECT 1 FROM activated_wallet)
+),
 existing_charge AS MATERIALIZED (
     SELECT *
     FROM usage_authorizations AS usage_charge
     WHERE usage_charge.team_id = $2
+      AND usage_charge.product = 'email'
       AND usage_charge.meter = 'email_recipient'
       AND usage_charge.reference_id = $3
 ),
-allowance_record AS MATERIALIZED (
-    SELECT allowance.*
-    FROM usage_allowances AS allowance
+policy_record AS MATERIALIZED (
+    SELECT policy.*
+    FROM allowance_policies AS policy
     CROSS JOIN clock
-    WHERE allowance.team_id = $2
-      AND allowance.meter = 'email_recipient'
-      AND allowance.period_start <= clock.priced_at
-      AND allowance.period_end > clock.priced_at
-      AND allowance.consumed_quantity < allowance.included_quantity
-    ORDER BY allowance.period_start DESC
+    JOIN wallet_record AS wallet
+      ON wallet.billing_market = policy.billing_market
+     AND wallet.tier = policy.tier
+    WHERE policy.product = 'email'
+      AND policy.meter = 'email_recipient'
+      AND policy.cadence = 'monthly'
+      AND policy.effective_from <= clock.period_start
+      AND (
+          policy.effective_until IS NULL
+          OR policy.effective_until > clock.period_start
+      )
+    ORDER BY policy.effective_from DESC
     LIMIT 1
-    FOR UPDATE
+),
+allowance_record AS MATERIALIZED (
+    INSERT INTO usage_allowances (
+        team_id,
+        allowance_policy_id,
+        product,
+        meter,
+        billing_market,
+        tier,
+        period_start,
+        period_end,
+        included_quantity
+    )
+    SELECT
+        wallet.team_id,
+        policy.id,
+        policy.product,
+        policy.meter,
+        wallet.billing_market,
+        wallet.tier,
+        clock.period_start,
+        clock.period_end,
+        policy.included_quantity
+    FROM wallet_record AS wallet
+    CROSS JOIN clock
+    JOIN policy_record AS policy
+      ON policy.billing_market = wallet.billing_market
+     AND policy.tier = wallet.tier
+    WHERE NOT EXISTS (SELECT 1 FROM existing_charge)
+    ON CONFLICT (
+        team_id,
+        product,
+        meter,
+        period_start,
+        period_end
+    ) DO UPDATE SET
+        updated_at = usage_allowances.updated_at
+    RETURNING *
 ),
 rate_record AS MATERIALIZED (
     SELECT rate.*
@@ -73,7 +145,10 @@ plan AS MATERIALIZED (
         LEAST(
             $1::bigint,
             GREATEST(
-                COALESCE(allowance.included_quantity - allowance.consumed_quantity, 0),
+                COALESCE(
+                    allowance.included_quantity - allowance.consumed_quantity,
+                    0
+                ),
                 0
             )
         )::bigint AS allowance_quantity,
@@ -90,7 +165,8 @@ priced_plan AS MATERIALIZED (
         plan.*,
         ($1::bigint - plan.allowance_quantity)::bigint AS billable_quantity,
         CASE
-            WHEN $1::bigint - plan.allowance_quantity = 0 THEN 0::bigint
+            WHEN $1::bigint - plan.allowance_quantity = 0
+                THEN 0::bigint
             WHEN plan.unit_cost_units > 9223372036854775807 /
                 NULLIF($1::bigint - plan.allowance_quantity, 0)
                 THEN NULL::bigint
@@ -134,7 +210,9 @@ inserted_charge AS (
         plan.tier,
         plan.priced_at
     FROM priced_plan AS plan
-    JOIN team_record AS team ON team.id = plan.team_id AND team.status = 'active'
+    JOIN team_record AS team
+      ON team.id = plan.team_id
+     AND team.status = 'active'
     JOIN market_record AS market
       ON market.code = plan.billing_market
      AND market.currency = plan.currency
@@ -143,17 +221,21 @@ inserted_charge AS (
       AND plan.amount_units IS NOT NULL
       AND (plan.billable_quantity = 0 OR plan.product_rate_id IS NOT NULL)
       AND plan.balance_units >= plan.amount_units
-    ON CONFLICT (team_id, meter, reference_id) DO NOTHING
+    ON CONFLICT (team_id, product, meter, reference_id) DO NOTHING
     RETURNING *
 ),
 updated_allowance AS (
     UPDATE usage_allowances AS allowance
-    SET consumed_quantity = allowance.consumed_quantity + usage_charge.allowance_quantity,
+    SET consumed_quantity = allowance.consumed_quantity
+            + usage_charge.allowance_quantity,
         updated_at = now()
     FROM inserted_charge AS usage_charge
     WHERE allowance.id = usage_charge.usage_allowance_id
       AND usage_charge.allowance_quantity > 0
-    RETURNING allowance.id, allowance.included_quantity, allowance.consumed_quantity
+    RETURNING
+        allowance.id,
+        allowance.included_quantity,
+        allowance.consumed_quantity
 ),
 inserted_ledger AS (
     INSERT INTO wallet_ledger (
@@ -182,29 +264,44 @@ updated_wallet AS (
     RETURNING wallet.balance_units
 ),
 resolved_charge AS MATERIALIZED (
-    SELECT * FROM existing_charge
+    SELECT *
+    FROM existing_charge
     UNION ALL
-    SELECT * FROM inserted_charge
+    SELECT *
+    FROM inserted_charge
     LIMIT 1
 )
 SELECT
     CASE
         WHEN NOT EXISTS (SELECT 1 FROM team_record) THEN 'team_not_found'
-        WHEN EXISTS (SELECT 1 FROM team_record WHERE status <> 'active') THEN 'team_inactive'
+        WHEN EXISTS (
+            SELECT 1
+            FROM team_record
+            WHERE status <> 'active'
+        ) THEN 'team_inactive'
         WHEN NOT EXISTS (SELECT 1 FROM market_record) THEN 'unsupported_market'
         WHEN NOT EXISTS (SELECT 1 FROM wallet_record) THEN 'wallet_not_found'
         WHEN EXISTS (SELECT 1 FROM existing_charge) THEN 'already_applied'
         WHEN EXISTS (
-            SELECT 1 FROM priced_plan
-            WHERE billable_quantity > 0 AND product_rate_id IS NULL
+            SELECT 1
+            FROM priced_plan
+            WHERE billable_quantity > 0
+              AND product_rate_id IS NULL
         ) THEN 'rate_not_found'
-        WHEN EXISTS (SELECT 1 FROM priced_plan WHERE amount_units IS NULL) THEN 'amount_overflow'
         WHEN EXISTS (
-            SELECT 1 FROM priced_plan
-            WHERE amount_units IS NOT NULL AND balance_units < amount_units
+            SELECT 1
+            FROM priced_plan
+            WHERE amount_units IS NULL
+        ) THEN 'amount_overflow'
+        WHEN EXISTS (
+            SELECT 1
+            FROM priced_plan
+            WHERE amount_units IS NOT NULL
+              AND balance_units < amount_units
         ) THEN 'insufficient_balance'
         WHEN EXISTS (
-            SELECT 1 FROM inserted_charge
+            SELECT 1
+            FROM inserted_charge
             WHERE allowance_quantity = total_quantity
         ) THEN 'allowance_applied'
         WHEN EXISTS (SELECT 1 FROM inserted_charge) THEN 'applied'
@@ -226,9 +323,18 @@ SELECT
         ''
     )::text AS tier,
     'email'::text AS product,
-    COALESCE((SELECT unit_cost_units FROM resolved_charge), 0)::bigint AS unit_cost_units,
-    COALESCE((SELECT total_quantity FROM resolved_charge), $1::bigint)::bigint AS quantity,
-    COALESCE((SELECT amount_units FROM resolved_charge), 0)::bigint AS amount_units,
+    COALESCE(
+        (SELECT unit_cost_units FROM resolved_charge),
+        0
+    )::bigint AS unit_cost_units,
+    COALESCE(
+        (SELECT total_quantity FROM resolved_charge),
+        $1::bigint
+    )::bigint AS quantity,
+    COALESCE(
+        (SELECT amount_units FROM resolved_charge),
+        0
+    )::bigint AS amount_units,
     COALESCE(
         (SELECT balance_units FROM updated_wallet),
         (SELECT balance_units FROM wallet_record),
