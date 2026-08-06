@@ -96,19 +96,14 @@ func (reconciler *Reconciler) ReconcileBatch(ctx context.Context) (int, error) {
 				mutex.Unlock()
 				return
 			}
-			if response == nil {
+			event, eventErr := statusEvent(message, response, reconciler.now())
+			if eventErr != nil {
 				mutex.Lock()
-				joined = errors.Join(joined, errors.New("SMS provider returned an empty status response"))
+				joined = errors.Join(joined, eventErr)
 				mutex.Unlock()
 				return
 			}
-			event := Event{
-				ProviderID:        response.ProviderID,
-				ProviderMessageID: response.ProviderMsgID,
-				Status:            response.Status,
-				OccurredAt:        reconciler.now(),
-			}
-			if processErr := reconciler.processor.Handle(ctx, event); processErr != nil {
+			if _, processErr := reconciler.processor.Handle(ctx, event); processErr != nil {
 				mutex.Lock()
 				joined = errors.Join(joined, processErr)
 				mutex.Unlock()

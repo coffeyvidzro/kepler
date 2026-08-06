@@ -10,23 +10,42 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	messagingfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/feedback"
+	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
+	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
+	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
 type PendingMessage struct {
+	AttemptID         uuid.UUID
 	ID                uuid.UUID
 	TeamID            uuid.UUID
 	ProviderID        string
 	ProviderMessageID string
 	Status            string
+	ReconcileAttempts int32
 	UpdatedAt         time.Time
 }
 
 type Repository struct {
-	db *pgxpool.Pool
+	db       *pgxpool.Pool
+	messages *smsmodule.Repository
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, messages: smsmodule.NewRepository(db)}
+}
+
+func NewRepositoryWithMessageRepository(
+	db *pgxpool.Pool,
+	messages *smsmodule.Repository,
+) *Repository {
+	if messages == nil {
+		messages = smsmodule.NewRepository(db)
+	}
+	return &Repository{db: db, messages: messages}
 }
 
 func (repository *Repository) ListPending(ctx context.Context, limit int32) ([]PendingMessage, error) {
@@ -37,16 +56,24 @@ func (repository *Repository) ListPending(ctx context.Context, limit int32) ([]P
 		limit = 100
 	}
 	rows, err := repository.db.Query(ctx, `
-		SELECT id, team_id, provider_id, provider_message_id, status, updated_at
-		FROM sms_messages
-		WHERE provider_id IS NOT NULL
-		  AND provider_message_id IS NOT NULL
-		  AND status IN ('submitted', 'sent', 'unknown')
-		ORDER BY updated_at, id
+		SELECT attempt.id, attempt.sms_message_id, attempt.team_id,
+			attempt.provider, attempt.provider_message_id, attempt.status,
+			attempt.reconcile_attempts, attempt.updated_at
+		FROM message_delivery_attempts AS attempt
+		JOIN sms_messages AS message
+		  ON message.id = attempt.sms_message_id
+		 AND message.team_id = attempt.team_id
+		WHERE attempt.channel = 'sms'
+		  AND attempt.sms_message_id IS NOT NULL
+		  AND attempt.provider IS NOT NULL
+		  AND attempt.provider_message_id IS NOT NULL
+		  AND attempt.status IN ('submission_unknown', 'submitted', 'accepted', 'sent', 'unknown')
+		  AND message.status NOT IN ('delivered', 'undelivered', 'rejected', 'failed', 'expired', 'canceled')
+		ORDER BY COALESCE(attempt.last_reconciled_at, attempt.created_at), attempt.id
 		LIMIT $1
 	`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("list SMS messages pending feedback: %w", err)
+		return nil, fmt.Errorf("list SMS attempts pending feedback: %w", err)
 	}
 	defer rows.Close()
 
@@ -54,11 +81,13 @@ func (repository *Repository) ListPending(ctx context.Context, limit int32) ([]P
 	for rows.Next() {
 		var message PendingMessage
 		if err := rows.Scan(
+			&message.AttemptID,
 			&message.ID,
 			&message.TeamID,
 			&message.ProviderID,
 			&message.ProviderMessageID,
 			&message.Status,
+			&message.ReconcileAttempts,
 			&message.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan SMS feedback candidate: %w", err)
@@ -71,94 +100,85 @@ func (repository *Repository) ListPending(ctx context.Context, limit int32) ([]P
 	return messages, nil
 }
 
-func (repository *Repository) Apply(ctx context.Context, event Event) error {
-	if repository == nil || repository.db == nil {
-		return ErrRepositoryNotConfigured
+func (repository *Repository) Apply(
+	ctx context.Context,
+	event platformfeedback.Event,
+) (platformfeedback.Result, error) {
+	if repository == nil || repository.db == nil || repository.messages == nil {
+		return platformfeedback.Result{}, ErrRepositoryNotConfigured
 	}
-	event = event.Normalize()
-	if err := event.Validate(); err != nil {
-		return err
-	}
-
 	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return fmt.Errorf("begin SMS feedback transaction: %w", err)
+		return platformfeedback.Result{}, fmt.Errorf("begin SMS feedback transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var currentStatus string
-	err = tx.QueryRow(ctx, `
-		SELECT status
-		FROM sms_messages
-		WHERE provider_id = $1 AND provider_message_id = $2
-		FOR UPDATE
-	`, event.ProviderID, event.ProviderMessageID).Scan(&currentStatus)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return tx.Commit(ctx)
-	}
+	processor, err := platformfeedback.NewProcessor(messagingfeedback.NewRepository(tx))
 	if err != nil {
-		return fmt.Errorf("load SMS message for feedback: %w", err)
+		return platformfeedback.Result{}, err
 	}
-	nextStatus := monotonicStatus(currentStatus, event.Status)
-	if nextStatus == strings.ToLower(strings.TrimSpace(currentStatus)) {
-		return tx.Commit(ctx)
+	result, err := processor.Process(ctx, event)
+	if err != nil {
+		return platformfeedback.Result{}, err
+	}
+	if result.Duplicate || !result.Transitioned {
+		if err := tx.Commit(ctx); err != nil {
+			return platformfeedback.Result{}, fmt.Errorf("commit SMS feedback observation: %w", err)
+		}
+		return result, nil
 	}
 
-	_, err = tx.Exec(ctx, `
-		UPDATE sms_messages
-		SET status = $3,
-			delivered_at = CASE WHEN $3 = 'delivered' THEN COALESCE(delivered_at, $4) ELSE delivered_at END,
-			error_message = CASE
-				WHEN $3 IN ('undelivered', 'rejected', 'failed', 'expired') THEN NULLIF($5, '')
-				WHEN $3 = 'delivered' THEN NULL
-				ELSE error_message
-			END,
-			updated_at = now()
-		WHERE provider_id = $1 AND provider_message_id = $2
-	`, event.ProviderID, event.ProviderMessageID, nextStatus, event.OccurredAt, event.ErrorMessage)
-	if err != nil {
-		return fmt.Errorf("apply SMS feedback status: %w", err)
+	var messageID uuid.UUID
+	var teamID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		SELECT sms_message_id, team_id
+		FROM message_delivery_attempts
+		WHERE id = $1 AND channel = 'sms'
+	`, result.AttemptID).Scan(&messageID, &teamID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return platformfeedback.Result{}, platformfeedback.ErrAttemptNotFound
+		}
+		return platformfeedback.Result{}, fmt.Errorf("load SMS message for feedback: %w", err)
+	}
+	messageStatus, ok := smsMessageStatus(event)
+	if ok {
+		if _, err := repository.messages.WithTx(tx).ApplyFeedback(
+			ctx,
+			messageID,
+			teamID,
+			messageStatus,
+			event.ErrorMessage,
+			event.OccurredAt,
+		); err != nil {
+			return platformfeedback.Result{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit SMS feedback status: %w", err)
+		return platformfeedback.Result{}, fmt.Errorf("commit SMS feedback transaction: %w", err)
 	}
-	return nil
+	return result, nil
 }
 
-func monotonicStatus(current, next string) string {
-	current = strings.ToLower(strings.TrimSpace(current))
-	next = strings.ToLower(strings.TrimSpace(next))
-	if terminalStatus(current) || next == "unknown" {
-		return current
-	}
-	currentRank, currentProgress := progressRank(current)
-	nextRank, nextProgress := progressRank(next)
-	if currentProgress && nextProgress && nextRank < currentRank {
-		return current
-	}
-	return next
-}
-
-func terminalStatus(status string) bool {
-	switch status {
-	case "delivered", "undelivered", "rejected", "failed", "expired", "canceled":
-		return true
+func smsMessageStatus(event platformfeedback.Event) (string, bool) {
+	switch event.Status {
+	case platformdelivery.StatusSubmitted, platformdelivery.StatusAccepted:
+		return smsmodule.StatusSubmitted, true
+	case platformdelivery.StatusSent:
+		return smsmodule.StatusSent, true
+	case platformdelivery.StatusDelivered:
+		return smsmodule.StatusDelivered, true
+	case platformdelivery.StatusPermanentFailure:
+		if strings.HasSuffix(event.EventType, "."+smsapi.StatusUndelivered) {
+			return smsmodule.StatusUndelivered, true
+		}
+		return smsmodule.StatusFailed, true
+	case platformdelivery.StatusRejected:
+		return smsmodule.StatusRejected, true
+	case platformdelivery.StatusExpired:
+		return smsmodule.StatusExpired, true
+	case platformdelivery.StatusUnknown:
+		return smsmodule.StatusUnknown, true
 	default:
-		return false
-	}
-}
-
-func progressRank(status string) (int, bool) {
-	switch status {
-	case "queued":
-		return 0, true
-	case "processing":
-		return 1, true
-	case "submitted":
-		return 2, true
-	case "sent":
-		return 3, true
-	default:
-		return 0, false
+		return "", false
 	}
 }

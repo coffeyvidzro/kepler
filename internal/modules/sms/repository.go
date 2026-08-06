@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -219,6 +220,127 @@ func (r *Repository) MarkFailed(ctx context.Context, id uuid.UUID, teamID uuid.U
 		return Message{}, err
 	}
 	return updated, nil
+}
+
+func (r *Repository) ApplyFeedback(
+	ctx context.Context,
+	id uuid.UUID,
+	teamID uuid.UUID,
+	status string,
+	errorMessage string,
+	occurredAt time.Time,
+) (Message, error) {
+	if r.tx == nil && r.emitter != nil {
+		return withSMSLifecycleTx(ctx, r, func(repository *Repository) (Message, error) {
+			return repository.ApplyFeedback(ctx, id, teamID, status, errorMessage, occurredAt)
+		})
+	}
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	} else {
+		occurredAt = occurredAt.UTC()
+	}
+	var currentStatus string
+	if err := r.dbtx.QueryRow(ctx, `
+		SELECT status
+		FROM sms_messages
+		WHERE id = $1 AND team_id = $2
+		FOR UPDATE
+	`, id, teamID).Scan(&currentStatus); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Message{}, ErrMessageNotFound
+		}
+		return Message{}, fmt.Errorf("lock SMS message for feedback: %w", err)
+	}
+	nextStatus := nextSMSFeedbackStatus(currentStatus, status)
+	if nextStatus == currentStatus {
+		return r.Get(ctx, id, teamID)
+	}
+	if _, err := r.dbtx.Exec(ctx, `
+		UPDATE sms_messages
+		SET status = $3,
+			submitted_at = CASE
+				WHEN $3 IN ('submitted', 'sent', 'delivered')
+				THEN COALESCE(submitted_at, $5)
+				ELSE submitted_at
+			END,
+			delivered_at = CASE
+				WHEN $3 = 'delivered' THEN COALESCE(delivered_at, $5)
+				ELSE delivered_at
+			END,
+			error_message = CASE
+				WHEN $3 IN ('undelivered', 'rejected', 'failed', 'expired', 'unknown')
+				THEN NULLIF(trim($4), '')
+				WHEN $3 IN ('submitted', 'sent', 'delivered') THEN NULL
+				ELSE error_message
+			END,
+			updated_at = now()
+		WHERE id = $1 AND team_id = $2
+	`, id, teamID, nextStatus, errorMessage, occurredAt); err != nil {
+		return Message{}, fmt.Errorf("apply SMS feedback: %w", err)
+	}
+	message, err := r.Get(ctx, id, teamID)
+	if err != nil {
+		return Message{}, err
+	}
+	if err := r.emitLifecycle(ctx, message); err != nil {
+		return Message{}, err
+	}
+	return message, nil
+}
+
+func nextSMSFeedbackStatus(current, next string) string {
+	current = strings.ToLower(strings.TrimSpace(current))
+	next = strings.ToLower(strings.TrimSpace(next))
+	if current == next || smsFeedbackTerminalStatus(current) {
+		return current
+	}
+	if !knownSMSMessageStatus(next) {
+		return current
+	}
+	if next == StatusUnknown || current == StatusUnknown || smsFeedbackTerminalStatus(next) {
+		return next
+	}
+	currentRank, currentProgress := smsFeedbackProgressRank(current)
+	nextRank, nextProgress := smsFeedbackProgressRank(next)
+	if currentProgress && nextProgress && nextRank > currentRank {
+		return next
+	}
+	return current
+}
+
+func smsFeedbackTerminalStatus(status string) bool {
+	switch status {
+	case StatusDelivered, StatusUndelivered, StatusRejected, StatusFailed, StatusExpired, StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func knownSMSMessageStatus(status string) bool {
+	switch status {
+	case StatusQueued, StatusProcessing, StatusSubmitted, StatusSent, StatusDelivered,
+		StatusUndelivered, StatusRejected, StatusFailed, StatusExpired, StatusUnknown, StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func smsFeedbackProgressRank(status string) (int, bool) {
+	switch status {
+	case StatusQueued:
+		return 0, true
+	case StatusProcessing:
+		return 1, true
+	case StatusSubmitted:
+		return 2, true
+	case StatusSent:
+		return 3, true
+	default:
+		return 0, false
+	}
 }
 
 func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, teamID uuid.UUID, status string) (Message, error) {

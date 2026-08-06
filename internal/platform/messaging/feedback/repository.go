@@ -18,6 +18,7 @@ var (
 
 // Lookup identifies the attempt targeted by a normalized provider event.
 type Lookup struct {
+	AttemptID         uuid.UUID
 	Provider          string
 	ProviderMessageID string
 	Channel           messaging.Channel
@@ -27,7 +28,7 @@ type Lookup struct {
 type AttemptUpdate struct {
 	AttemptID      uuid.UUID
 	ExpectedStatus delivery.AttemptStatus
-	Status         delivery.AttemptStatus
+	Status         *delivery.AttemptStatus
 	ProviderStatus string
 	ErrorCode      string
 	ErrorMessage   string
@@ -36,10 +37,11 @@ type AttemptUpdate struct {
 	ReconciledAt   time.Time
 }
 
-// ApplyResult reports whether an event changed state or had already been seen.
+// ApplyResult reports whether an event was recorded, deduplicated, or changed state.
 type ApplyResult struct {
-	Applied   bool
-	Duplicate bool
+	Applied      bool
+	Duplicate    bool
+	Transitioned bool
 }
 
 // Repository provides the atomic persistence boundary for feedback processing.

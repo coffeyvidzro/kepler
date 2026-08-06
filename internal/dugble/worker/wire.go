@@ -237,7 +237,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 			MaxDeliver:     6,
 		},
 	)
-	smsFeedbackRepository := smsfeedback.NewRepository(db)
+	smsFeedbackRepository := smsfeedback.NewRepositoryWithMessageRepository(db, smsRepository)
 	smsFeedbackProcessor := smsfeedback.NewProcessor(smsFeedbackRepository)
 	smsFeedbackReconciler := smsfeedback.NewReconciler(
 		smsFeedbackRepository,
