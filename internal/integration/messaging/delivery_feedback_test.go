@@ -120,7 +120,7 @@ func TestFreshDatabaseEmailDeliveryAndFeedback(t *testing.T) {
 
 	emitter := platformwebhook.NewEmitter(webhooks.NewRepository(pool))
 	feedbackRepository := emailfeedback.NewRepositoryWithWebhookEmitter(pool, emitter)
-	occurredAt := time.Now().UTC().Add(-time.Second)
+	occurredAt := time.Now().UTC()
 	providerPayload, err := json.Marshal(map[string]any{
 		"eventType": "Delivery",
 		"mail": map[string]any{
