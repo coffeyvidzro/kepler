@@ -65,3 +65,17 @@ func TestValidateSMSChargeRejectsUnsupportedDestination(t *testing.T) {
 		t.Fatalf("validateSMSCharge() error = %v, want %v", err, ErrInvalidDestination)
 	}
 }
+
+func TestValidateSMSChargeRejectsInvalidSegments(t *testing.T) {
+	t.Parallel()
+
+	_, err := validateSMSCharge(SMSChargeInput{
+		TeamID:            uuid.New(),
+		MessageID:         uuid.New(),
+		DestinationNumber: "+2348012345678",
+		Segments:          0,
+	})
+	if !errors.Is(err, ErrInvalidSegments) {
+		t.Fatalf("validateSMSCharge() error = %v, want %v", err, ErrInvalidSegments)
+	}
+}
