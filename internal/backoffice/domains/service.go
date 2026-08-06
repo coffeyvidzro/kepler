@@ -17,11 +17,19 @@ const (
 )
 
 type Service struct {
-	repository *Repository
+	repository store
 }
 
-func NewService(repository *Repository) *Service {
-	return &Service{repository: repository}
+type store interface {
+	List(context.Context, int32, int32) ([]Domain, error)
+	Get(context.Context, uuid.UUID) (Domain, error)
+}
+
+func NewService(repository store) (*Service, error) {
+	if repository == nil {
+		return nil, errors.New("backoffice domains repository is required")
+	}
+	return &Service{repository: repository}, nil
 }
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {

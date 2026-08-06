@@ -20,11 +20,21 @@ const (
 var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 type Service struct {
-	repository *Repository
+	repository store
 }
 
-func NewService(repository *Repository) *Service {
-	return &Service{repository: repository}
+type store interface {
+	List(context.Context, int32, int32) ([]Currency, error)
+	Get(context.Context, string) (Currency, error)
+	Create(context.Context, CreateInput) (Currency, error)
+	SetEnabled(context.Context, string, bool) (Currency, error)
+}
+
+func NewService(repository store) (*Service, error) {
+	if repository == nil {
+		return nil, errors.New("backoffice currencies repository is required")
+	}
+	return &Service{repository: repository}, nil
 }
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {
