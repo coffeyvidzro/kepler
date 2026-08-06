@@ -17,6 +17,9 @@ import (
 	backofficeproductrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/productrates"
 	backofficesmsrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/smsrates"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
+	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
+	backofficehttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice"
 	backofficeallowancepolicieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/allowancepolicies"
 	backofficebillingmarketshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/billingmarkets"
 	backofficecurrencieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/currencies"
@@ -26,6 +29,7 @@ import (
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
 	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
+	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
 )
 
 // Wire builds the backoffice process and returns cleanup for all resources.
@@ -64,6 +68,14 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	}
 	cleanups.Add(db.Close)
 
+	sessionRepository := sessionmodule.NewRepository(db)
+	authRepository := authmodule.NewRepository(db)
+	authMiddleware := httpmiddleware.SessionAuth(httpmiddleware.SessionAuthConfig{
+		Sessions: sessionRepository,
+		Users:    authRepository,
+	})
+	adminMiddleware := backofficehttp.RequireAdmin(cfg.Backoffice.AdminEmails)
+
 	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
 	domainsService := backofficedomains.NewService(backofficedomains.NewRepository(db))
 	currenciesService := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
@@ -87,7 +99,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 			Development: cfg.IsDevelopment(),
 			CORSOrigins: cfg.CORSOrigins,
 		},
-		newRouteRegistrar(handlers, newBackofficeAccessMiddleware(cfg.BackofficeToken)),
+		newRouteRegistrar(handlers, authMiddleware, adminMiddleware),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice HTTP router: %w", err))
@@ -95,7 +107,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 
 	application, err := NewApplication(
 		newrelicmonitoring.WrapHTTP(newRelic, router),
-		":"+cfg.HTTPPort,
+		":"+cfg.Backoffice.HTTPPort,
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice HTTP application: %w", err))
