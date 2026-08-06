@@ -1,67 +1,42 @@
 package backoffice
 
 import (
-	"context"
 	"errors"
-	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v5"
 
-	backofficeapp "github.com/coffeyvidzro/dugble/server/internal/backoffice"
+	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
+	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
-type routeHandler struct {
-	service *backofficeapp.Service
+type routeHandlers struct {
+	health  *backofficehealthhttp.Handler
+	domains *backofficedomainhttp.Handler
 }
 
-func newRouteRegistrar(service *backofficeapp.Service) httptransport.Registrar {
+func newRouteRegistrar(
+	handlers routeHandlers,
+	backofficeAccess echo.MiddlewareFunc,
+) httptransport.Registrar {
 	return func(router *echo.Echo) error {
 		if router == nil {
 			return errors.New("backoffice router is required")
 		}
-		if service == nil {
-			return errors.New("backoffice service is required")
+		if handlers.health == nil {
+			return errors.New("backoffice health handler is required")
 		}
+		backofficehealthhttp.RegisterRoutes(router, handlers.health)
 
-		handler := &routeHandler{service: service}
-		router.GET("/health", handler.live)
-		router.GET("/ready", handler.ready)
+		// Administrative data must not be exposed until the backoffice access
+		// middleware is implemented. The domains module is wired now so adding
+		// that boundary only requires supplying the middleware here.
+		if backofficeAccess != nil {
+			if handlers.domains == nil {
+				return errors.New("backoffice domains handler is required")
+			}
+			backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess)
+		}
 		return nil
 	}
-}
-
-func (handler *routeHandler) live(c *echo.Context) error {
-	return httputil.OK(c, map[string]string{
-		"status":  "ok",
-		"service": backofficeapp.ServiceName,
-	})
-}
-
-func (handler *routeHandler) ready(c *echo.Context) error {
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
-	defer cancel()
-
-	status := http.StatusOK
-	readiness := "ready"
-	checks := map[string]string{"postgres": "ok"}
-	if handler == nil || handler.service == nil {
-		status = http.StatusServiceUnavailable
-		readiness = "not_ready"
-		checks["postgres"] = "unconfigured"
-	} else if err := handler.service.Ready(ctx); err != nil {
-		status = http.StatusServiceUnavailable
-		readiness = "not_ready"
-		checks["postgres"] = "unavailable"
-	}
-
-	return c.JSON(status, httputil.Response{
-		Success: status == http.StatusOK,
-		Data: map[string]any{
-			"status": readiness,
-			"checks": checks,
-		},
-	})
 }
