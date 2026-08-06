@@ -23,6 +23,11 @@ RUN set -eux; \
     CGO_ENABLED=0 GOOS=linux go build \
         -trimpath \
         -ldflags="-s -w" \
+        -o /out/backoffice \
+        ./cmd/backoffice; \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
         -o /out/worker \
         ./cmd/worker
 
@@ -37,10 +42,11 @@ RUN apk add --no-cache \
     && adduser -S -D -H -G dugble dugble
 
 COPY --from=build /out/server /dugble/server
+COPY --from=build /out/backoffice /dugble/backoffice
 COPY --from=build /out/worker /dugble/worker
 
 USER dugble
 
-EXPOSE 8080 8082
+EXPOSE 8080 8081 8082
 
 CMD ["/dugble/server"]
