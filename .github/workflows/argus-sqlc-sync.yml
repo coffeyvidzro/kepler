@@ -1,0 +1,34 @@
+name: Argus SQLC Sync
+
+on:
+  push:
+    branches:
+      - "fix/simplify-argus-verification"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/simplify-argus-verification
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Generate SQLC
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          rm -f internal/database/sqlc/verification_services.sql.go
+          gofmt -w internal/database/sqlc
+      - name: Commit generated files
+        run: |
+          rm -f .github/workflows/argus-sqlc-sync.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/database/sqlc .github/workflows/argus-sqlc-sync.yml
+          git commit -m "regenerate Argus sqlc"
+          git push origin HEAD:fix/simplify-argus-verification
