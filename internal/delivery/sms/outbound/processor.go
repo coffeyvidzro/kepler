@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
+	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -56,7 +58,12 @@ func (processor *Processor) HandleExhausted(ctx context.Context, command Deliver
 	if cause != nil {
 		reason = fmt.Sprintf("%s: %s", reason, cause)
 	}
-	_, err = processor.repository.MarkDeliveryUnknown(ctx, command.MessageID, command.TeamID, reason)
+	err = processor.repository.FinalizeInFlightDelivery(
+		ctx,
+		command.MessageID,
+		command.TeamID,
+		errors.New(reason),
+	)
 	if errors.Is(err, smsmodule.ErrMessageNotFound) {
 		current, getErr := processor.repository.Get(ctx, command.MessageID, command.TeamID)
 		if errors.Is(getErr, smsmodule.ErrMessageNotFound) {
@@ -96,6 +103,16 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 			command.MessageID,
 			command.TeamID,
 			fmt.Sprintf("resolve canonical SMS route: %v", err),
+		)
+		return updateErr
+	}
+	routes = supportedDeliveryRoutes(routes, processor.sender.ProviderIDs())
+	if len(routes) == 0 {
+		_, updateErr := processor.repository.MarkFailed(
+			ctx,
+			command.MessageID,
+			command.TeamID,
+			"no configured provider supports an eligible canonical SMS route",
 		)
 		return updateErr
 	}
@@ -192,8 +209,42 @@ func (processor *Processor) handleAlreadyClaimed(ctx context.Context, command De
 		return fmt.Errorf("sms message %s is already processing", message.ID)
 	}
 	const reason = "SMS delivery outcome unknown after processing timeout"
-	_, updateErr := processor.repository.MarkDeliveryUnknown(ctx, command.MessageID, command.TeamID, reason)
-	return updateErr
+	return processor.repository.FinalizeInFlightDelivery(
+		ctx,
+		command.MessageID,
+		command.TeamID,
+		errors.New(reason),
+	)
+}
+
+func supportedDeliveryRoutes(
+	routes []platformrouting.Route,
+	providerIDs []string,
+) []platformrouting.Route {
+	available := make(map[string]struct{}, len(providerIDs))
+	for _, providerID := range providerIDs {
+		providerID = strings.ToLower(strings.TrimSpace(providerID))
+		if providerID != "" {
+			available[providerID] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{}, len(routes))
+	result := make([]platformrouting.Route, 0, len(routes))
+	for _, route := range routes {
+		providerID := strings.ToLower(strings.TrimSpace(route.Provider))
+		if providerID == "" || !strings.EqualFold(strings.TrimSpace(route.ProviderAccount), "default") {
+			continue
+		}
+		if _, ok := available[providerID]; !ok {
+			continue
+		}
+		if _, duplicate := seen[providerID]; duplicate {
+			continue
+		}
+		seen[providerID] = struct{}{}
+		result = append(result, route)
+	}
+	return result
 }
 
 func (processor *Processor) processingIsStale(message smsmodule.Message) bool {

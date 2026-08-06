@@ -22,9 +22,11 @@ type messageRepository interface {
 	MarkDeliveryAttemptUnknown(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error
 	MarkDeliveryAttemptFailed(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, error) error
 	MarkDeliveryAttemptSubmitted(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *smsapi.SendResponse) error
+	FinalizeInFlightDelivery(context.Context, uuid.UUID, uuid.UUID, error) error
 }
 
 type providerSender interface {
 	SendWithProvider(context.Context, string, smsapi.SendRequest) (*smsapi.SendResponse, error)
 	ShouldFallback(context.Context, string, error) bool
+	ProviderIDs() []string
 }

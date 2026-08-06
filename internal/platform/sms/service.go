@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/sms/routing"
@@ -201,6 +202,18 @@ func (service *Service) ShouldFallback(ctx context.Context, providerID string, e
 		return false
 	}
 	return service.router.ShouldFallback(ctx, providerID, err)
+}
+
+func (service *Service) ProviderIDs() []string {
+	if service == nil {
+		return nil
+	}
+	providerIDs := make([]string, 0, len(service.providers))
+	for providerID := range service.providers {
+		providerIDs = append(providerIDs, providerID)
+	}
+	sort.Strings(providerIDs)
+	return providerIDs
 }
 
 func (service *Service) CheckStatus(ctx context.Context, providerID, providerMessageID string) (*StatusResponse, error) {

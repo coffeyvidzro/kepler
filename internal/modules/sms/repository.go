@@ -412,15 +412,21 @@ func (r *Repository) CreateDeliveryAttempt(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var country string
+	var currentAssetID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		SELECT destination_country
-		FROM sms_messages
-		WHERE id = $1 AND team_id = $2 AND status = 'processing'
-		FOR UPDATE
-	`, id, teamID).Scan(&country); errors.Is(err, pgx.ErrNoRows) {
+		SELECT message.destination_country, binding.sender_asset_id
+		FROM sms_messages AS message
+		JOIN sender_provider_bindings AS binding
+		  ON binding.id = message.sender_provider_binding_id
+		WHERE message.id = $1 AND message.team_id = $2 AND message.status = 'processing'
+		FOR UPDATE OF message
+	`, id, teamID).Scan(&country, &currentAssetID); errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, ErrMessageNotFound
 	} else if err != nil {
 		return uuid.Nil, fmt.Errorf("lock SMS message for attempt: %w", err)
+	}
+	if currentAssetID != route.SenderAssetID {
+		return uuid.Nil, platformrouting.ErrNoEligibleRoute
 	}
 
 	var eligible bool
@@ -434,6 +440,7 @@ func (r *Repository) CreateDeliveryAttempt(
 			 AND grant_record.team_id = $1
 			 AND grant_record.channel = 'sms'
 			 AND grant_record.status = 'active'
+			 AND grant_record.revoked_at IS NULL
 			WHERE binding.id = $2
 			  AND asset.id = $3
 			  AND asset.channel = 'sms'
@@ -443,9 +450,14 @@ func (r *Repository) CreateDeliveryAttempt(
 			  AND binding.verified
 			  AND binding.disabled_at IS NULL
 			  AND binding.health_status <> 'degraded'
-			  AND (binding.country_code IS NULL OR binding.country_code = $4)
+			  AND lower(binding.provider) = lower($4)
+			  AND binding.provider_account = $5
+			  AND COALESCE(binding.region, '') = $6
+			  AND COALESCE(binding.country_code::text, '') = $7
+			  AND (binding.country_code IS NULL OR binding.country_code = $8)
 		)
-	`, teamID, route.SenderProviderBindingID, route.SenderAssetID, country).Scan(&eligible); err != nil {
+	`, teamID, route.SenderProviderBindingID, route.SenderAssetID, route.Provider,
+		route.ProviderAccount, route.Region, route.CountryCode, country).Scan(&eligible); err != nil {
 		return uuid.Nil, fmt.Errorf("verify SMS delivery route: %w", err)
 	}
 	if !eligible {
@@ -596,6 +608,94 @@ func (r *Repository) MarkDeliveryAttemptSubmitted(
 		MapProviderStatus(response.Status),
 	); err != nil {
 		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) FinalizeInFlightDelivery(
+	ctx context.Context,
+	id uuid.UUID,
+	teamID uuid.UUID,
+	cause error,
+) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin in-flight SMS finalization: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var attemptID uuid.UUID
+	var attemptStatus string
+	err = tx.QueryRow(ctx, `
+		SELECT attempt.id, attempt.status
+		FROM message_delivery_attempts AS attempt
+		JOIN sms_messages AS message
+		  ON message.id = attempt.sms_message_id
+		 AND message.team_id = attempt.team_id
+		WHERE message.id = $1
+		  AND message.team_id = $2
+		  AND message.status = 'processing'
+		  AND attempt.channel = 'sms'
+		  AND attempt.status IN ('claimed', 'request_started')
+		ORDER BY attempt.attempt_number DESC
+		LIMIT 1
+		FOR UPDATE OF message, attempt
+	`, id, teamID).Scan(&attemptID, &attemptStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if _, updateErr := r.WithTx(tx).MarkDeliveryUnknown(
+			ctx,
+			id,
+			teamID,
+			deliveryErrorText(cause),
+		); updateErr != nil {
+			return updateErr
+		}
+		return tx.Commit(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("lock in-flight SMS attempt: %w", err)
+	}
+
+	if attemptStatus == "claimed" {
+		if err := completeSMSAttemptTx(
+			ctx,
+			tx,
+			id,
+			teamID,
+			attemptID,
+			"permanent_failure",
+			cause,
+		); err != nil {
+			return err
+		}
+		if _, err := r.WithTx(tx).MarkFailed(
+			ctx,
+			id,
+			teamID,
+			deliveryErrorText(cause),
+		); err != nil {
+			return err
+		}
+	} else {
+		if err := completeSMSAttemptTx(
+			ctx,
+			tx,
+			id,
+			teamID,
+			attemptID,
+			"submission_unknown",
+			cause,
+		); err != nil {
+			return err
+		}
+		if _, err := r.WithTx(tx).MarkDeliveryUnknown(
+			ctx,
+			id,
+			teamID,
+			deliveryErrorText(cause),
+		); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

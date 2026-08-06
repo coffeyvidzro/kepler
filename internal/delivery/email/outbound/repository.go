@@ -116,6 +116,8 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 	routeRequest := platformrouting.Request{
 		TeamID:               teamID,
 		Channel:              messaging.ChannelEmail,
+		Provider:             emailBindingProvider(message.Provider),
+		ProviderAccount:      "default",
 		DestinationRegion:    message.Region,
 		RequiredCapabilities: []sender.Capability{sender.CapabilityDomainVerification},
 	}
@@ -185,6 +187,14 @@ func emailRuntimeProvider(provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "ses" {
 		return "aws_ses"
+	}
+	return provider
+}
+
+func emailBindingProvider(provider string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "aws_ses" {
+		return "ses"
 	}
 	return provider
 }

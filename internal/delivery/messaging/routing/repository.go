@@ -66,8 +66,12 @@ func (repository *Repository) ListCandidates(
 		  ON binding.sender_asset_id = asset.id
 		WHERE grant_record.team_id = $1
 		  AND grant_record.channel = $2
+		  AND grant_record.revoked_at IS NULL
+		  AND binding.provider IS NOT NULL
+		  AND binding.disabled_at IS NULL
 		ORDER BY grant_record.is_default DESC, binding.provider, binding.provider_account,
 			binding.region, binding.country_code, binding.id
+		FOR SHARE OF grant_record, asset, binding
 	`, request.TeamID, string(request.Channel))
 	if err != nil {
 		return nil, fmt.Errorf("query messaging route candidates: %w", err)
