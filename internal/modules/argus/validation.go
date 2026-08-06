@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/mail"
-	"regexp"
 	"strings"
 	"unicode"
 
@@ -20,144 +19,28 @@ const (
 	maxMetadataBytes                   = 16 << 10
 )
 
-var serviceKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-
-type validatedService struct {
-	Key                   string
-	Name                  string
-	DefaultChannel        string
+type validatedVerification struct {
+	Channel               string
+	Recipient             string
+	RecipientNormalized   string
 	CodeLength            int32
 	TTLSeconds            int32
 	MaxAttempts           int32
 	ResendCooldownSeconds int32
 	MaxResends            int32
-	Enabled               bool
+	Locale                *string
 	Metadata              json.RawMessage
 }
 
-type validatedVerification struct {
-	ServiceID           string
-	ServiceKey          string
-	Channel             string
-	Recipient           string
-	RecipientNormalized string
-	Locale              *string
-	Metadata            json.RawMessage
-}
-
-func validateCreateService(req CreateServiceRequest) (validatedService, error) {
-	resendCooldown := defaultResendCooldownSeconds
-	if req.ResendCooldownSeconds != nil {
-		resendCooldown = *req.ResendCooldownSeconds
-	}
-	maxResends := defaultMaxResends
-	if req.MaxResends != nil {
-		maxResends = *req.MaxResends
-	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
-	value := validatedService{
-		Key:                   strings.ToLower(strings.TrimSpace(req.Key)),
-		Name:                  strings.TrimSpace(req.Name),
-		DefaultChannel:        defaultString(req.DefaultChannel, ChannelSMS),
-		CodeLength:            defaultInt32(req.CodeLength, defaultCodeLength),
-		TTLSeconds:            defaultInt32(req.TTLSeconds, defaultTTLSeconds),
-		MaxAttempts:           defaultInt32(req.MaxAttempts, defaultMaxAttempts),
-		ResendCooldownSeconds: resendCooldown,
-		MaxResends:            maxResends,
-		Enabled:               enabled,
-		Metadata:              req.Metadata,
-	}
-	if err := validateService(value); err != nil {
-		return validatedService{}, err
-	}
-	return value, nil
-}
-
-func validateUpdateService(current VerificationService, req UpdateServiceRequest) (validatedService, error) {
-	value := validatedService{
-		Key: current.Key, Name: current.Name, DefaultChannel: current.DefaultChannel,
-		CodeLength: current.CodeLength, TTLSeconds: current.TTLSeconds, MaxAttempts: current.MaxAttempts,
-		ResendCooldownSeconds: current.ResendCooldownSeconds, MaxResends: current.MaxResends,
-		Enabled: current.Enabled, Metadata: current.Metadata,
-	}
-	if req.Name != nil {
-		value.Name = strings.TrimSpace(*req.Name)
-	}
-	if req.DefaultChannel != nil {
-		value.DefaultChannel = strings.ToLower(strings.TrimSpace(*req.DefaultChannel))
-	}
-	if req.CodeLength != nil {
-		value.CodeLength = *req.CodeLength
-	}
-	if req.TTLSeconds != nil {
-		value.TTLSeconds = *req.TTLSeconds
-	}
-	if req.MaxAttempts != nil {
-		value.MaxAttempts = *req.MaxAttempts
-	}
-	if req.ResendCooldownSeconds != nil {
-		value.ResendCooldownSeconds = *req.ResendCooldownSeconds
-	}
-	if req.MaxResends != nil {
-		value.MaxResends = *req.MaxResends
-	}
-	if req.Enabled != nil {
-		value.Enabled = *req.Enabled
-	}
-	if req.Metadata != nil {
-		value.Metadata = *req.Metadata
-	}
-	if err := validateService(value); err != nil {
-		return validatedService{}, err
-	}
-	return value, nil
-}
-
-func validateService(value validatedService) error {
-	if !serviceKeyPattern.MatchString(value.Key) {
-		return apperrors.NewBadRequest("Verification service key must use lowercase letters, numbers, dots, underscores, or hyphens")
-	}
-	if value.Name == "" || len(value.Name) > 120 {
-		return apperrors.NewBadRequest("Verification service name must be between 1 and 120 characters")
-	}
-	if value.DefaultChannel != ChannelEmail && value.DefaultChannel != ChannelSMS {
-		return apperrors.NewBadRequest("Verification service channel must be email or sms")
-	}
-	if value.CodeLength < 4 || value.CodeLength > 10 {
-		return apperrors.NewBadRequest("Verification code length must be between 4 and 10 digits")
-	}
-	if value.TTLSeconds < 30 || value.TTLSeconds > 3600 {
-		return apperrors.NewBadRequest("Verification TTL must be between 30 and 3600 seconds")
-	}
-	if value.MaxAttempts < 1 || value.MaxAttempts > 20 {
-		return apperrors.NewBadRequest("Verification max attempts must be between 1 and 20")
-	}
-	if value.ResendCooldownSeconds < 0 || value.ResendCooldownSeconds > 3600 {
-		return apperrors.NewBadRequest("Verification resend cooldown must be between 0 and 3600 seconds")
-	}
-	if value.MaxResends < 0 || value.MaxResends > 20 {
-		return apperrors.NewBadRequest("Verification max resends must be between 0 and 20")
-	}
-	_, err := normalizeJSONObject(value.Metadata)
-	return err
-}
-
-func validateCreateVerification(req CreateVerificationRequest, service VerificationService) (validatedVerification, error) {
-	serviceID := strings.TrimSpace(req.ServiceID)
-	serviceKey := strings.ToLower(strings.TrimSpace(req.Service))
-	if (serviceID == "") == (serviceKey == "") {
-		return validatedVerification{}, apperrors.NewBadRequest("Exactly one of service_id or service is required")
-	}
+func validateCreateVerification(req CreateVerificationRequest) (validatedVerification, error) {
 	channel := strings.ToLower(strings.TrimSpace(req.Channel))
 	if channel == "" {
-		channel = service.DefaultChannel
+		channel = ChannelSMS
 	}
 	if channel != ChannelEmail && channel != ChannelSMS {
 		return validatedVerification{}, apperrors.NewBadRequest("Verification channel must be email or sms")
 	}
+
 	recipient := strings.TrimSpace(req.Recipient)
 	if recipient == "" {
 		return validatedVerification{}, apperrors.NewBadRequest("Verification recipient is required")
@@ -166,14 +49,33 @@ func validateCreateVerification(req CreateVerificationRequest, service Verificat
 	if err != nil {
 		return validatedVerification{}, err
 	}
-	locale := normalizeOptionalString(req.Locale, 35)
+
+	codeLength := defaultInt32Pointer(req.CodeLength, defaultCodeLength)
+	if codeLength < 4 || codeLength > 10 {
+		return validatedVerification{}, apperrors.NewBadRequest("Verification code length must be between 4 and 10 digits")
+	}
+	ttlSeconds := defaultInt32Pointer(req.TTLSeconds, defaultTTLSeconds)
+	if ttlSeconds < 30 || ttlSeconds > 3600 {
+		return validatedVerification{}, apperrors.NewBadRequest("Verification TTL must be between 30 and 3600 seconds")
+	}
+	maxAttempts := defaultInt32Pointer(req.MaxAttempts, defaultMaxAttempts)
+	if maxAttempts < 1 || maxAttempts > 20 {
+		return validatedVerification{}, apperrors.NewBadRequest("Verification max attempts must be between 1 and 20")
+	}
+	maxResends := defaultInt32Pointer(req.MaxResends, defaultMaxResends)
+	if maxResends < 0 || maxResends > 20 {
+		return validatedVerification{}, apperrors.NewBadRequest("Verification max resends must be between 0 and 20")
+	}
+
 	metadata, err := normalizeJSONObject(req.Metadata)
 	if err != nil {
 		return validatedVerification{}, err
 	}
 	return validatedVerification{
-		ServiceID: serviceID, ServiceKey: serviceKey, Channel: channel,
-		Recipient: recipient, RecipientNormalized: normalized, Locale: locale, Metadata: metadata,
+		Channel: channel, Recipient: recipient, RecipientNormalized: normalized,
+		CodeLength: codeLength, TTLSeconds: ttlSeconds, MaxAttempts: maxAttempts,
+		ResendCooldownSeconds: defaultResendCooldownSeconds, MaxResends: maxResends,
+		Locale: normalizeOptionalString(req.Locale, 35), Metadata: metadata,
 	}, nil
 }
 
@@ -250,17 +152,9 @@ func normalizeOptionalString(value *string, max int) *string {
 	return &normalized
 }
 
-func defaultString(value, fallback string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" {
+func defaultInt32Pointer(value *int32, fallback int32) int32 {
+	if value == nil {
 		return fallback
 	}
-	return value
-}
-
-func defaultInt32(value, fallback int32) int32 {
-	if value == 0 {
-		return fallback
-	}
-	return value
+	return *value
 }
