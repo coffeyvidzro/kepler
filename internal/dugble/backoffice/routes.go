@@ -5,14 +5,24 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	backofficeallowancepolicieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/allowancepolicies"
+	backofficebillingmarketshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/billingmarkets"
+	backofficecurrencieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/currencies"
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
+	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
+	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
 
 type routeHandlers struct {
-	health  *backofficehealthhttp.Handler
-	domains *backofficedomainhttp.Handler
+	health            *backofficehealthhttp.Handler
+	domains           *backofficedomainhttp.Handler
+	currencies        *backofficecurrencieshttp.Handler
+	billingMarkets    *backofficebillingmarketshttp.Handler
+	smsRates          *backofficesmsrateshttp.Handler
+	productRates      *backofficeproductrateshttp.Handler
+	allowancePolicies *backofficeallowancepolicieshttp.Handler
 }
 
 func newRouteRegistrar(
@@ -28,15 +38,26 @@ func newRouteRegistrar(
 		}
 		backofficehealthhttp.RegisterRoutes(router, handlers.health)
 
-		// Administrative data must not be exposed until the backoffice access
-		// middleware is implemented. The domains module is wired now so adding
-		// that boundary only requires supplying the middleware here.
-		if backofficeAccess != nil {
-			if handlers.domains == nil {
-				return errors.New("backoffice domains handler is required")
-			}
-			backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess)
+		// Administrative routes remain unavailable until authentication and
+		// authorization supply this middleware boundary.
+		if backofficeAccess == nil {
+			return nil
 		}
+		if handlers.domains == nil ||
+			handlers.currencies == nil ||
+			handlers.billingMarkets == nil ||
+			handlers.smsRates == nil ||
+			handlers.productRates == nil ||
+			handlers.allowancePolicies == nil {
+			return errors.New("backoffice administrative handlers are required")
+		}
+
+		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess)
+		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess)
+		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess)
+		backofficesmsrateshttp.RegisterRoutes(router, handlers.smsRates, backofficeAccess)
+		backofficeproductrateshttp.RegisterRoutes(router, handlers.productRates, backofficeAccess)
+		backofficeallowancepolicieshttp.RegisterRoutes(router, handlers.allowancePolicies, backofficeAccess)
 		return nil
 	}
 }
