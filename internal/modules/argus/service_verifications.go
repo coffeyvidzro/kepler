@@ -25,31 +25,23 @@ func (service *Service) Create(ctx context.Context, req CreateVerificationReques
 	if err := service.requireRuntime(); err != nil {
 		return Verification{}, err
 	}
+	validated, err := validateCreateVerification(req)
+	if err != nil {
+		return Verification{}, err
+	}
 	verification, err := postgres.InTransactionResult(ctx, service.repository.db, func(tx pgx.Tx) (Verification, error) {
 		repository := service.repository.WithTx(tx)
-		configured, resolveErr := service.resolveService(ctx, repository, access.Scope.TeamID, req)
-		if resolveErr != nil {
-			return Verification{}, resolveErr
-		}
-		if !configured.Enabled {
-			return Verification{}, apperrors.NewConflict("Verification service is disabled")
-		}
-		validated, validationErr := validateCreateVerification(req, configured)
-		if validationErr != nil {
-			return Verification{}, validationErr
-		}
-		serviceID := uuid.MustParse(configured.ID)
 		now := service.now().UTC()
-		expiresAt := now.Add(time.Duration(configured.TTLSeconds) * time.Second)
+		expiresAt := now.Add(time.Duration(validated.TTLSeconds) * time.Second)
 		created, createErr := repository.CreateVerification(
-			ctx, access.Scope.TeamID, serviceID, validated,
+			ctx, access.Scope.TeamID, validated,
 			pgtype.Timestamptz{Time: expiresAt, Valid: true},
 		)
 		if createErr != nil {
 			return Verification{}, createErr
 		}
 		verificationID := uuid.MustParse(created.ID)
-		challenge, codeErr := service.codes.Generate(access.Scope.TeamID, verificationID, 1, configured.CodeLength)
+		challenge, codeErr := service.codes.Generate(access.Scope.TeamID, verificationID, 1, validated.CodeLength)
 		if codeErr != nil {
 			return Verification{}, codeErr
 		}
@@ -74,9 +66,6 @@ func (service *Service) Create(ctx context.Context, req CreateVerificationReques
 		}
 		return created, nil
 	})
-	if errors.Is(err, ErrNotFound) {
-		return Verification{}, apperrors.NewNotFound("Verification service not found")
-	}
 	if err != nil {
 		var appError *apperrors.AppError
 		if errors.As(err, &appError) {
