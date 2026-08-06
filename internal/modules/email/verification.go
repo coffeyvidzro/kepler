@@ -17,7 +17,10 @@ type VerificationEmailInput struct {
 	VerificationID uuid.UUID
 	ChallengeID    uuid.UUID
 	Recipient      string
-	Code           string
+	FromName       string
+	Subject        string
+	Text           string
+	HTML           string
 }
 
 func (s *Service) EnqueueVerificationTx(ctx context.Context, tx pgx.Tx, input VerificationEmailInput) (platformbilling.CommittedAuthorization, error) {
@@ -32,10 +35,11 @@ func (s *Service) EnqueueVerificationTx(ctx context.Context, tx pgx.Tx, input Ve
 	}
 	request := SendRequest{
 		Stream:   MessageTypeTransactional,
+		From:     &EmailAddress{Name: input.FromName},
 		To:       EmailAddressList{{Email: input.Recipient}},
-		Subject:  "Your verification code",
-		Text:     "Your Dugble verification code is " + input.Code + ".",
-		HTML:     "<p>Your Dugble verification code is <strong>" + input.Code + "</strong>.</p>",
+		Subject:  input.Subject,
+		Text:     input.Text,
+		HTML:     input.HTML,
 		Metadata: metadata,
 	}
 	validated, err := validateSend(request, s.config)
