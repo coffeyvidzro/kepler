@@ -7,25 +7,11 @@ import (
 	"log/slog"
 	"time"
 
-	sentryecho "github.com/getsentry/sentry-go/echo"
-	"github.com/labstack/echo/v5"
-
-	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
-	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/dns/netdns"
-	leamoutsms "github.com/coffeyvidzro/dugble/server/internal/adapters/leamout/sms"
-	mnotifyadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify"
-	mnotifysms "github.com/coffeyvidzro/dugble/server/internal/adapters/mnotify/sms"
-	"github.com/coffeyvidzro/dugble/server/internal/adapters/moolre"
-	moolresms "github.com/coffeyvidzro/dugble/server/internal/adapters/moolre/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/redis"
-	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
-	arcjetadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/security/arcjet"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
-	"github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
-	systememail "github.com/coffeyvidzro/dugble/server/internal/delivery/email/system"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
@@ -44,14 +30,10 @@ import (
 	webhooksmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
-	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
-	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
@@ -60,7 +42,6 @@ import (
 	emailhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/email"
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
-	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
@@ -69,9 +50,6 @@ import (
 	userhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/user"
 	wallethttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/wallet"
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
-	providersns "github.com/coffeyvidzro/dugble/server/internal/transport/provider/aws/sns"
-	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
-	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
 // Wire builds the server and returns a cleanup function for all initialized resources.
@@ -120,7 +98,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		}
 	})
 
-	arcjetClient, err := arcjetadapter.New(cfg.ArcjetKey)
+	arcjetClient, err := newArcjetClient(cfg)
 	if err != nil {
 		return fail(fmt.Errorf("initialize Arcjet: %w", err))
 	}
@@ -128,48 +106,17 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("initialize email renderer: %w", err))
 	}
-	emailClient, err := awsses.NewClient(
-		cfg.AWS.Region,
-		cfg.AWS.FromEmail,
-		cfg.AWS.AccessKey,
-		cfg.AWS.SecretKey,
-		cfg.AWS.SESTransactionalConfigurationSet,
-	)
+	emailClient, err := newEmailClient(cfg)
 	if err != nil {
 		return fail(fmt.Errorf("initialize SES email client: %w", err))
 	}
 
 	outboxRepository := outbox.NewRepository(db)
-	systemEmailQueue := systememail.NewQueue(outboxRepository, platformemail.Message{
-		Provider:         awsses.ProviderSES,
-		Region:           cfg.AWS.Region,
-		Stream:           "transactional",
-		ConfigurationSet: cfg.AWS.SESTransactionalConfigurationSet,
-		SESTenantName:    cfg.AWS.SESTenantName,
-	})
-
-	var snsHandler *providersns.Handler
-	if len(cfg.AWS.SNSTopicARNs) > 0 {
-		certificateLoader := awssns.NewHTTPCertificateLoader(nil)
-		verifier := awssns.NewVerifier(cfg.AWS.SNSTopicARNs, certificateLoader)
-		confirmer := awssns.NewConfirmer(awssns.NewHTTPConfirmSubscriptionClient(nil))
-		ingestor := feedback.NewRepository(db, outboxRepository)
-		snsHandler = providersns.NewHandler(verifier, confirmer, ingestor)
-	}
-
-	smsRouter, err := platformsms.NewRoutingService(
-		platformsms.DefaultRoutingConfig(),
-		mnotifysms.NewProvider(mnotifyadapter.NewClient(cfg.MNotify.APIKey)),
-		moolresms.NewProvider(moolre.NewClient(cfg.Moolre.VASKey)),
-		leamoutsms.NewProvider(),
-		runnagesms.NewProvider(),
-	)
+	systemEmailQueue := newSystemEmailQueue(cfg, outboxRepository)
+	snsHandler := newProviderSNSHandler(cfg, db, outboxRepository)
+	smsSender, err := newSMSSender(cfg)
 	if err != nil {
-		return fail(fmt.Errorf("initialize SMS router: %w", err))
-	}
-	smsSender, err := platformsms.NewService(smsRouter)
-	if err != nil {
-		return fail(fmt.Errorf("initialize SMS sender: %w", err))
+		return fail(err)
 	}
 
 	notificationEmailService := systemmail.NewEmailService(
@@ -234,144 +181,39 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		billingService,
 	)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
+	domainService := domainmodule.NewService(domainRepository, emailClient, netdns.New(), emailTenantService)
 
-	authMiddleware := httpmiddleware.SessionAuth(httpmiddleware.SessionAuthConfig{
-		Sessions: sessionRepository,
-		Users:    authRepository,
+	serverMiddleware := newServerMiddleware(serverMiddlewareDependencies{
+		config:              cfg,
+		sessionRepository:   sessionRepository,
+		authRepository:      authRepository,
+		teamRepository:      teamRepository,
+		teamTokenRepository: teamTokenRepository,
 	})
-	csrfConfig := httpmiddleware.CSRFConfig{
-		Development:    cfg.IsDevelopment(),
-		TrustedOrigins: cfg.CORSOrigins,
-	}
-	csrfMiddleware := httpmiddleware.CSRF(csrfConfig)
-	tenantMiddleware := func(permission tenant.Permission) echo.MiddlewareFunc {
-		return httpmiddleware.Tenant(httpmiddleware.TenantConfig{
-			Memberships: teamRepository,
-			Required:    permission,
-		})
-	}
-	tenantAccess := func(permission tenant.Permission) echo.MiddlewareFunc {
-		return httpmiddleware.TenantAccess(httpmiddleware.TenantAccessConfig{
-			Sessions:    sessionRepository,
-			Users:       authRepository,
-			Memberships: teamRepository,
-			Tokens:      teamTokenRepository,
-			CSRF:        csrfConfig,
-			Required:    permission,
-		})
+	routeHandlers := serverRouteHandlers{
+		health:      healthhttp.NewHandler(db, redisClient),
+		providerSNS: snsHandler,
+		auth:        authhttp.NewHandler(authService, cfg.IsDevelopment(), cfg.CookieDomain),
+		mfa:         mfahttp.NewHandler(mfaService),
+		user:        userhttp.NewHandler(usermodule.NewService(userRepository, notificationEmailService)),
+		team:        teamhttp.NewHandler(teamService),
+		wallet:      wallethttp.NewHandler(walletmodule.NewService(walletmodule.NewRepository(db))),
+		auditEvent:  auditeventhttp.NewHandler(auditeventmodule.NewService(auditRepository)),
+		teamToken: teamtokenhttp.NewHandler(
+			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
+		),
+		senderID: senderidhttp.NewHandler(senderidmodule.NewService(senderIDRepository)),
+		domain:   domainhttp.NewHandler(domainService),
+		sms:      smshttp.NewHandler(smsService),
+		email:    emailhttp.NewHandler(emailAPIService),
+		webhooks: webhookshttp.NewHandler(webhookService),
+		session:  sessionhttp.NewHandler(sessionmodule.NewService(sessionRepository)),
 	}
 
-	registrar := func(router *echo.Echo) error {
-		healthhttp.RegisterRoutes(router, healthhttp.NewHandler(db, redisClient))
-		if snsHandler != nil {
-			providersns.RegisterRoutes(router, snsHandler)
-		}
-		router.GET("/csrf", func(c *echo.Context) error {
-			token, ok := c.Get(httpmiddleware.CSRFContextKey).(string)
-			if !ok || token == "" {
-				return httputil.Error(
-					c,
-					apperrors.NewInternal("CSRF token is not available", nil),
-				)
-			}
-			return httputil.OK(c, map[string]string{"csrf_token": token})
-		}, csrfMiddleware)
-
-		authhttp.RegisterRoutes(
-			router,
-			authhttp.NewHandler(authService, cfg.IsDevelopment(), cfg.CookieDomain),
-			authMiddleware,
-			csrfMiddleware,
-		)
-		mfahttp.RegisterRoutes(
-			router,
-			mfahttp.NewHandler(mfaService),
-			authMiddleware,
-			csrfMiddleware,
-		)
-		userhttp.RegisterRoutes(
-			router,
-			userhttp.NewHandler(usermodule.NewService(userRepository, notificationEmailService)),
-			authMiddleware,
-			csrfMiddleware,
-		)
-		teamhttp.RegisterRoutes(
-			router,
-			teamhttp.NewHandler(teamService),
-			authMiddleware,
-			csrfMiddleware,
-			tenantMiddleware,
-		)
-		wallethttp.RegisterRoutes(
-			router,
-			wallethttp.NewHandler(walletmodule.NewService(walletmodule.NewRepository(db))),
-			tenantAccess,
-		)
-		auditeventhttp.RegisterRoutes(
-			router,
-			auditeventhttp.NewHandler(auditeventmodule.NewService(auditRepository)),
-			authMiddleware,
-			csrfMiddleware,
-			tenantMiddleware,
-		)
-		teamtokenhttp.RegisterRoutes(
-			router,
-			teamtokenhttp.NewHandler(
-				teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
-			),
-			authMiddleware,
-			csrfMiddleware,
-			tenantMiddleware,
-		)
-		senderidhttp.RegisterRoutes(
-			router,
-			senderidhttp.NewHandler(senderidmodule.NewService(senderIDRepository)),
-			tenantAccess,
-		)
-		domainhttp.RegisterRoutes(
-			router,
-			domainhttp.NewHandler(
-				domainmodule.NewService(
-					domainRepository,
-					emailClient,
-					netdns.New(),
-					emailTenantService,
-				),
-			),
-			tenantAccess,
-		)
-		smshttp.RegisterRoutes(router, smshttp.NewHandler(smsService), tenantAccess)
-		emailhttp.RegisterRoutes(router, emailhttp.NewHandler(emailAPIService), tenantAccess)
-		webhookshttp.RegisterRoutes(
-			router,
-			webhookshttp.NewHandler(webhookService),
-			authMiddleware,
-			csrfMiddleware,
-			tenantMiddleware,
-		)
-		sessionhttp.RegisterRoutes(
-			router,
-			sessionhttp.NewHandler(sessionmodule.NewService(sessionRepository)),
-			authMiddleware,
-			csrfMiddleware,
-		)
-		return nil
-	}
-
-	router, err := httptransport.NewRouter(httptransport.RouterConfig{
-		Development: cfg.IsDevelopment(),
-		CORSOrigins: cfg.CORSOrigins,
-		Arcjet:      arcjetClient,
-		BodyLimit:   platformemail.MaxHTTPRequestBytes,
-		Idempotency: httpmiddleware.IdempotencyConfig{
-			Repository: idempotency.NewRepository(db),
-		},
-		Middleware: []echo.MiddlewareFunc{
-			httpmiddleware.NewRelic(),
-			sentryecho.New(sentryecho.Options{Repanic: true, WaitForDelivery: false}),
-			httpmiddleware.SentryErrors(),
-		},
-	}, registrar)
+	router, err := httptransport.NewRouter(
+		newRouterConfig(cfg, arcjetClient, db),
+		newRouteRegistrar(routeHandlers, serverMiddleware),
+	)
 	if err != nil {
 		return fail(fmt.Errorf("create HTTP router: %w", err))
 	}
