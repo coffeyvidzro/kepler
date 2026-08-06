@@ -8,6 +8,7 @@ import (
 	backofficeallowancepolicieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/allowancepolicies"
 	backofficebillingmarketshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/billingmarkets"
 	backofficecurrencieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/currencies"
+	backofficedashboardhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/dashboard"
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
@@ -17,6 +18,7 @@ import (
 
 type routeHandlers struct {
 	health            *backofficehealthhttp.Handler
+	dashboard         *backofficedashboardhttp.Handler
 	domains           *backofficedomainhttp.Handler
 	currencies        *backofficecurrencieshttp.Handler
 	billingMarkets    *backofficebillingmarketshttp.Handler
@@ -43,7 +45,8 @@ func newRouteRegistrar(
 		if backofficeAccess == nil {
 			return nil
 		}
-		if handlers.domains == nil ||
+		if handlers.dashboard == nil ||
+			handlers.domains == nil ||
 			handlers.currencies == nil ||
 			handlers.billingMarkets == nil ||
 			handlers.smsRates == nil ||
@@ -52,6 +55,7 @@ func newRouteRegistrar(
 			return errors.New("backoffice administrative handlers are required")
 		}
 
+		backofficedashboardhttp.RegisterRoutes(router, handlers.dashboard, backofficeAccess)
 		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess)
 		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess)
 		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess)

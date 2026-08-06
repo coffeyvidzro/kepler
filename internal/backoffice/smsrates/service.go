@@ -23,14 +23,22 @@ var countryCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
 var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 type Service struct {
-	repository *Repository
+	repository store
 }
 
-func NewService(repository *Repository) *Service {
-	return &Service{repository: repository}
+type store interface {
+	List(context.Context, int32, int32) ([]SMSRate, error)
+	Get(context.Context, uuid.UUID) (SMSRate, error)
+	Create(context.Context, CreateInput) (SMSRate, error)
+	Close(context.Context, uuid.UUID, time.Time) (SMSRate, error)
 }
 
-
+func NewService(repository store) (*Service, error) {
+	if repository == nil {
+		return nil, errors.New("backoffice SMS rates repository is required")
+	}
+	return &Service{repository: repository}, nil
+}
 
 func (service *Service) List(ctx context.Context, input ListInput) (Page, error) {
 	limit, offset, err := validatePage(input.Limit, input.Offset)

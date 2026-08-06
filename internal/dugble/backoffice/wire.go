@@ -12,6 +12,7 @@ import (
 	backofficeallowancepolicies "github.com/coffeyvidzro/dugble/server/internal/backoffice/allowancepolicies"
 	backofficebillingmarkets "github.com/coffeyvidzro/dugble/server/internal/backoffice/billingmarkets"
 	backofficecurrencies "github.com/coffeyvidzro/dugble/server/internal/backoffice/currencies"
+	backofficedashboard "github.com/coffeyvidzro/dugble/server/internal/backoffice/dashboard"
 	backofficedomains "github.com/coffeyvidzro/dugble/server/internal/backoffice/domains"
 	backofficeproductrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/productrates"
 	backofficesmsrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/smsrates"
@@ -19,6 +20,7 @@ import (
 	backofficeallowancepolicieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/allowancepolicies"
 	backofficebillingmarketshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/billingmarkets"
 	backofficecurrencieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/currencies"
+	backofficedashboardhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/dashboard"
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
@@ -62,6 +64,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	}
 	cleanups.Add(db.Close)
 
+	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
+
 	domainsService, err := backofficedomains.NewService(backofficedomains.NewRepository(db))
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice domains service: %w", err))
@@ -89,6 +93,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 
 	handlers := routeHandlers{
 		health:            backofficehealthhttp.NewHandler(db),
+		dashboard:         backofficedashboardhttp.NewHandler(dashboardService),
 		domains:           backofficedomainhttp.NewHandler(domainsService),
 		currencies:        backofficecurrencieshttp.NewHandler(currenciesService),
 		billingMarkets:    backofficebillingmarketshttp.NewHandler(billingMarketsService),
@@ -101,7 +106,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 			Development: cfg.IsDevelopment(),
 			CORSOrigins: cfg.CORSOrigins,
 		},
-		newRouteRegistrar(handlers, nil),
+		newRouteRegistrar(handlers, newBackofficeAccessMiddleware(cfg.BackofficeToken)),
 	)
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice HTTP router: %w", err))
