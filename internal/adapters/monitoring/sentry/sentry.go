@@ -1,4 +1,4 @@
-package monitoring
+package sentry
 
 import (
 	"strings"
@@ -9,8 +9,8 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 )
 
-// InitSentry initializes error monitoring when a DSN is configured.
-func InitSentry(configuration config.SentryConfig, environment string) error {
+// Init initializes Sentry error monitoring when a DSN is configured.
+func Init(configuration config.SentryConfig, environment string) error {
 	configuration.DSN = strings.TrimSpace(configuration.DSN)
 	if configuration.DSN == "" {
 		return nil
@@ -27,6 +27,6 @@ func InitSentry(configuration config.SentryConfig, environment string) error {
 	})
 }
 
-func FlushSentry(timeout time.Duration) bool {
+func Flush(timeout time.Duration) bool {
 	return sentry.Flush(timeout)
 }

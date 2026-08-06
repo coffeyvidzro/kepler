@@ -1,4 +1,4 @@
-package monitoring
+package newrelic
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/newrelic/go-agent/v3/newrelic"
+	newrelicagent "github.com/newrelic/go-agent/v3/newrelic"
 
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 )
@@ -16,12 +16,12 @@ var ignoredHTTPPaths = map[string]struct{}{
 	"/ready":  {},
 }
 
-// NewRelic initializes a New Relic application when a license key is configured.
-func NewRelic(
+// New initializes a New Relic application when a license key is configured.
+func New(
 	defaultAppName string,
 	environment string,
 	configuration config.NewRelicConfig,
-) (*newrelic.Application, error) {
+) (*newrelicagent.Application, error) {
 	configuration.LicenseKey = strings.TrimSpace(configuration.LicenseKey)
 	if configuration.LicenseKey == "" {
 		return nil, nil
@@ -35,23 +35,23 @@ func NewRelic(
 	if environment = strings.TrimSpace(environment); environment != "" {
 		labels["environment"] = environment
 	}
-	return newrelic.NewApplication(
-		newrelic.ConfigAppName(defaultAppName),
-		newrelic.ConfigLicense(configuration.LicenseKey),
-		newrelic.ConfigDistributedTracerEnabled(configuration.DistributedTracingEnabled),
-		newrelic.ConfigAppLogEnabled(configuration.LogEnabled),
-		newrelic.ConfigLabels(labels),
-		newrelic.ConfigCodeLevelMetricsEnabled(true),
+	return newrelicagent.NewApplication(
+		newrelicagent.ConfigAppName(defaultAppName),
+		newrelicagent.ConfigLicense(configuration.LicenseKey),
+		newrelicagent.ConfigDistributedTracerEnabled(configuration.DistributedTracingEnabled),
+		newrelicagent.ConfigAppLogEnabled(configuration.LogEnabled),
+		newrelicagent.ConfigLabels(labels),
+		newrelicagent.ConfigCodeLevelMetricsEnabled(true),
 	)
 }
 
-func Shutdown(application *newrelic.Application, timeout time.Duration) {
+func Shutdown(application *newrelicagent.Application, timeout time.Duration) {
 	if application != nil {
 		application.Shutdown(timeout)
 	}
 }
 
-func WrapHTTP(application *newrelic.Application, next http.Handler) http.Handler {
+func WrapHTTP(application *newrelicagent.Application, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.NotFoundHandler()
 	}
@@ -67,14 +67,14 @@ func WrapHTTP(application *newrelic.Application, next http.Handler) http.Handler
 		defer transaction.End()
 		transaction.SetWebRequestHTTP(request)
 		writer = transaction.SetWebResponse(writer)
-		request = newrelic.RequestWithTransactionContext(request, transaction)
+		request = newrelicagent.RequestWithTransactionContext(request, transaction)
 		next.ServeHTTP(writer, request)
 	})
 }
 
 func Transaction(
 	ctx context.Context,
-	application *newrelic.Application,
+	application *newrelicagent.Application,
 	name string,
 ) (context.Context, func(error)) {
 	if ctx == nil {
@@ -84,7 +84,7 @@ func Transaction(
 		return ctx, func(error) {}
 	}
 	transaction := application.StartTransaction(strings.TrimSpace(name))
-	return newrelic.NewContext(ctx, transaction), func(err error) {
+	return newrelicagent.NewContext(ctx, transaction), func(err error) {
 		if err != nil {
 			transaction.NoticeError(err)
 		}
