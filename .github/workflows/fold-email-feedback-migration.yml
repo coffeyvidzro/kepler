@@ -1,19 +1,16 @@
 name: Fold email feedback migration
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    types:
-      - synchronize
-      - reopened
+      - feat/messaging-unified-feedback-processing
 
 permissions:
   contents: write
 
 jobs:
   fold:
-    if: github.head_ref == 'feat/messaging-unified-feedback-processing' && github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout branch
