@@ -9,10 +9,20 @@ import (
 	newrelicmonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
+	backofficeallowancepolicies "github.com/coffeyvidzro/dugble/server/internal/backoffice/allowancepolicies"
+	backofficebillingmarkets "github.com/coffeyvidzro/dugble/server/internal/backoffice/billingmarkets"
+	backofficecurrencies "github.com/coffeyvidzro/dugble/server/internal/backoffice/currencies"
 	backofficedomains "github.com/coffeyvidzro/dugble/server/internal/backoffice/domains"
+	backofficeproductrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/productrates"
+	backofficesmsrates "github.com/coffeyvidzro/dugble/server/internal/backoffice/smsrates"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	backofficeallowancepolicieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/allowancepolicies"
+	backofficebillingmarketshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/billingmarkets"
+	backofficecurrencieshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/currencies"
 	backofficedomainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/domains"
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
+	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
+	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
 
@@ -56,9 +66,35 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("create backoffice domains service: %w", err))
 	}
+	currenciesService, err := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
+	if err != nil {
+		return fail(fmt.Errorf("create backoffice currencies service: %w", err))
+	}
+	billingMarketsService, err := backofficebillingmarkets.NewService(backofficebillingmarkets.NewRepository(db))
+	if err != nil {
+		return fail(fmt.Errorf("create backoffice billing markets service: %w", err))
+	}
+	smsRatesService, err := backofficesmsrates.NewService(backofficesmsrates.NewRepository(db))
+	if err != nil {
+		return fail(fmt.Errorf("create backoffice SMS rates service: %w", err))
+	}
+	productRatesService, err := backofficeproductrates.NewService(backofficeproductrates.NewRepository(db))
+	if err != nil {
+		return fail(fmt.Errorf("create backoffice product rates service: %w", err))
+	}
+	allowancePoliciesService, err := backofficeallowancepolicies.NewService(backofficeallowancepolicies.NewRepository(db))
+	if err != nil {
+		return fail(fmt.Errorf("create backoffice allowance policies service: %w", err))
+	}
+
 	handlers := routeHandlers{
-		health:  backofficehealthhttp.NewHandler(db),
-		domains: backofficedomainhttp.NewHandler(domainsService),
+		health:            backofficehealthhttp.NewHandler(db),
+		domains:           backofficedomainhttp.NewHandler(domainsService),
+		currencies:        backofficecurrencieshttp.NewHandler(currenciesService),
+		billingMarkets:    backofficebillingmarketshttp.NewHandler(billingMarketsService),
+		smsRates:          backofficesmsrateshttp.NewHandler(smsRatesService),
+		productRates:      backofficeproductrateshttp.NewHandler(productRatesService),
+		allowancePolicies: backofficeallowancepolicieshttp.NewHandler(allowancePoliciesService),
 	}
 	router, err := httptransport.NewRouter(
 		httptransport.RouterConfig{
