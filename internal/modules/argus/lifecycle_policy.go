@@ -15,11 +15,11 @@ func terminalCheckResponse(current Verification) CheckResponse {
 	}
 }
 
-func validateResendVerification(current Verification, configured VerificationService, now time.Time) error {
+func validateResendVerification(current Verification, now time.Time) error {
 	if current.Status != StatusPending {
 		return apperrors.NewConflict("Only pending verifications can be resent")
 	}
-	if current.ResendCount >= configured.MaxResends {
+	if current.ResendCount >= current.MaxResends {
 		return apperrors.TooManyRequests("Verification resend limit reached")
 	}
 	if !current.ExpiresAt.After(now) {
