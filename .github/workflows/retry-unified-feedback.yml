@@ -49,6 +49,14 @@ jobs:
           if source.count(old) != 2:
               raise SystemExit(f'expected two scan guards, found {source.count(old)}')
           source = source.replace(old, new, 2)
+
+          marker = '# Harden the generated implementation after the broad cutover above.'
+          if marker not in source:
+              raise SystemExit('unified feedback hardening marker was not found')
+          prefix, hardening = source.split(marker, 1)
+          hardening = hardening.replace('\\t', '\t')
+          source = prefix + marker + hardening
+
           exec(compile(source, 'transform_feedback.py', 'exec'))
           PY
 
