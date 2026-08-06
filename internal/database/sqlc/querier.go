@@ -12,7 +12,6 @@ import (
 
 type Querier interface {
 	AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) (TeamInvitation, error)
-	AuthorizeEmailCharge(ctx context.Context, arg AuthorizeEmailChargeParams) (AuthorizeEmailChargeRow, error)
 	AuthorizeSMSCharge(ctx context.Context, arg AuthorizeSMSChargeParams) (AuthorizeSMSChargeRow, error)
 	CancelWebhookDeliveriesForEndpoint(ctx context.Context, arg CancelWebhookDeliveriesForEndpointParams) (int64, error)
 	ClaimDueEmailProviderEvents(ctx context.Context, arg ClaimDueEmailProviderEventsParams) ([]ClaimDueEmailProviderEventsRow, error)
