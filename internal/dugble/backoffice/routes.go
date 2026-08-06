@@ -13,12 +13,14 @@ import (
 	backofficehealthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/health"
 	backofficeproductrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/productrates"
 	backofficesmsrateshttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/smsrates"
+	backofficeusershttp "github.com/coffeyvidzro/dugble/server/internal/transport/backoffice/users"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
 
 type routeHandlers struct {
 	health            *backofficehealthhttp.Handler
 	dashboard         *backofficedashboardhttp.Handler
+	users             *backofficeusershttp.Handler
 	domains           *backofficedomainhttp.Handler
 	currencies        *backofficecurrencieshttp.Handler
 	billingMarkets    *backofficebillingmarketshttp.Handler
@@ -44,6 +46,7 @@ func newRouteRegistrar(
 			return nil
 		}
 		if handlers.dashboard == nil ||
+			handlers.users == nil ||
 			handlers.domains == nil ||
 			handlers.currencies == nil ||
 			handlers.billingMarkets == nil ||
@@ -54,6 +57,7 @@ func newRouteRegistrar(
 		}
 
 		backofficedashboardhttp.RegisterRoutes(router, handlers.dashboard, backofficeAccess...)
+		backofficeusershttp.RegisterRoutes(router, handlers.users, backofficeAccess...)
 		backofficedomainhttp.RegisterRoutes(router, handlers.domains, backofficeAccess...)
 		backofficecurrencieshttp.RegisterRoutes(router, handlers.currencies, backofficeAccess...)
 		backofficebillingmarketshttp.RegisterRoutes(router, handlers.billingMarkets, backofficeAccess...)
