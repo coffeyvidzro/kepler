@@ -20,13 +20,13 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{queries: dbsqlc.New(db)}
 }
 
-func (r *Repository) AuthorizeSMS(
+func (r *Repository) ChargeSMS(
 	ctx context.Context,
 	tx pgx.Tx,
-	input SMSAuthorizationInput,
-) (Authorization, error) {
+	input SMSChargeInput,
+) (Charge, error) {
 	if err := lockTeamBilling(ctx, tx, input.TeamID); err != nil {
-		return Authorization{}, err
+		return Charge{}, err
 	}
 	row, err := r.queries.WithTx(tx).AuthorizeSMSCharge(ctx, dbsqlc.AuthorizeSMSChargeParams{
 		TeamID: input.TeamID, ReferenceID: input.MessageID.String(),
@@ -34,9 +34,9 @@ func (r *Repository) AuthorizeSMS(
 		RouteType: input.routeType, Quantity: int64(input.Segments),
 	})
 	if err != nil {
-		return Authorization{}, fmt.Errorf("authorize SMS charge: %w", err)
+		return Charge{}, fmt.Errorf("charge SMS usage: %w", err)
 	}
-	return Authorization{
+	return Charge{
 		Outcome: Outcome(row.Outcome), MarketCode: row.MarketCode, Currency: row.Currency,
 		Tier: row.Tier, Product: Product(row.Product), UnitCostUnits: row.UnitCostUnits,
 		Quantity: row.Quantity, AmountUnits: row.AmountUnits, RemainingBalance: row.BalanceUnits,
@@ -44,26 +44,19 @@ func (r *Repository) AuthorizeSMS(
 	}, nil
 }
 
-func (r *Repository) AuthorizeEmail(
+func (r *Repository) ChargeEmail(
 	ctx context.Context,
 	tx pgx.Tx,
-	input EmailAuthorizationInput,
-) (Authorization, error) {
+	input EmailChargeInput,
+) (Charge, error) {
 	if err := lockTeamBilling(ctx, tx, input.TeamID); err != nil {
-		return Authorization{}, err
+		return Charge{}, err
 	}
-	row, err := r.queries.WithTx(tx).AuthorizeEmailCharge(ctx, dbsqlc.AuthorizeEmailChargeParams{
-		TeamID: input.TeamID, ReferenceID: input.MessageID.String(),
-	})
+	charge, err := chargeEmailUsage(ctx, tx, input)
 	if err != nil {
-		return Authorization{}, fmt.Errorf("authorize email charge: %w", err)
+		return Charge{}, fmt.Errorf("charge email usage: %w", err)
 	}
-	return Authorization{
-		Outcome: Outcome(row.Outcome), MarketCode: row.MarketCode, Currency: row.Currency,
-		Tier: row.Tier, Product: Product(row.Product), UnitCostUnits: row.UnitCostUnits,
-		Quantity: row.Quantity, AmountUnits: row.AmountUnits, RemainingBalance: row.BalanceUnits,
-		CoveredByAllowance: row.CoveredByAllowance, RemainingAllowance: row.RemainingAllowance,
-	}, nil
+	return charge, nil
 }
 
 func lockTeamBilling(ctx context.Context, tx pgx.Tx, teamID uuid.UUID) error {

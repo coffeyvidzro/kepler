@@ -92,7 +92,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 		return Message{}, apperrors.NewInternal("SMS delivery queue is not configured", nil)
 	}
 	if s.billing == nil {
-		return Message{}, apperrors.NewInternal("SMS billing authorization is not configured", nil)
+		return Message{}, apperrors.NewInternal("SMS billing charge is not configured", nil)
 	}
 
 	normalized, err := validateSend(req)
@@ -132,7 +132,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	}
 
 	messageID := uuid.MustParse(created.ID)
-	authorization, err := s.billing.AuthorizeSMS(ctx, tx, platformbilling.SMSAuthorizationInput{
+	charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{
 		TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 		DestinationNumber: normalized.To, Segments: segments,
 	})
@@ -145,8 +145,8 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	if err := tx.Commit(ctx); err != nil {
 		return Message{}, apperrors.NewInternal("Unable to commit SMS send transaction", err)
 	}
-	s.billing.ObserveCommitted(ctx, platformbilling.CommittedAuthorization{
-		Authorization: authorization, Channel: platformbilling.ChannelSMS,
+	s.billing.ObserveCommittedCharge(ctx, platformbilling.CommittedCharge{
+		Charge: charge, Channel: platformbilling.ChannelSMS,
 		TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 	})
 
@@ -165,7 +165,7 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 		return nil, apperrors.NewInternal("SMS delivery queue is not configured", nil)
 	}
 	if s.billing == nil {
-		return nil, apperrors.NewInternal("SMS billing authorization is not configured", nil)
+		return nil, apperrors.NewInternal("SMS billing charge is not configured", nil)
 	}
 
 	type preparedMessage struct {
@@ -202,7 +202,7 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 	defer func() { _ = tx.Rollback(ctx) }()
 	txRepository := s.repository.WithTx(tx)
 	result := make([]Message, 0, len(prepared))
-	committedAuthorizations := make([]platformbilling.CommittedAuthorization, 0, len(prepared))
+	committedCharges := make([]platformbilling.CommittedCharge, 0, len(prepared))
 	for _, item := range prepared {
 
 		created, err := txRepository.Create(ctx, createMessageParams{
@@ -216,7 +216,7 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 			return nil, apperrors.NewInternal("Unable to create SMS batch message", err)
 		}
 		messageID := uuid.MustParse(created.ID)
-		authorization, err := s.billing.AuthorizeSMS(ctx, tx, platformbilling.SMSAuthorizationInput{
+		charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{
 			TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 			DestinationNumber: item.request.To, Segments: item.segments,
 		})
@@ -227,16 +227,16 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 			return nil, apperrors.NewInternal("Unable to enqueue SMS batch delivery", err)
 		}
 		result = append(result, created)
-		committedAuthorizations = append(committedAuthorizations, platformbilling.CommittedAuthorization{
-			Authorization: authorization, Channel: platformbilling.ChannelSMS,
+		committedCharges = append(committedCharges, platformbilling.CommittedCharge{
+			Charge: charge, Channel: platformbilling.ChannelSMS,
 			TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 		})
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, apperrors.NewInternal("Unable to commit SMS batch transaction", err)
 	}
-	for _, authorization := range committedAuthorizations {
-		s.billing.ObserveCommitted(ctx, authorization)
+	for _, charge := range committedCharges {
+		s.billing.ObserveCommittedCharge(ctx, charge)
 	}
 	return result, nil
 }
@@ -264,7 +264,7 @@ func smsBillingError(err error) error {
 	case errors.Is(err, platformbilling.ErrAmountOverflow):
 		return apperrors.NewInternal("SMS charge amount exceeds the supported range", err)
 	default:
-		return apperrors.NewInternal("Unable to authorize SMS billing", err)
+		return apperrors.NewInternal("Unable to apply SMS billing charge", err)
 	}
 }
 

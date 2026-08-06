@@ -7,52 +7,52 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type authorizationRepository interface {
-	AuthorizeSMS(context.Context, pgx.Tx, SMSAuthorizationInput) (Authorization, error)
-	AuthorizeEmail(context.Context, pgx.Tx, EmailAuthorizationInput) (Authorization, error)
+type chargeRepository interface {
+	ChargeSMS(context.Context, pgx.Tx, SMSChargeInput) (Charge, error)
+	ChargeEmail(context.Context, pgx.Tx, EmailChargeInput) (Charge, error)
 }
 
-func (s *Service) AuthorizeEmail(
+type Service struct {
+	repository chargeRepository
+}
+
+func NewService(repository chargeRepository) *Service {
+	return &Service{repository: repository}
+}
+
+func (s *Service) ChargeEmail(
 	ctx context.Context,
 	tx pgx.Tx,
-	input EmailAuthorizationInput,
-) (Authorization, error) {
-	if err := validateEmailAuthorization(input); err != nil {
-		return Authorization{}, err
+	input EmailChargeInput,
+) (Charge, error) {
+	if err := validateEmailCharge(input); err != nil {
+		return Charge{}, err
 	}
-	result, err := s.repository.AuthorizeEmail(ctx, tx, input)
+	result, err := s.repository.ChargeEmail(ctx, tx, input)
 	if err != nil {
-		return Authorization{}, err
+		return Charge{}, err
 	}
-	if err := validateEmailAuthorizationResult(result); err != nil {
-		return Authorization{}, fmt.Errorf("authorize email billing: %w", err)
+	if err := validateEmailChargeResult(result, input.RecipientCount); err != nil {
+		return Charge{}, fmt.Errorf("charge email billing: %w", err)
 	}
 	return result, nil
 }
 
-type Service struct {
-	repository authorizationRepository
-}
-
-func NewService(repository authorizationRepository) *Service {
-	return &Service{repository: repository}
-}
-
-func (s *Service) AuthorizeSMS(
+func (s *Service) ChargeSMS(
 	ctx context.Context,
 	tx pgx.Tx,
-	input SMSAuthorizationInput,
-) (Authorization, error) {
-	input, err := validateSMSAuthorization(input)
+	input SMSChargeInput,
+) (Charge, error) {
+	input, err := validateSMSCharge(input)
 	if err != nil {
-		return Authorization{}, err
+		return Charge{}, err
 	}
-	result, err := s.repository.AuthorizeSMS(ctx, tx, input)
+	result, err := s.repository.ChargeSMS(ctx, tx, input)
 	if err != nil {
-		return Authorization{}, err
+		return Charge{}, err
 	}
-	if err := validateAuthorization(result, input.destinationCountry); err != nil {
-		return Authorization{}, fmt.Errorf("authorize SMS billing: %w", err)
+	if err := validateSMSChargeResult(result, input.destinationCountry); err != nil {
+		return Charge{}, fmt.Errorf("charge SMS billing: %w", err)
 	}
 	return result, nil
 }

@@ -10,23 +10,24 @@ import (
 )
 
 var (
-	ErrInvalidTeamID      = errors.New("billing team id is required")
-	ErrInvalidMessageID   = errors.New("billing message id is required")
-	ErrInvalidDestination = errors.New("billing destination must be a supported E.164 phone number")
-	ErrInvalidSegments    = errors.New("billing segments must be greater than zero")
+	ErrInvalidTeamID         = errors.New("billing team id is required")
+	ErrInvalidMessageID      = errors.New("billing message id is required")
+	ErrInvalidDestination    = errors.New("billing destination must be a supported E.164 phone number")
+	ErrInvalidSegments       = errors.New("billing segments must be greater than zero")
+	ErrInvalidRecipientCount = errors.New("billing email recipient count must be greater than zero")
 )
 
-func validateSMSAuthorization(input SMSAuthorizationInput) (SMSAuthorizationInput, error) {
+func validateSMSCharge(input SMSChargeInput) (SMSChargeInput, error) {
 	if input.TeamID == uuid.Nil {
-		return SMSAuthorizationInput{}, ErrInvalidTeamID
+		return SMSChargeInput{}, ErrInvalidTeamID
 	}
 	if input.MessageID == uuid.Nil {
-		return SMSAuthorizationInput{}, ErrInvalidMessageID
+		return SMSChargeInput{}, ErrInvalidMessageID
 	}
 	input.DestinationNumber = strings.TrimSpace(input.DestinationNumber)
 	destinationCountry, err := platformsms.ResolveDestinationCountry(input.DestinationNumber)
 	if err != nil {
-		return SMSAuthorizationInput{}, ErrInvalidDestination
+		return SMSChargeInput{}, ErrInvalidDestination
 	}
 	input.destinationCountry = destinationCountry
 	input.routeType = "standard"
@@ -38,20 +39,23 @@ func validateSMSAuthorization(input SMSAuthorizationInput) (SMSAuthorizationInpu
 	case "NG":
 		input.provider = "arkesel"
 	default:
-		return SMSAuthorizationInput{}, ErrInvalidDestination
+		return SMSChargeInput{}, ErrInvalidDestination
 	}
 	if input.Segments <= 0 {
-		return SMSAuthorizationInput{}, ErrInvalidSegments
+		return SMSChargeInput{}, ErrInvalidSegments
 	}
 	return input, nil
 }
 
-func validateEmailAuthorization(input EmailAuthorizationInput) error {
+func validateEmailCharge(input EmailChargeInput) error {
 	if input.TeamID == uuid.Nil {
 		return ErrInvalidTeamID
 	}
 	if input.MessageID == uuid.Nil {
 		return ErrInvalidMessageID
+	}
+	if input.RecipientCount <= 0 {
+		return ErrInvalidRecipientCount
 	}
 	return nil
 }

@@ -10,11 +10,11 @@ var (
 	_ EmailBilling = (*Service)(nil)
 )
 
-// ObserveCommitted records a durable billing decision after its enclosing
+// ObserveCommittedCharge records a durable billing decision after its enclosing
 // transaction has committed. It deliberately has no error result: message
 // acceptance must not be reversed by a best-effort observation failure.
-func (s *Service) ObserveCommitted(ctx context.Context, committed CommittedAuthorization) {
-	slog.InfoContext(ctx, "billing authorization committed",
+func (s *Service) ObserveCommittedCharge(ctx context.Context, committed CommittedCharge) {
+	slog.InfoContext(ctx, "billing charge committed",
 		"billing_channel", committed.Channel,
 		"team_id", committed.TeamID,
 		"message_id", committed.MessageID,

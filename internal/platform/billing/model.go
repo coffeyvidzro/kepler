@@ -21,7 +21,7 @@ const (
 	ChannelEmail Channel = "email"
 )
 
-type SMSAuthorizationInput struct {
+type SMSChargeInput struct {
 	TeamID             uuid.UUID
 	MessageID          uuid.UUID
 	DestinationNumber  string
@@ -31,7 +31,7 @@ type SMSAuthorizationInput struct {
 	routeType          string
 }
 
-type Authorization struct {
+type Charge struct {
 	Outcome            Outcome
 	MarketCode         string
 	Currency           string
@@ -45,38 +45,39 @@ type Authorization struct {
 	RemainingAllowance int64
 }
 
-type EmailAuthorizationInput struct {
-	TeamID    uuid.UUID
-	MessageID uuid.UUID
+type EmailChargeInput struct {
+	TeamID         uuid.UUID
+	MessageID      uuid.UUID
+	RecipientCount int64
 }
 
-// CommittedAuthorization is emitted only after the transaction containing the
-// message, billing mutation, and delivery outbox event has committed.
-type CommittedAuthorization struct {
-	Authorization
+// CommittedCharge is emitted only after the transaction containing the
+// message, immediate billing mutation, and delivery outbox event has committed.
+type CommittedCharge struct {
+	Charge
 	Channel   Channel
 	TeamID    uuid.UUID
 	MessageID uuid.UUID
 }
 
-type CommitObserver interface {
-	ObserveCommitted(context.Context, CommittedAuthorization)
+type ChargeObserver interface {
+	ObserveCommittedCharge(context.Context, CommittedCharge)
 }
 
-type SMSAuthorizer interface {
-	AuthorizeSMS(context.Context, pgx.Tx, SMSAuthorizationInput) (Authorization, error)
+type SMSCharger interface {
+	ChargeSMS(context.Context, pgx.Tx, SMSChargeInput) (Charge, error)
 }
 
-type EmailAuthorizer interface {
-	AuthorizeEmail(context.Context, pgx.Tx, EmailAuthorizationInput) (Authorization, error)
+type EmailCharger interface {
+	ChargeEmail(context.Context, pgx.Tx, EmailChargeInput) (Charge, error)
 }
 
 type SMSBilling interface {
-	SMSAuthorizer
-	CommitObserver
+	SMSCharger
+	ChargeObserver
 }
 
 type EmailBilling interface {
-	EmailAuthorizer
-	CommitObserver
+	EmailCharger
+	ChargeObserver
 }
