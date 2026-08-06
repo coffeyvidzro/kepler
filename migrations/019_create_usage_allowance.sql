@@ -57,7 +57,6 @@ CREATE TABLE IF NOT EXISTS usage_authorizations (
 
     billing_market CHAR(2) NOT NULL,
     destination_country CHAR(2),
-    provider TEXT,
     route_type TEXT,
 
     total_quantity BIGINT NOT NULL,
@@ -91,7 +90,6 @@ CREATE TABLE IF NOT EXISTS usage_authorizations (
             sms_rate_id,
             billing_market,
             destination_country,
-            provider,
             route_type,
             tier,
             currency,
@@ -101,7 +99,6 @@ CREATE TABLE IF NOT EXISTS usage_authorizations (
             id,
             billing_market,
             destination_country,
-            provider,
             route_type,
             tier,
             currency,
@@ -177,14 +174,12 @@ CREATE TABLE IF NOT EXISTS usage_authorizations (
                 product = 'sms'
                 AND meter = 'sms_segment'
                 AND destination_country IS NOT NULL
-                AND provider IS NOT NULL
-                AND route_type IS NOT NULL
+                AND route_type IN ('local', 'intl')
             )
             OR
             (
                 product <> 'sms'
                 AND destination_country IS NULL
-                AND provider IS NULL
                 AND route_type IS NULL
                 AND sms_rate_id IS NULL
             )
