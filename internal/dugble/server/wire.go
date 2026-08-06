@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/dns/netdns"
+	newrelicmonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/newrelic"
+	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	redisadapter "github.com/coffeyvidzro/dugble/server/internal/adapters/redis"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
@@ -31,7 +33,6 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/authnz"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/monitoring"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
@@ -68,16 +69,16 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	if err != nil {
 		return fail(fmt.Errorf("load configuration: %w", err))
 	}
-	if err := monitoring.InitSentry(cfg.Sentry, cfg.AppEnv); err != nil {
+	if err := sentrymonitoring.Init(cfg.Sentry, cfg.AppEnv); err != nil {
 		return fail(fmt.Errorf("initialize Sentry: %w", err))
 	}
-	cleanups.Add(func() { monitoring.FlushSentry(5 * time.Second) })
+	cleanups.Add(func() { sentrymonitoring.Flush(5 * time.Second) })
 
-	newRelic, err := monitoring.NewRelic("dugble-api", cfg.AppEnv, cfg.NewRelic)
+	newRelic, err := newrelicmonitoring.New("dugble-api", cfg.AppEnv, cfg.NewRelic)
 	if err != nil {
 		return fail(fmt.Errorf("initialize New Relic: %w", err))
 	}
-	cleanups.Add(func() { monitoring.Shutdown(newRelic, 5*time.Second) })
+	cleanups.Add(func() { newrelicmonitoring.Shutdown(newRelic, 5*time.Second) })
 
 	startupCtx, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelStartup()
@@ -218,7 +219,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		return fail(fmt.Errorf("create HTTP router: %w", err))
 	}
 
-	application, err := NewApplication(monitoring.WrapHTTP(newRelic, router), ":"+cfg.HTTPPort)
+	application, err := NewApplication(newrelicmonitoring.WrapHTTP(newRelic, router), ":"+cfg.HTTPPort)
 	if err != nil {
 		return fail(fmt.Errorf("create HTTP application: %w", err))
 	}
