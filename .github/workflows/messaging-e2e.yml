@@ -83,15 +83,23 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('internal/delivery/email/feedback/repository.go')
-          source = path.read_text()
+          repository = Path('internal/delivery/email/feedback/repository.go')
+          source = repository.read_text()
           old = 'repository := NewRepository(db, nil)'
           new = 'repository := NewRepository(db, outbox.NewRepository(db))'
           if source.count(old) != 1:
               raise SystemExit(f'expected one nil outbox constructor, found {source.count(old)}')
-          path.write_text(source.replace(old, new, 1))
+          repository.write_text(source.replace(old, new, 1))
+
+          test_file = Path('internal/integration/messaging/delivery_feedback_test.go')
+          tests = test_file.read_text()
+          old_time = 'occurredAt := time.Now().UTC().Add(-time.Second)'
+          new_time = 'occurredAt := time.Now().UTC()'
+          if tests.count(old_time) != 1:
+              raise SystemExit(f'expected one pre-attempt event timestamp, found {tests.count(old_time)}')
+          test_file.write_text(tests.replace(old_time, new_time, 1))
           PY
-          gofmt -w internal/delivery/email/feedback/repository.go
+          gofmt -w internal/delivery/email/feedback/repository.go internal/integration/messaging/delivery_feedback_test.go
           git diff --check
 
       - name: Run fresh-database messaging lifecycle tests
@@ -101,7 +109,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add internal/delivery/email/feedback/repository.go
+          git add internal/delivery/email/feedback/repository.go internal/integration/messaging/delivery_feedback_test.go
           test -n "$(git status --porcelain)"
           git commit -m "fix: configure durable email feedback outbox"
           git push origin HEAD:feat/messaging-fresh-db-e2e
