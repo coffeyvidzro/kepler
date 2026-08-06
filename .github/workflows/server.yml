@@ -60,10 +60,17 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
+      - name: Generate sqlc code
+        run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+
+      - name: Upload generated sqlc code
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlc-generated
+          path: internal/database/sqlc
+
       - name: Verify sqlc generated code
-        run: |
-          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
-          git diff --exit-code -- internal/database/sqlc
+        run: git diff --exit-code -- internal/database/sqlc
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
