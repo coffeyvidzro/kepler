@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -95,9 +94,3 @@ func (repository *Repository) SetEnabled(ctx context.Context, code string, enabl
 	}
 	return item, nil
 }
-
-var _ pgx.Row = currencyRow{}
-
-type currencyRow struct{}
-
-func (currencyRow) Scan(...any) error { return nil }
