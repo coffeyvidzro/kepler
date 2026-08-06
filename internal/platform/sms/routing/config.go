@@ -84,6 +84,7 @@ func (config Config) Validate() error {
 		if existingProvider, exists := priorities[priorityKey]; exists {
 			return fmt.Errorf(
 				"%w: providers %q and %q both use priority %d for country %q",
+				ErrDuplicatePriority,
 				existingProvider,
 				providerID,
 				route.Priority,
