@@ -478,24 +478,28 @@ type User struct {
 }
 
 type Verification struct {
-	ID                  uuid.UUID          `db:"id" json:"id"`
-	TeamID              uuid.UUID          `db:"team_id" json:"team_id"`
-	ServiceID           uuid.UUID          `db:"service_id" json:"service_id"`
-	Channel             string             `db:"channel" json:"channel"`
-	Recipient           string             `db:"recipient" json:"recipient"`
-	RecipientNormalized string             `db:"recipient_normalized" json:"recipient_normalized"`
-	Status              string             `db:"status" json:"status"`
-	Locale              *string            `db:"locale" json:"locale"`
-	Metadata            []byte             `db:"metadata" json:"metadata"`
-	AttemptCount        int32              `db:"attempt_count" json:"attempt_count"`
-	ResendCount         int32              `db:"resend_count" json:"resend_count"`
-	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ApprovedAt          pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
-	ExpiredAt           pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
-	CanceledAt          pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
-	FailedAt            pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                    uuid.UUID          `db:"id" json:"id"`
+	TeamID                uuid.UUID          `db:"team_id" json:"team_id"`
+	Channel               string             `db:"channel" json:"channel"`
+	Recipient             string             `db:"recipient" json:"recipient"`
+	RecipientNormalized   string             `db:"recipient_normalized" json:"recipient_normalized"`
+	CodeLength            int32              `db:"code_length" json:"code_length"`
+	TtlSeconds            int32              `db:"ttl_seconds" json:"ttl_seconds"`
+	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
+	ResendCooldownSeconds int32              `db:"resend_cooldown_seconds" json:"resend_cooldown_seconds"`
+	MaxResends            int32              `db:"max_resends" json:"max_resends"`
+	Status                string             `db:"status" json:"status"`
+	Locale                *string            `db:"locale" json:"locale"`
+	Metadata              []byte             `db:"metadata" json:"metadata"`
+	AttemptCount          int32              `db:"attempt_count" json:"attempt_count"`
+	ResendCount           int32              `db:"resend_count" json:"resend_count"`
+	ExpiresAt             pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ApprovedAt            pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
+	ExpiredAt             pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CanceledAt            pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
+	FailedAt              pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type VerificationAttempt struct {
@@ -526,23 +530,6 @@ type VerificationChallenge struct {
 	DeliveryFailedAt pgtype.Timestamptz `db:"delivery_failed_at" json:"delivery_failed_at"`
 	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type VerificationService struct {
-	ID                    uuid.UUID          `db:"id" json:"id"`
-	TeamID                uuid.UUID          `db:"team_id" json:"team_id"`
-	Key                   string             `db:"key" json:"key"`
-	Name                  string             `db:"name" json:"name"`
-	DefaultChannel        string             `db:"default_channel" json:"default_channel"`
-	CodeLength            int32              `db:"code_length" json:"code_length"`
-	TtlSeconds            int32              `db:"ttl_seconds" json:"ttl_seconds"`
-	MaxAttempts           int32              `db:"max_attempts" json:"max_attempts"`
-	ResendCooldownSeconds int32              `db:"resend_cooldown_seconds" json:"resend_cooldown_seconds"`
-	MaxResends            int32              `db:"max_resends" json:"max_resends"`
-	Enabled               bool               `db:"enabled" json:"enabled"`
-	Metadata              []byte             `db:"metadata" json:"metadata"`
-	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type VerificationToken struct {

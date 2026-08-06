@@ -43,7 +43,6 @@ type Querier interface {
 	CreateVerification(ctx context.Context, arg CreateVerificationParams) (Verification, error)
 	CreateVerificationAttempt(ctx context.Context, arg CreateVerificationAttemptParams) (VerificationAttempt, error)
 	CreateVerificationChallenge(ctx context.Context, arg CreateVerificationChallengeParams) (VerificationChallenge, error)
-	CreateVerificationService(ctx context.Context, arg CreateVerificationServiceParams) (VerificationService, error)
 	CreateVerificationToken(ctx context.Context, arg CreateVerificationTokenParams) (VerificationToken, error)
 	CreateWebhookDeliveriesForEvent(ctx context.Context, arg CreateWebhookDeliveriesForEventParams) (int64, error)
 	CreateWebhookDelivery(ctx context.Context, arg CreateWebhookDeliveryParams) (WebhookDelivery, error)
@@ -93,8 +92,6 @@ type Querier interface {
 	GetVerification(ctx context.Context, arg GetVerificationParams) (Verification, error)
 	GetVerificationChallenge(ctx context.Context, arg GetVerificationChallengeParams) (VerificationChallenge, error)
 	GetVerificationForUpdate(ctx context.Context, arg GetVerificationForUpdateParams) (Verification, error)
-	GetVerificationService(ctx context.Context, arg GetVerificationServiceParams) (VerificationService, error)
-	GetVerificationServiceByKey(ctx context.Context, arg GetVerificationServiceByKeyParams) (VerificationService, error)
 	GetVerificationToken(ctx context.Context, arg GetVerificationTokenParams) (VerificationToken, error)
 	GetWebhookDelivery(ctx context.Context, arg GetWebhookDeliveryParams) (WebhookDelivery, error)
 	GetWebhookDeliveryAttempt(ctx context.Context, arg GetWebhookDeliveryAttemptParams) (WebhookDeliveryAttempt, error)
@@ -121,7 +118,6 @@ type Querier interface {
 	ListTeamsForUser(ctx context.Context, arg ListTeamsForUserParams) ([]Team, error)
 	ListVerificationAttempts(ctx context.Context, arg ListVerificationAttemptsParams) ([]VerificationAttempt, error)
 	ListVerificationChallenges(ctx context.Context, arg ListVerificationChallengesParams) ([]VerificationChallenge, error)
-	ListVerificationServices(ctx context.Context, arg ListVerificationServicesParams) ([]VerificationService, error)
 	ListVerifications(ctx context.Context, arg ListVerificationsParams) ([]Verification, error)
 	ListWalletLedger(ctx context.Context, arg ListWalletLedgerParams) ([]WalletLedger, error)
 	ListWebhookDeliveriesForEvent(ctx context.Context, arg ListWebhookDeliveriesForEventParams) ([]WebhookDelivery, error)
@@ -165,7 +161,6 @@ type Querier interface {
 	RotateTOTPSecretCiphertext(ctx context.Context, arg RotateTOTPSecretCiphertextParams) error
 	RotateWebhookEndpointSecret(ctx context.Context, arg RotateWebhookEndpointSecretParams) (WebhookEndpoint, error)
 	ScheduleWebhookDeliveryRetry(ctx context.Context, arg ScheduleWebhookDeliveryRetryParams) (WebhookDelivery, error)
-	SetVerificationServiceEnabled(ctx context.Context, arg SetVerificationServiceEnabledParams) (VerificationService, error)
 	SupersedeActiveVerificationChallenges(ctx context.Context, arg SupersedeActiveVerificationChallengesParams) ([]VerificationChallenge, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
@@ -179,7 +174,6 @@ type Querier interface {
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error)
 	UpdateUserPasswordByEmail(ctx context.Context, arg UpdateUserPasswordByEmailParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
-	UpdateVerificationService(ctx context.Context, arg UpdateVerificationServiceParams) (VerificationService, error)
 	UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (WebhookEndpoint, error)
 	UseRecoveryCodeAndElevateSession(ctx context.Context, arg UseRecoveryCodeAndElevateSessionParams) (int64, error)
 	VerifyEmailWithToken(ctx context.Context, arg VerifyEmailWithTokenParams) (User, error)
