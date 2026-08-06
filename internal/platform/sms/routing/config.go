@@ -39,6 +39,18 @@ func DefaultConfig() Config {
 	}}
 }
 
+// DefaultProviderID returns the highest-priority enabled provider in the
+// default routing configuration for a destination country.
+func DefaultProviderID(destinationCountry string) (string, bool) {
+	country := normalizeCountryCode(destinationCountry)
+	for _, route := range DefaultConfig().enabledRoutes() {
+		if route.DestinationCountry == country {
+			return route.ProviderID, true
+		}
+	}
+	return "", false
+}
+
 func (config Config) Validate() error {
 	if len(config.Routes) == 0 {
 		return ErrNoRoutesConfigured
@@ -72,7 +84,6 @@ func (config Config) Validate() error {
 		if existingProvider, exists := priorities[priorityKey]; exists {
 			return fmt.Errorf(
 				"%w: providers %q and %q both use priority %d for country %q",
-				ErrDuplicatePriority,
 				existingProvider,
 				providerID,
 				route.Priority,
