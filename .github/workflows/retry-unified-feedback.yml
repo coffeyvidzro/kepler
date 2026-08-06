@@ -58,6 +58,13 @@ jobs:
           source = prefix + marker + hardening
 
           exec(compile(source, 'transform_feedback.py', 'exec'))
+
+          processor = pathlib.Path('internal/platform/messaging/feedback/processor.go')
+          processor_text = processor.read_text()
+          unused_import = '\n\t"time"\n'
+          if processor_text.count(unused_import) != 1:
+              raise SystemExit(f'expected one generated time import, found {processor_text.count(unused_import)}')
+          processor.write_text(processor_text.replace(unused_import, '\n', 1))
           PY
 
       - name: Format changed Go files
