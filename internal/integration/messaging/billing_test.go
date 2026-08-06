@@ -244,34 +244,35 @@ func TestSMSAllowanceSplitsUsageAndCharge(t *testing.T) {
 		t.Fatalf("begin SMS transaction: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	row, err := dbsqlc.New(pool).WithTx(tx).AuthorizeSMSCharge(
+	charge, err := billing.NewService(billing.NewRepository(pool)).ChargeSMS(
 		ctx,
-		dbsqlc.AuthorizeSMSChargeParams{
-			Quantity:           5,
-			TeamID:             teamID,
-			DestinationCountry: "GH",
-			ReferenceID:        uuid.NewString(),
+		tx,
+		billing.SMSChargeInput{
+			TeamID:            teamID,
+			MessageID:         uuid.New(),
+			DestinationNumber: "+233200000003",
+			Segments:          5,
 		},
 	)
 	if err != nil {
-		t.Fatalf("authorize SMS charge: %v", err)
+		t.Fatalf("charge SMS: %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit SMS transaction: %v", err)
 	}
 
-	if row.Outcome != "applied" || !row.CoveredByAllowance {
+	if charge.Outcome != billing.OutcomeApplied || !charge.CoveredByAllowance {
 		t.Fatalf(
 			"unexpected SMS outcome=%q covered=%t",
-			row.Outcome,
-			row.CoveredByAllowance,
+			charge.Outcome,
+			charge.CoveredByAllowance,
 		)
 	}
-	if row.AmountUnits != 30 || row.BalanceUnits != 970 {
+	if charge.AmountUnits != 30 || charge.RemainingBalance != 970 {
 		t.Fatalf(
 			"unexpected SMS amount=%d balance=%d",
-			row.AmountUnits,
-			row.BalanceUnits,
+			charge.AmountUnits,
+			charge.RemainingBalance,
 		)
 	}
 	if got := requireString(
