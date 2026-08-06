@@ -32,6 +32,39 @@ func TestDefaultConfigPrioritizesCountryProviders(t *testing.T) {
 	}
 }
 
+func TestDefaultProviderIDUsesHighestPriorityEnabledRoute(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		country  string
+		provider string
+		found    bool
+	}{
+		{name: "Ghana", country: platformsms.CountryGhana, provider: "mnotify", found: true},
+		{name: "Nigeria", country: platformsms.CountryNigeria, provider: "leamout", found: true},
+		{name: "unsupported", country: "KE", found: false},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			provider, found := routing.DefaultProviderID(test.country)
+			if found != test.found || provider != test.provider {
+				t.Fatalf(
+					"DefaultProviderID(%q) = %q, %t; want %q, %t",
+					test.country,
+					provider,
+					found,
+					test.provider,
+					test.found,
+				)
+			}
+		})
+	}
+}
+
 func TestConfigRejectsInvalidRoutes(t *testing.T) {
 	t.Parallel()
 
