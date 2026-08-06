@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	backofficeapp "github.com/coffeyvidzro/dugble/server/internal/backoffice"
 	newrelicmonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/newrelic"
 	sentrymonitoring "github.com/coffeyvidzro/dugble/server/internal/adapters/monitoring/sentry"
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
+	backofficeapp "github.com/coffeyvidzro/dugble/server/internal/backoffice"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 )
