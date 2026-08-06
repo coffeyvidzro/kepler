@@ -53,12 +53,14 @@ jobs:
 
           migration = Path('migrations/012_create_email_messages.sql')
           text = migration.read_text()
-          old = """        'delivered', 'delayed', 'bounced', 'complained', 'rejected',
-        'failed', 'canceled'
-"""
-          new = """        'delivered', 'partially_delivered', 'delayed', 'partially_failed',
-        'bounced', 'complained', 'rejected', 'failed', 'canceled'
-"""
+          old = (
+              "        'delivered', 'delayed', 'bounced', 'complained', 'rejected',\n"
+              "        'failed', 'canceled'\n"
+          )
+          new = (
+              "        'delivered', 'partially_delivered', 'delayed', 'partially_failed',\n"
+              "        'bounced', 'complained', 'rejected', 'failed', 'canceled'\n"
+          )
           if text.count(old) != 1:
               raise SystemExit(f'expected one email status constraint block, found {text.count(old)}')
           migration.write_text(text.replace(old, new, 1))
