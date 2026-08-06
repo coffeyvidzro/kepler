@@ -16,6 +16,7 @@ import (
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 	platformbilling "github.com/coffeyvidzro/dugble/server/internal/platform/billing"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/systemmail"
 )
 
 type DispatchState struct {
@@ -218,6 +219,7 @@ type ChannelInput struct {
 	ChallengeID    uuid.UUID
 	Recipient      string
 	Code           string
+	ExpiresIn      time.Duration
 }
 
 type channelDispatcher interface {
@@ -226,17 +228,31 @@ type channelDispatcher interface {
 }
 
 type EmailChannel struct {
-	service *emailmodule.Service
+	service     *emailmodule.Service
+	renderer    *systemmail.ArgusRenderer
+	rendererErr error
 }
 
 func NewEmailChannel(service *emailmodule.Service) *EmailChannel {
-	return &EmailChannel{service: service}
+	renderer, err := systemmail.NewArgusRenderer()
+	return &EmailChannel{service: service, renderer: renderer, rendererErr: err}
 }
 
 func (channel *EmailChannel) DispatchTx(ctx context.Context, tx pgx.Tx, input ChannelInput) (platformbilling.CommittedAuthorization, error) {
+	if channel == nil || channel.service == nil {
+		return platformbilling.CommittedAuthorization{}, errors.New("verification email channel is not configured")
+	}
+	if channel.rendererErr != nil {
+		return platformbilling.CommittedAuthorization{}, channel.rendererErr
+	}
+	message, err := buildVerificationEmail(channel.renderer, input.Code, input.ExpiresIn)
+	if err != nil {
+		return platformbilling.CommittedAuthorization{}, err
+	}
 	return channel.service.EnqueueVerificationTx(ctx, tx, emailmodule.VerificationEmailInput{
 		TeamID: input.TeamID, VerificationID: input.VerificationID, ChallengeID: input.ChallengeID,
-		Recipient: input.Recipient, Code: input.Code,
+		Recipient: input.Recipient, FromName: message.FromName, Subject: message.Subject,
+		Text: message.Text, HTML: message.HTML,
 	})
 }
 
@@ -254,9 +270,12 @@ func NewSMSChannel(service *smsmodule.Service, sender string) *SMSChannel {
 }
 
 func (channel *SMSChannel) DispatchTx(ctx context.Context, tx pgx.Tx, input ChannelInput) (platformbilling.CommittedAuthorization, error) {
+	if channel == nil || channel.service == nil {
+		return platformbilling.CommittedAuthorization{}, errors.New("verification SMS channel is not configured")
+	}
 	return channel.service.EnqueueVerificationTx(ctx, tx, smsmodule.VerificationSMSInput{
 		TeamID: input.TeamID, VerificationID: input.VerificationID, ChallengeID: input.ChallengeID,
-		Recipient: input.Recipient, Sender: channel.sender, Code: input.Code,
+		Recipient: input.Recipient, Sender: channel.sender, Body: buildVerificationSMS(input.Code, input.ExpiresIn),
 	})
 }
 
@@ -325,7 +344,8 @@ func (processor *Processor) Handle(ctx context.Context, command Command) (err er
 	if state.ChallengeStatus == "dispatched" || isTerminalChallenge(state.ChallengeStatus) || state.VerificationStatus != "pending" {
 		return nil
 	}
-	if !state.ExpiresAt.After(processor.now().UTC()) {
+	now := processor.now().UTC()
+	if !state.ExpiresAt.After(now) {
 		if err := processor.repository.MarkExpired(ctx, tx, state); err != nil {
 			return err
 		}
@@ -349,7 +369,7 @@ func (processor *Processor) Handle(ctx context.Context, command Command) (err er
 	}
 	authorization, err := dispatcher.DispatchTx(ctx, tx, ChannelInput{
 		TeamID: state.TeamID, VerificationID: state.VerificationID, ChallengeID: state.ChallengeID,
-		Recipient: state.Recipient, Code: string(code),
+		Recipient: state.Recipient, Code: string(code), ExpiresIn: state.ExpiresAt.Sub(now),
 	})
 	if err != nil {
 		return fmt.Errorf("dispatch verification through %s: %w", state.Channel, err)

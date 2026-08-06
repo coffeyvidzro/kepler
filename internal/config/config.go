@@ -17,6 +17,8 @@ type MoolreConfig struct {
 
 type ArgusConfig struct {
 	HMACSecret string `env:"HMAC_SECRET"`
+	SenderID   string `env:"SENDER_ID" envDefault:"Dugble"`
+	FromEmail  string `env:"FROM_EMAIL" envDefault:"argus@dugble.com"`
 }
 
 type AWSConfig struct {
@@ -87,6 +89,8 @@ func (c *Config) normalize() {
 	c.CookieDomain = strings.TrimSpace(c.CookieDomain)
 	c.EncryptionKeys = normalizeStrings(c.EncryptionKeys)
 	c.Argus.HMACSecret = strings.TrimSpace(c.Argus.HMACSecret)
+	c.Argus.SenderID = strings.TrimSpace(c.Argus.SenderID)
+	c.Argus.FromEmail = strings.ToLower(strings.TrimSpace(c.Argus.FromEmail))
 	c.AWS.FromEmail = strings.TrimSpace(c.AWS.FromEmail)
 	c.AWS.Region = strings.TrimSpace(c.AWS.Region)
 	c.AWS.AccessKey = strings.TrimSpace(c.AWS.AccessKey)

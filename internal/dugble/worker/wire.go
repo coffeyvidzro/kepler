@@ -262,7 +262,8 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		emailmodule.NewRepository(db),
 		emaildelivery.NewQueue(outboxRepository),
 		emailmodule.ServiceConfig{
-			DefaultFromEmail: cfg.AWS.FromEmail,
+			DefaultFromEmail: cfg.Argus.FromEmail,
+			DefaultFromName:  "Dugble",
 			DefaultProvider:  "ses",
 			DefaultRegion:    cfg.AWS.Region,
 		},
@@ -278,7 +279,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		argusdispatch.NewRepository(db),
 		argusCipher,
 		argusdispatch.NewEmailChannel(emailAPIService),
-		argusdispatch.NewSMSChannel(smsAPIService, "Dugble"),
+		argusdispatch.NewSMSChannel(smsAPIService, cfg.Argus.SenderID),
 		events,
 	)
 	argusConsumer := argusdispatch.NewConsumer(
