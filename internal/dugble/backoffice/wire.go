@@ -65,31 +65,12 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	cleanups.Add(db.Close)
 
 	dashboardService := backofficedashboard.NewService(backofficedashboard.NewRepository(db))
-
-	domainsService, err := backofficedomains.NewService(backofficedomains.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice domains service: %w", err))
-	}
-	currenciesService, err := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice currencies service: %w", err))
-	}
-	billingMarketsService, err := backofficebillingmarkets.NewService(backofficebillingmarkets.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice billing markets service: %w", err))
-	}
-	smsRatesService, err := backofficesmsrates.NewService(backofficesmsrates.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice SMS rates service: %w", err))
-	}
-	productRatesService, err := backofficeproductrates.NewService(backofficeproductrates.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice product rates service: %w", err))
-	}
-	allowancePoliciesService, err := backofficeallowancepolicies.NewService(backofficeallowancepolicies.NewRepository(db))
-	if err != nil {
-		return fail(fmt.Errorf("create backoffice allowance policies service: %w", err))
-	}
+	domainsService := backofficedomains.NewService(backofficedomains.NewRepository(db))
+	currenciesService := backofficecurrencies.NewService(backofficecurrencies.NewRepository(db))
+	billingMarketsService := backofficebillingmarkets.NewService(backofficebillingmarkets.NewRepository(db))
+	smsRatesService := backofficesmsrates.NewService(backofficesmsrates.NewRepository(db))
+	productRatesService := backofficeproductrates.NewService(backofficeproductrates.NewRepository(db))
+	allowancePoliciesService := backofficeallowancepolicies.NewService(backofficeallowancepolicies.NewRepository(db))
 
 	handlers := routeHandlers{
 		health:            backofficehealthhttp.NewHandler(db),
