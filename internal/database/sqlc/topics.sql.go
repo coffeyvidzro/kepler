@@ -25,7 +25,14 @@ INSERT INTO topics (
     $4,
     $5
 )
-RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
+RETURNING id,
+          team_id,
+          name,
+          description,
+          default_subscription,
+          visibility,
+          created_at,
+          updated_at
 `
 
 type CreateTopicParams struct {
@@ -62,7 +69,14 @@ const deleteTopic = `-- name: DeleteTopic :one
 DELETE FROM topics
 WHERE id = $1
   AND team_id = $2
-RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
+RETURNING id,
+          team_id,
+          name,
+          description,
+          default_subscription,
+          visibility,
+          created_at,
+          updated_at
 `
 
 type DeleteTopicParams struct {
@@ -87,10 +101,17 @@ func (q *Queries) DeleteTopic(ctx context.Context, arg DeleteTopicParams) (Topic
 }
 
 const getTopic = `-- name: GetTopic :one
-SELECT id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-FROM topics
-WHERE id = $1
-  AND team_id = $2
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.id = $1
+  AND t.team_id = $2
 `
 
 type GetTopicParams struct {
@@ -115,10 +136,17 @@ func (q *Queries) GetTopic(ctx context.Context, arg GetTopicParams) (Topic, erro
 }
 
 const listTopics = `-- name: ListTopics :many
-SELECT id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-FROM topics
-WHERE team_id = $1
-ORDER BY created_at DESC, id DESC
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = $1
+ORDER BY t.created_at DESC, t.id DESC
 LIMIT $3
 OFFSET $2
 `
@@ -158,19 +186,161 @@ func (q *Queries) ListTopics(ctx context.Context, arg ListTopicsParams) ([]Topic
 	return items, nil
 }
 
+const listTopicsAfter = `-- name: ListTopicsAfter :many
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = $1
+  AND (t.created_at, t.id) < (
+      SELECT cursor_topic.created_at, cursor_topic.id
+      FROM topics AS cursor_topic
+      WHERE cursor_topic.id = $2
+        AND cursor_topic.team_id = $1
+  )
+ORDER BY t.created_at DESC, t.id DESC
+LIMIT $3
+`
+
+type ListTopicsAfterParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListTopicsAfter(ctx context.Context, arg ListTopicsAfterParams) ([]Topic, error) {
+	rows, err := q.db.Query(ctx, listTopicsAfter, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Topic{}
+	for rows.Next() {
+		var i Topic
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.Description,
+			&i.DefaultSubscription,
+			&i.Visibility,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTopicsBefore = `-- name: ListTopicsBefore :many
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = $1
+  AND (t.created_at, t.id) > (
+      SELECT cursor_topic.created_at, cursor_topic.id
+      FROM topics AS cursor_topic
+      WHERE cursor_topic.id = $2
+        AND cursor_topic.team_id = $1
+  )
+ORDER BY t.created_at ASC, t.id ASC
+LIMIT $3
+`
+
+type ListTopicsBeforeParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListTopicsBefore(ctx context.Context, arg ListTopicsBeforeParams) ([]Topic, error) {
+	rows, err := q.db.Query(ctx, listTopicsBefore, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Topic{}
+	for rows.Next() {
+		var i Topic
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.Description,
+			&i.DefaultSubscription,
+			&i.Visibility,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const topicCursorExists = `-- name: TopicCursorExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM topics AS t
+    WHERE t.id = $1
+      AND t.team_id = $2
+)
+`
+
+type TopicCursorExistsParams struct {
+	CursorID uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	TeamID   uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) TopicCursorExists(ctx context.Context, arg TopicCursorExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, topicCursorExists, arg.CursorID, arg.TeamID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const updateTopic = `-- name: UpdateTopic :one
 UPDATE topics
 SET name = $1,
     description = $2,
+    visibility = $3,
     updated_at = now()
-WHERE id = $3
-  AND team_id = $4
-RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
+WHERE id = $4
+  AND team_id = $5
+RETURNING id,
+          team_id,
+          name,
+          description,
+          default_subscription,
+          visibility,
+          created_at,
+          updated_at
 `
 
 type UpdateTopicParams struct {
 	Name        string    `db:"name" json:"name"`
 	Description *string   `db:"description" json:"description"`
+	Visibility  string    `db:"visibility" json:"visibility"`
 	ID          uuid.UUID `db:"id" json:"id"`
 	TeamID      uuid.UUID `db:"team_id" json:"team_id"`
 }
@@ -179,6 +349,7 @@ func (q *Queries) UpdateTopic(ctx context.Context, arg UpdateTopicParams) (Topic
 	row := q.db.QueryRow(ctx, updateTopic,
 		arg.Name,
 		arg.Description,
+		arg.Visibility,
 		arg.ID,
 		arg.TeamID,
 	)
