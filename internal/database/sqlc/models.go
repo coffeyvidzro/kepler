@@ -57,6 +57,46 @@ type BillingMarket struct {
 	IsEnabled bool   `db:"is_enabled" json:"is_enabled"`
 }
 
+type Contact struct {
+	ID           uuid.UUID          `db:"id" json:"id"`
+	TeamID       uuid.UUID          `db:"team_id" json:"team_id"`
+	Email        string             `db:"email" json:"email"`
+	FirstName    *string            `db:"first_name" json:"first_name"`
+	LastName     *string            `db:"last_name" json:"last_name"`
+	Unsubscribed bool               `db:"unsubscribed" json:"unsubscribed"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ContactProperty struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	TeamID         uuid.UUID          `db:"team_id" json:"team_id"`
+	Key            string             `db:"key" json:"key"`
+	ValueType      string             `db:"value_type" json:"value_type"`
+	FallbackString *string            `db:"fallback_string" json:"fallback_string"`
+	FallbackNumber pgtype.Numeric     `db:"fallback_number" json:"fallback_number"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ContactPropertyValue struct {
+	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
+	ContactID         uuid.UUID          `db:"contact_id" json:"contact_id"`
+	ContactPropertyID uuid.UUID          `db:"contact_property_id" json:"contact_property_id"`
+	ValueType         string             `db:"value_type" json:"value_type"`
+	StringValue       *string            `db:"string_value" json:"string_value"`
+	NumberValue       pgtype.Numeric     `db:"number_value" json:"number_value"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ContactSegment struct {
+	TeamID    uuid.UUID          `db:"team_id" json:"team_id"`
+	ContactID uuid.UUID          `db:"contact_id" json:"contact_id"`
+	SegmentID uuid.UUID          `db:"segment_id" json:"segment_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Currency struct {
 	Code      string `db:"code" json:"code"`
 	MinorUnit int16  `db:"minor_unit" json:"minor_unit"`
@@ -252,6 +292,13 @@ type RecoveryCode struct {
 	UserID    uuid.UUID          `db:"user_id" json:"user_id"`
 	CodeHash  string             `db:"code_hash" json:"code_hash"`
 	UsedAt    pgtype.Timestamptz `db:"used_at" json:"used_at"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Segment struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	TeamID    uuid.UUID          `db:"team_id" json:"team_id"`
+	Name      string             `db:"name" json:"name"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 

@@ -22,6 +22,8 @@ type Querier interface {
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
 	ConsumeMFALoginChallengeWithTOTP(ctx context.Context, arg ConsumeMFALoginChallengeWithTOTPParams) (int64, error)
 	CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) (AuditEvent, error)
+	CreateContact(ctx context.Context, arg CreateContactParams) (Contact, error)
+	CreateContactProperty(ctx context.Context, arg CreateContactPropertyParams) (ContactProperty, error)
 	CreateEmailMessage(ctx context.Context, arg CreateEmailMessageParams) (EmailMessage, error)
 	CreateEmailProviderEvent(ctx context.Context, arg CreateEmailProviderEventParams) (EmailProviderEvent, error)
 	CreateEmailRecipient(ctx context.Context, arg CreateEmailRecipientParams) (EmailRecipient, error)
@@ -31,6 +33,7 @@ type Querier interface {
 	CreateOAuthIdentity(ctx context.Context, arg CreateOAuthIdentityParams) (OauthIdentity, error)
 	CreateRecoveryCode(ctx context.Context, arg CreateRecoveryCodeParams) error
 	CreateSMSMessage(ctx context.Context, arg CreateSMSMessageParams) (SmsMessage, error)
+	CreateSegment(ctx context.Context, arg CreateSegmentParams) (Segment, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTeamInvitation(ctx context.Context, arg CreateTeamInvitationParams) (TeamInvitation, error)
 	CreateTeamMember(ctx context.Context, arg CreateTeamMemberParams) (TeamMember, error)
@@ -47,10 +50,14 @@ type Querier interface {
 	DeadLetterEmailProviderEvent(ctx context.Context, arg DeadLetterEmailProviderEventParams) (int64, error)
 	DebitTeamWallet(ctx context.Context, arg DebitTeamWalletParams) (DebitTeamWalletRow, error)
 	DeclineTeamInvitation(ctx context.Context, arg DeclineTeamInvitationParams) (TeamInvitation, error)
+	DeleteContact(ctx context.Context, arg DeleteContactParams) (Contact, error)
+	DeleteContactProperty(ctx context.Context, arg DeleteContactPropertyParams) (ContactProperty, error)
+	DeleteContactPropertyValues(ctx context.Context, arg DeleteContactPropertyValuesParams) error
 	DeleteEmailTenant(ctx context.Context, arg DeleteEmailTenantParams) (int64, error)
 	DeleteExpiredVerificationTokens(ctx context.Context) error
 	DeleteIdempotencyKey(ctx context.Context, arg DeleteIdempotencyKeyParams) error
 	DeleteRecoveryCodes(ctx context.Context, arg DeleteRecoveryCodesParams) error
+	DeleteSegment(ctx context.Context, arg DeleteSegmentParams) (Segment, error)
 	DeleteTOTPCredential(ctx context.Context, arg DeleteTOTPCredentialParams) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
 	DeleteVerificationToken(ctx context.Context, arg DeleteVerificationTokenParams) error
@@ -63,6 +70,10 @@ type Querier interface {
 	GetActiveMFALoginChallenge(ctx context.Context, arg GetActiveMFALoginChallengeParams) (GetActiveMFALoginChallengeRow, error)
 	GetActiveProductRate(ctx context.Context, arg GetActiveProductRateParams) (ProductRate, error)
 	GetActiveTeamTokenByHash(ctx context.Context, arg GetActiveTeamTokenByHashParams) (TeamToken, error)
+	GetContact(ctx context.Context, arg GetContactParams) (Contact, error)
+	GetContactByEmail(ctx context.Context, arg GetContactByEmailParams) (Contact, error)
+	GetContactProperty(ctx context.Context, arg GetContactPropertyParams) (ContactProperty, error)
+	GetContactPropertyByKey(ctx context.Context, arg GetContactPropertyByKeyParams) (ContactProperty, error)
 	GetEmailMessage(ctx context.Context, arg GetEmailMessageParams) (EmailMessage, error)
 	GetEmailProviderEventForUpdate(ctx context.Context, arg GetEmailProviderEventForUpdateParams) (EmailProviderEvent, error)
 	GetEmailRecipientForUpdate(ctx context.Context, arg GetEmailRecipientForUpdateParams) (EmailRecipient, error)
@@ -71,6 +82,7 @@ type Querier interface {
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityParams) (OauthIdentity, error)
 	GetSMSMessage(ctx context.Context, arg GetSMSMessageParams) (SmsMessage, error)
+	GetSegment(ctx context.Context, arg GetSegmentParams) (Segment, error)
 	GetSessionByID(ctx context.Context, arg GetSessionByIDParams) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, arg GetSessionByTokenHashParams) (Session, error)
 	GetTOTPCredential(ctx context.Context, arg GetTOTPCredentialParams) (GetTOTPCredentialRow, error)
@@ -88,6 +100,9 @@ type Querier interface {
 	HasKnownSessionFingerprint(ctx context.Context, arg HasKnownSessionFingerprintParams) (bool, error)
 	IsTOTPEnabled(ctx context.Context, arg IsTOTPEnabledParams) (bool, error)
 	LinkEmailProviderEvent(ctx context.Context, arg LinkEmailProviderEventParams) (int64, error)
+	ListContactProperties(ctx context.Context, arg ListContactPropertiesParams) ([]ContactProperty, error)
+	ListContactPropertyValues(ctx context.Context, arg ListContactPropertyValuesParams) ([]ListContactPropertyValuesRow, error)
+	ListContacts(ctx context.Context, arg ListContactsParams) ([]Contact, error)
 	ListEmailMessages(ctx context.Context, arg ListEmailMessagesParams) ([]ListEmailMessagesRow, error)
 	ListEmailRecipientAggregateStates(ctx context.Context, arg ListEmailRecipientAggregateStatesParams) ([]ListEmailRecipientAggregateStatesRow, error)
 	ListEmailRecipientLifecycleDetails(ctx context.Context, arg ListEmailRecipientLifecycleDetailsParams) ([]ListEmailRecipientLifecycleDetailsRow, error)
@@ -95,6 +110,8 @@ type Querier interface {
 	ListOAuthIdentitiesByUserID(ctx context.Context, arg ListOAuthIdentitiesByUserIDParams) ([]OauthIdentity, error)
 	ListPendingTeamInvitations(ctx context.Context, arg ListPendingTeamInvitationsParams) ([]TeamInvitation, error)
 	ListSMSMessages(ctx context.Context, arg ListSMSMessagesParams) ([]SmsMessage, error)
+	ListSegmentContacts(ctx context.Context, arg ListSegmentContactsParams) ([]Contact, error)
+	ListSegments(ctx context.Context, arg ListSegmentsParams) ([]Segment, error)
 	ListSessionsByUserID(ctx context.Context, arg ListSessionsByUserIDParams) ([]Session, error)
 	ListSubscribedWebhookEndpoints(ctx context.Context, arg ListSubscribedWebhookEndpointsParams) ([]WebhookEndpoint, error)
 	ListTOTPSecretsForRotation(ctx context.Context) ([]ListTOTPSecretsForRotationRow, error)
@@ -139,6 +156,8 @@ type Querier interface {
 	ScheduleWebhookDeliveryRetry(ctx context.Context, arg ScheduleWebhookDeliveryRetryParams) (WebhookDelivery, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
+	UpdateContact(ctx context.Context, arg UpdateContactParams) (Contact, error)
+	UpdateContactPropertyFallback(ctx context.Context, arg UpdateContactPropertyFallbackParams) (ContactProperty, error)
 	UpdateEmailRecipientState(ctx context.Context, arg UpdateEmailRecipientStateParams) (int64, error)
 	UpdateSMSMessageStatus(ctx context.Context, arg UpdateSMSMessageStatusParams) (SmsMessage, error)
 	UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error)
@@ -150,6 +169,8 @@ type Querier interface {
 	UpdateUserPasswordByEmail(ctx context.Context, arg UpdateUserPasswordByEmailParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (WebhookEndpoint, error)
+	UpsertContactNumberPropertyValue(ctx context.Context, arg UpsertContactNumberPropertyValueParams) error
+	UpsertContactStringPropertyValue(ctx context.Context, arg UpsertContactStringPropertyValueParams) error
 	UseRecoveryCodeAndElevateSession(ctx context.Context, arg UseRecoveryCodeAndElevateSessionParams) (int64, error)
 	VerifyEmailWithToken(ctx context.Context, arg VerifyEmailWithTokenParams) (User, error)
 	VerifyTOTPAndElevateSession(ctx context.Context, arg VerifyTOTPAndElevateSessionParams) (int64, error)
