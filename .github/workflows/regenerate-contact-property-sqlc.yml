@@ -1,0 +1,33 @@
+name: Regenerate contact property sqlc
+
+on:
+  push:
+    branches:
+      - agent/contact-property-compatibility
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/contact-property-compatibility
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Generate sqlc
+        run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+      - name: Commit generated code
+        run: |
+          if git diff --quiet -- internal/database/sqlc; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/database/sqlc
+          git commit -m "Regenerate contact property sqlc"
+          git push origin HEAD:agent/contact-property-compatibility
