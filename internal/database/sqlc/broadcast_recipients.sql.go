@@ -127,6 +127,101 @@ func (q *Queries) ListBroadcastRecipients(ctx context.Context, arg ListBroadcast
 	return items, nil
 }
 
+const materializeBroadcastRecipients = `-- name: MaterializeBroadcastRecipients :exec
+WITH candidates AS (
+    SELECT
+        contact.id AS contact_id,
+        contact.email,
+        lower(btrim(contact.email)) AS normalized_email,
+        contact.first_name,
+        contact.last_name,
+        jsonb_build_object(
+            'id', contact.id,
+            'email', contact.email,
+            'first_name', contact.first_name,
+            'last_name', contact.last_name,
+            'properties', COALESCE(properties.values, '{}'::jsonb)
+        ) AS contact_snapshot,
+        CASE
+            WHEN contact.email !~* '^[A-Z0-9.!#$%&''*+/=?^_{|}~-]+@[A-Z0-9]([A-Z0-9-]{0,61}[A-Z0-9])?(\.[A-Z0-9]([A-Z0-9-]{0,61}[A-Z0-9])?)+$'
+                THEN 'invalid_email'
+            WHEN contact.unsubscribed THEN 'global_unsubscribe'
+            WHEN EXISTS (
+                SELECT 1
+                FROM suppressions AS suppression
+                WHERE suppression.team_id = contact.team_id
+                  AND lower(suppression.email) = lower(contact.email)
+            ) THEN 'suppressed'
+            WHEN $3::uuid IS NOT NULL
+             AND COALESCE(subscription.subscription, topic.default_subscription) = 'opt_out'
+                THEN 'topic_unsubscribed'
+            ELSE NULL
+        END AS exclusion_reason
+    FROM contact_segments AS membership
+    JOIN contacts AS contact
+      ON contact.id = membership.contact_id
+     AND contact.team_id = membership.team_id
+    LEFT JOIN topics AS topic
+      ON topic.id = $3
+     AND topic.team_id = contact.team_id
+    LEFT JOIN contact_topic_subscriptions AS subscription
+      ON subscription.contact_id = contact.id
+     AND subscription.topic_id = $3
+     AND subscription.team_id = contact.team_id
+    LEFT JOIN LATERAL (
+        SELECT jsonb_object_agg(
+            property.key,
+            CASE property_value.value_type
+                WHEN 'string' THEN to_jsonb(property_value.string_value)
+                WHEN 'number' THEN to_jsonb(property_value.number_value)
+            END
+        ) AS values
+        FROM contact_property_values AS property_value
+        JOIN contact_properties AS property
+          ON property.id = property_value.contact_property_id
+         AND property.team_id = property_value.team_id
+        WHERE property_value.contact_id = contact.id
+          AND property_value.team_id = contact.team_id
+    ) AS properties ON true
+    WHERE membership.team_id = $1
+      AND membership.segment_id = $4
+)
+INSERT INTO broadcast_recipients (
+    team_id, broadcast_id, contact_id, email, normalized_email,
+    first_name, last_name, contact_snapshot, status, exclusion_reason
+)
+SELECT
+    $1,
+    $2,
+    contact_id,
+    email,
+    normalized_email,
+    first_name,
+    last_name,
+    contact_snapshot,
+    CASE WHEN exclusion_reason IS NULL THEN 'pending' ELSE 'excluded' END,
+    exclusion_reason
+FROM candidates
+ON CONFLICT DO NOTHING
+`
+
+type MaterializeBroadcastRecipientsParams struct {
+	TeamID      uuid.UUID  `db:"team_id" json:"team_id"`
+	BroadcastID uuid.UUID  `db:"broadcast_id" json:"broadcast_id"`
+	TopicID     *uuid.UUID `db:"topic_id" json:"topic_id"`
+	SegmentID   uuid.UUID  `db:"segment_id" json:"segment_id"`
+}
+
+func (q *Queries) MaterializeBroadcastRecipients(ctx context.Context, arg MaterializeBroadcastRecipientsParams) error {
+	_, err := q.db.Exec(ctx, materializeBroadcastRecipients,
+		arg.TeamID,
+		arg.BroadcastID,
+		arg.TopicID,
+		arg.SegmentID,
+	)
+	return err
+}
+
 const setBroadcastRecipientQueued = `-- name: SetBroadcastRecipientQueued :one
 UPDATE broadcast_recipients
 SET status = 'queued', email_message_id = $1, queued_at = now()
