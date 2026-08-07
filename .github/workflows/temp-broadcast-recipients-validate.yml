@@ -1,0 +1,60 @@
+name: Temporary Broadcast Recipients Validate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/broadcast-recipients
+    paths:
+      - ".github/workflows/temp-broadcast-recipients-validate.yml"
+      - "internal/modules/broadcast/**"
+      - "internal/delivery/broadcast/**"
+      - "migrations/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-broadcast-recipients-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/broadcast-recipients
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Atlas
+        uses: ariga/setup-atlas@v0
+
+      - name: Hash migrations
+        run: atlas migrate hash --dir file://migrations
+
+      - name: Format Go
+        run: gofmt -w internal/modules/broadcast internal/delivery/broadcast
+
+      - name: Test
+        run: go test ./...
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/modules/broadcast internal/delivery/broadcast migrations/atlas.sum
+          if git diff --cached --quiet; then
+            echo "No generated or formatted changes to commit."
+            exit 0
+          fi
+          git commit -m "Format and hash broadcast recipient materialization"
+          git push origin HEAD:feat/broadcast-recipients
