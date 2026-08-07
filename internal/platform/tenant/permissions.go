@@ -34,6 +34,17 @@ const (
 	PermissionAuditEventsRead     Permission = "audit_events:read"
 	PermissionWalletRead          Permission = "wallet:read"
 	PermissionWalletLedgerRead    Permission = "wallet_ledger:read"
+	PermissionTopicsRead          Permission = "topics:read"
+	PermissionTopicsWrite         Permission = "topics:write"
+	PermissionSuppressionsRead    Permission = "suppressions:read"
+	PermissionSuppressionsWrite   Permission = "suppressions:write"
+	PermissionBroadcastsRead      Permission = "broadcasts:read"
+	PermissionBroadcastsWrite     Permission = "broadcasts:write"
+	PermissionBroadcastsSend      Permission = "broadcasts:send"
+	PermissionSegmentsRead        Permission = "segments:read"
+	PermissionSegmentsWrite       Permission = "segments:write"
+	PermissionTemplatesRead       Permission = "templates:read"
+	PermissionTemplatesWrite      Permission = "templates:write"
 )
 
 var permissionsByRole = map[string]map[Permission]struct{}{
@@ -68,6 +79,17 @@ var permissionsByRole = map[string]map[Permission]struct{}{
 		PermissionAuditEventsRead:     {},
 		PermissionWalletRead:          {},
 		PermissionWalletLedgerRead:    {},
+		PermissionTopicsRead:          {},
+		PermissionTopicsWrite:         {},
+		PermissionSuppressionsRead:    {},
+		PermissionSuppressionsWrite:   {},
+		PermissionBroadcastsRead:      {},
+		PermissionBroadcastsWrite:     {},
+		PermissionBroadcastsSend:      {},
+		PermissionSegmentsRead:        {},
+		PermissionSegmentsWrite:       {},
+		PermissionTemplatesRead:       {},
+		PermissionTemplatesWrite:      {},
 	},
 	RoleAdmin: {
 		PermissionTeamRead:            {},
@@ -99,6 +121,17 @@ var permissionsByRole = map[string]map[Permission]struct{}{
 		PermissionAuditEventsRead:     {},
 		PermissionWalletRead:          {},
 		PermissionWalletLedgerRead:    {},
+		PermissionTopicsRead:          {},
+		PermissionTopicsWrite:         {},
+		PermissionSuppressionsRead:    {},
+		PermissionSuppressionsWrite:   {},
+		PermissionBroadcastsRead:      {},
+		PermissionBroadcastsWrite:     {},
+		PermissionBroadcastsSend:      {},
+		PermissionSegmentsRead:        {},
+		PermissionSegmentsWrite:       {},
+		PermissionTemplatesRead:       {},
+		PermissionTemplatesWrite:      {},
 	},
 	RoleMember: {
 		PermissionTeamRead:          {},
@@ -110,6 +143,12 @@ var permissionsByRole = map[string]map[Permission]struct{}{
 		PermissionEmailRead:         {},
 		PermissionVerifyRead:        {},
 		PermissionWebhooksRead:      {},
+		PermissionTopicsRead:        {},
+		PermissionSuppressionsRead:  {},
+		PermissionBroadcastsRead:    {},
+		PermissionBroadcastsWrite:   {},
+		PermissionSegmentsRead:      {},
+		PermissionTemplatesRead:     {},
 	},
 }
 
