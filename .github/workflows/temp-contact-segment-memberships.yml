@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/contact-segment-memberships
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -39,6 +42,7 @@ jobs:
         run: go test ./...
 
       - name: Commit validated implementation
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
