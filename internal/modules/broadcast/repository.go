@@ -1,6 +1,7 @@
 package broadcast
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -260,6 +261,118 @@ func (r *Repository) ListRecipients(ctx context.Context, teamID, broadcastID uui
 		values = append(values, value)
 	}
 	return values, nil
+}
+
+func (r *Repository) BeginFanoutTx(ctx context.Context) (pgx.Tx, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("broadcast repository is not configured")
+	}
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin broadcast fanout transaction: %w", err)
+	}
+	return tx, nil
+}
+
+func (r *Repository) ClaimNextRecipientForFanoutTx(ctx context.Context, tx pgx.Tx) (FanoutRecipient, bool, error) {
+	if r == nil || r.queries == nil || tx == nil {
+		return FanoutRecipient{}, false, errors.New("broadcast fanout repository is not configured")
+	}
+	row, err := r.queries.WithTx(tx).ClaimNextBroadcastRecipientForFanout(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FanoutRecipient{}, false, nil
+	}
+	if err != nil {
+		return FanoutRecipient{}, false, fmt.Errorf("claim broadcast recipient for fanout: %w", err)
+	}
+	if row.TemplateVersionID == nil {
+		return FanoutRecipient{}, false, errors.New("broadcast recipient has no pinned template version")
+	}
+	snapshot := map[string]any{}
+	if len(row.ContactSnapshot) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(row.ContactSnapshot))
+		decoder.UseNumber()
+		if err := decoder.Decode(&snapshot); err != nil {
+			return FanoutRecipient{}, false, fmt.Errorf("decode broadcast recipient snapshot: %w", err)
+		}
+	}
+	bindings := map[string]any{}
+	if len(row.VariableBindings) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(row.VariableBindings))
+		decoder.UseNumber()
+		if err := decoder.Decode(&bindings); err != nil {
+			return FanoutRecipient{}, false, fmt.Errorf("decode broadcast variable bindings: %w", err)
+		}
+	}
+	return FanoutRecipient{
+		ID: row.ID, TeamID: row.TeamID, BroadcastID: row.BroadcastID, ContactID: row.ContactID,
+		Email: row.Email, FirstName: row.FirstName, LastName: row.LastName,
+		ContactSnapshot: snapshot, TemplateID: row.TemplateID,
+		TemplateVersionID: *row.TemplateVersionID, VariableBindings: bindings,
+		AttemptCount: row.AttemptCount,
+	}, true, nil
+}
+
+func (r *Repository) SetRecipientQueuedTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, emailMessageID uuid.UUID) error {
+	_, err := r.queries.WithTx(tx).SetBroadcastRecipientQueued(ctx, dbsqlc.SetBroadcastRecipientQueuedParams{
+		EmailMessageID: &emailMessageID, ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return fmt.Errorf("mark broadcast recipient queued: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) RetryRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, nextAttemptAt time.Time, code, message string) error {
+	_, err := r.queries.WithTx(tx).RetryBroadcastRecipientFanout(ctx, dbsqlc.RetryBroadcastRecipientFanoutParams{
+		NextAttemptAt: pgtype.Timestamptz{Time: nextAttemptAt, Valid: true},
+		ErrorCode:     stringPointer(code), ErrorMessage: stringPointer(message),
+		ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return fmt.Errorf("schedule broadcast recipient retry: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) FailRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, code, message string) error {
+	_, err := r.queries.WithTx(tx).FailBroadcastRecipientFanout(ctx, dbsqlc.FailBroadcastRecipientFanoutParams{
+		ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message),
+		ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return fmt.Errorf("fail broadcast recipient fanout: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) FinalizeBroadcastFanoutTx(ctx context.Context, tx pgx.Tx, teamID, broadcastID uuid.UUID) (Broadcast, error) {
+	row, err := r.queries.WithTx(tx).FinalizeBroadcastFanout(ctx, dbsqlc.FinalizeBroadcastFanoutParams{
+		BroadcastID: broadcastID, TeamID: teamID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Broadcast{}, ErrConflict
+	}
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("finalize broadcast fanout: %w", err)
+	}
+	return broadcastFromSQLC(row)
+}
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 type MaterializationResult struct {

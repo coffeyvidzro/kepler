@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
     status TEXT NOT NULL DEFAULT 'pending',
     exclusion_reason TEXT,
     email_message_id UUID,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ,
+    last_error_code TEXT,
+    last_error_message TEXT,
+    failed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     queued_at TIMESTAMPTZ,
 
@@ -74,8 +79,13 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
     CONSTRAINT uq_broadcast_recipients_contact UNIQUE (broadcast_id, contact_id),
     CONSTRAINT uq_broadcast_recipients_email UNIQUE (broadcast_id, normalized_email),
     CONSTRAINT chk_broadcast_recipients_status CHECK (status IN ('pending','excluded','queued','failed')),
-    CONSTRAINT chk_broadcast_recipients_email_not_empty CHECK (length(btrim(email)) > 0)
+    CONSTRAINT chk_broadcast_recipients_email_not_empty CHECK (length(btrim(email)) > 0),
+    CONSTRAINT chk_broadcast_recipients_attempt_count CHECK (attempt_count >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast_status
     ON broadcast_recipients (broadcast_id, status, id);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_pending_fanout
+    ON broadcast_recipients (next_attempt_at, broadcast_id, id)
+    WHERE status = 'pending';

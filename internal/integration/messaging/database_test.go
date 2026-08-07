@@ -56,8 +56,8 @@ func openFreshDatabase(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("list migrations: %v", err)
 	}
 	sort.Strings(migrationPaths)
-	if len(migrationPaths) != 24 {
-		t.Fatalf("expected 24 migrations, found %d", len(migrationPaths))
+	if len(migrationPaths) != 30 {
+		t.Fatalf("expected 30 migrations, found %d", len(migrationPaths))
 	}
 	for index, migrationPath := range migrationPaths {
 		expectedPrefix := fmt.Sprintf("%03d_", index+1)

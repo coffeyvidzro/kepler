@@ -21,12 +21,72 @@ OFFSET sqlc.arg(page_offset);
 
 -- name: SetBroadcastRecipientQueued :one
 UPDATE broadcast_recipients
-SET status = 'queued', email_message_id = sqlc.arg(email_message_id), queued_at = now()
+SET status = 'queued',
+    email_message_id = sqlc.arg(email_message_id),
+    queued_at = now(),
+    next_attempt_at = NULL,
+    last_error_code = NULL,
+    last_error_message = NULL
 WHERE id = sqlc.arg(id)
   AND team_id = sqlc.arg(team_id)
   AND broadcast_id = sqlc.arg(broadcast_id)
   AND status = 'pending'
 RETURNING *;
+
+-- name: ClaimNextBroadcastRecipientForFanout :one
+SELECT
+    recipient.*,
+    broadcast.template_id,
+    broadcast.template_version_id,
+    broadcast.variable_bindings
+FROM broadcast_recipients AS recipient
+JOIN broadcasts AS broadcast
+  ON broadcast.id = recipient.broadcast_id
+ AND broadcast.team_id = recipient.team_id
+WHERE recipient.status = 'pending'
+  AND (recipient.next_attempt_at IS NULL OR recipient.next_attempt_at <= now())
+  AND broadcast.status = 'queued'
+  AND broadcast.recipients_materialized_at IS NOT NULL
+  AND broadcast.template_version_id IS NOT NULL
+  AND broadcast.deleted_at IS NULL
+ORDER BY recipient.next_attempt_at NULLS FIRST, recipient.broadcast_id, recipient.id
+FOR UPDATE OF recipient SKIP LOCKED
+LIMIT 1;
+
+-- name: RetryBroadcastRecipientFanout :one
+UPDATE broadcast_recipients
+SET attempt_count = attempt_count + 1,
+    next_attempt_at = sqlc.arg(next_attempt_at),
+    last_error_code = sqlc.arg(error_code),
+    last_error_message = sqlc.arg(error_message)
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND broadcast_id = sqlc.arg(broadcast_id)
+  AND status = 'pending'
+RETURNING *;
+
+-- name: FailBroadcastRecipientFanout :one
+UPDATE broadcast_recipients
+SET status = 'failed',
+    attempt_count = attempt_count + 1,
+    next_attempt_at = NULL,
+    last_error_code = sqlc.arg(error_code),
+    last_error_message = sqlc.arg(error_message),
+    failed_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND broadcast_id = sqlc.arg(broadcast_id)
+  AND status = 'pending'
+RETURNING *;
+
+-- name: CountBroadcastRecipientFanoutState :one
+SELECT
+    count(*) FILTER (WHERE status = 'pending') AS pending_count,
+    count(*) FILTER (WHERE status = 'queued') AS queued_count,
+    count(*) FILTER (WHERE status = 'failed') AS failed_count
+FROM broadcast_recipients
+WHERE team_id = sqlc.arg(team_id)
+  AND broadcast_id = sqlc.arg(broadcast_id);
 
 -- name: MaterializeBroadcastRecipients :exec
 WITH candidates AS (

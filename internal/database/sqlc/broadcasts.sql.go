@@ -258,6 +258,76 @@ func (q *Queries) DuplicateBroadcast(ctx context.Context, arg DuplicateBroadcast
 	return i, err
 }
 
+const finalizeBroadcastFanout = `-- name: FinalizeBroadcastFanout :one
+WITH counts AS (
+    SELECT
+        count(*) FILTER (WHERE status = 'pending') AS pending_count,
+        count(*) FILTER (WHERE status = 'queued') AS queued_count,
+        count(*) FILTER (WHERE status = 'failed') AS failed_count
+    FROM broadcast_recipients
+    WHERE team_id = $2
+      AND broadcast_id = $1
+)
+UPDATE broadcasts AS broadcast
+SET status = CASE
+        WHEN counts.pending_count = 0 AND counts.failed_count = 0 THEN 'sent'
+        WHEN counts.pending_count = 0 AND counts.failed_count > 0 THEN 'failed'
+        ELSE broadcast.status
+    END,
+    sent_at = CASE
+        WHEN counts.pending_count = 0 AND counts.failed_count = 0 THEN now()
+        ELSE broadcast.sent_at
+    END,
+    queued_count = counts.queued_count,
+    failed_count = counts.failed_count,
+    revision = CASE
+        WHEN counts.pending_count = 0 THEN broadcast.revision + 1
+        ELSE broadcast.revision
+    END,
+    updated_at = now()
+FROM counts
+WHERE broadcast.id = $1
+  AND broadcast.team_id = $2
+  AND broadcast.status = 'queued'
+RETURNING broadcast.id, broadcast.team_id, broadcast.name, broadcast.status, broadcast.segment_id, broadcast.topic_id, broadcast.template_id, broadcast.template_version_id, broadcast.variable_bindings, broadcast.scheduled_at, broadcast.queued_at, broadcast.sent_at, broadcast.canceled_at, broadcast.recipients_materialized_at, broadcast.audience_count, broadcast.eligible_count, broadcast.suppressed_count, broadcast.queued_count, broadcast.failed_count, broadcast.revision, broadcast.created_at, broadcast.updated_at, broadcast.deleted_at
+`
+
+type FinalizeBroadcastFanoutParams struct {
+	BroadcastID uuid.UUID `db:"broadcast_id" json:"broadcast_id"`
+	TeamID      uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) FinalizeBroadcastFanout(ctx context.Context, arg FinalizeBroadcastFanoutParams) (Broadcast, error) {
+	row := q.db.QueryRow(ctx, finalizeBroadcastFanout, arg.BroadcastID, arg.TeamID)
+	var i Broadcast
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.Status,
+		&i.SegmentID,
+		&i.TopicID,
+		&i.TemplateID,
+		&i.TemplateVersionID,
+		&i.VariableBindings,
+		&i.ScheduledAt,
+		&i.QueuedAt,
+		&i.SentAt,
+		&i.CanceledAt,
+		&i.RecipientsMaterializedAt,
+		&i.AudienceCount,
+		&i.EligibleCount,
+		&i.SuppressedCount,
+		&i.QueuedCount,
+		&i.FailedCount,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getBroadcast = `-- name: GetBroadcast :one
 SELECT id, team_id, name, status, segment_id, topic_id, template_id, template_version_id, variable_bindings, scheduled_at, queued_at, sent_at, canceled_at, recipients_materialized_at, audience_count, eligible_count, suppressed_count, queued_count, failed_count, revision, created_at, updated_at, deleted_at
 FROM broadcasts

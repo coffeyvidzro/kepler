@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
@@ -320,6 +321,24 @@ func (s *Service) Preview(ctx context.Context, identifier string, req PreviewReq
 		return PreviewResponse{}, apperrors.NewBadRequest(err.Error())
 	}
 	return result, nil
+}
+
+func (s *Service) RenderVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID, variables map[string]any) (PreviewResponse, error) {
+	if s == nil || s.repository == nil {
+		return PreviewResponse{}, errors.New("message template repository is not configured")
+	}
+	if tx == nil {
+		return PreviewResponse{}, errors.New("message template transaction is not configured")
+	}
+	version, err := s.repository.GetVersionTx(ctx, tx, teamID, templateID, versionID)
+	if err != nil {
+		return PreviewResponse{}, fmt.Errorf("load pinned message template version: %w", err)
+	}
+	rendered, err := Render(version, variables)
+	if err != nil {
+		return PreviewResponse{}, fmt.Errorf("render pinned message template version: %w", err)
+	}
+	return rendered, nil
 }
 
 func (s *Service) TestSend(ctx context.Context, identifier string, req TestSendRequest) (emailmodule.SendResponse, error) {
