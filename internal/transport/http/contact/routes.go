@@ -12,6 +12,8 @@ func RegisterRoutes(router *echo.Echo, handler *Handler, accessMiddleware Access
 	contacts := router.Group("/contacts")
 	contacts.POST("", handler.Create, accessMiddleware(tenant.PermissionContactsWrite))
 	contacts.GET("", handler.List, accessMiddleware(tenant.PermissionContactsRead))
+	contacts.GET("/:contact_id/topics", handler.ListTopics, accessMiddleware(tenant.PermissionContactsRead))
+	contacts.PATCH("/:contact_id/topics", handler.UpdateTopics, accessMiddleware(tenant.PermissionContactsWrite))
 	contacts.GET("/:contact_id/segments", handler.ListSegments, accessMiddleware(tenant.PermissionContactsRead))
 	contacts.POST("/:contact_id/segments/:segment_id", handler.AddSegment, accessMiddleware(tenant.PermissionContactsWrite))
 	contacts.DELETE("/:contact_id/segments/:segment_id", handler.RemoveSegment, accessMiddleware(tenant.PermissionContactsWrite))
