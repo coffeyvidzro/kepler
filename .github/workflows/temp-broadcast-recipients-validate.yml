@@ -56,6 +56,12 @@ jobs:
                   target.write_text(target_text.rstrip() + "\n\n" + body + "\n")
               source.unlink()
 
+          service_path = Path("internal/modules/broadcast/service.go")
+          service = service_path.read_text()
+          validation_marker = "\nfunc parseID(value, label string)"
+          if validation_marker in service:
+              service_path.write_text(service.split(validation_marker, 1)[0].rstrip() + "\n")
+
           append_once(
               "internal/modules/broadcast/service.go",
               "internal/modules/broadcast/duplicate.go",
@@ -71,12 +77,6 @@ jobs:
               "internal/modules/broadcast/materialization.go",
               "type MaterializationResult struct",
           )
-
-          service_path = Path("internal/modules/broadcast/service.go")
-          service = service_path.read_text()
-          validation_marker = "\nfunc parseID(value, label string)"
-          if validation_marker in service:
-              service_path.write_text(service.split(validation_marker, 1)[0].rstrip() + "\n")
 
           wire_path = Path("internal/dugble/worker/wire.go")
           wire = wire_path.read_text()
