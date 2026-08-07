@@ -20,7 +20,7 @@ RETURNING id, team_id, name, alias, current_version_id, published_version_id, ne
 type CreateMessageTemplateParams struct {
 	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 	Name   string    `db:"name" json:"name"`
-	Alias  string    `db:"alias" json:"alias"`
+	Alias  *string   `db:"alias" json:"alias"`
 }
 
 func (q *Queries) CreateMessageTemplate(ctx context.Context, arg CreateMessageTemplateParams) (MessageTemplate, error) {
@@ -331,7 +331,7 @@ RETURNING id, team_id, name, alias, current_version_id, published_version_id, ne
 
 type UpdateMessageTemplateMetadataParams struct {
 	Name   string    `db:"name" json:"name"`
-	Alias  string    `db:"alias" json:"alias"`
+	Alias  *string   `db:"alias" json:"alias"`
 	ID     uuid.UUID `db:"id" json:"id"`
 	TeamID uuid.UUID `db:"team_id" json:"team_id"`
 }

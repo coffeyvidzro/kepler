@@ -303,7 +303,7 @@ type MessageTemplate struct {
 	ID                 uuid.UUID          `db:"id" json:"id"`
 	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
 	Name               string             `db:"name" json:"name"`
-	Alias              string             `db:"alias" json:"alias"`
+	Alias              *string            `db:"alias" json:"alias"`
 	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
 	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
 	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
