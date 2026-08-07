@@ -24,6 +24,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant/provisioning"
 	mfamodule "github.com/coffeyvidzro/dugble/server/internal/modules/mfa"
+	segmentmodule "github.com/coffeyvidzro/dugble/server/internal/modules/segment"
 	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
@@ -47,6 +48,7 @@ import (
 	emailhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/email"
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
+	segmenthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/segment"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
@@ -159,6 +161,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	teamTokenRepository := teamtokenmodule.NewRepository(db)
 	contactRepository := contactmodule.NewRepository(db)
 	contactPropertyRepository := contactpropertymodule.NewRepository(db)
+	segmentRepository := segmentmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
@@ -208,6 +211,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		auditEvent:      auditeventhttp.NewHandler(auditeventmodule.NewService(auditRepository)),
 		contact:         contacthttp.NewHandler(contactmodule.NewService(contactRepository)),
 		contactProperty: contactpropertyhttp.NewHandler(contactpropertymodule.NewService(contactPropertyRepository)),
+		segment:         segmenthttp.NewHandler(segmentmodule.NewService(segmentRepository)),
 		teamToken: teamtokenhttp.NewHandler(
 			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
 		),
