@@ -6,3 +6,4 @@ type Service = topicmodule.Service
 type CreateRequest = topicmodule.CreateRequest
 type UpdateRequest = topicmodule.UpdateRequest
 type ListRequest = topicmodule.ListRequest
+type APIListRequest = topicmodule.APIListRequest
