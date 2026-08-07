@@ -87,8 +87,7 @@ RETURNING *;
 
 -- name: CancelScheduledBroadcast :one
 UPDATE broadcasts
-SET status = 'draft',
-    template_version_id = NULL,
+SET status = 'canceled',
     scheduled_at = NULL,
     canceled_at = now(),
     revision = revision + 1,

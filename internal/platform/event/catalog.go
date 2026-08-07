@@ -33,6 +33,19 @@ const (
 	TypeEmailClicked             Type = "email.clicked"
 	TypeEmailSubscriptionChanged Type = "email.subscription_changed"
 
+	TypeContactCreated Type = "contact.created"
+	TypeContactUpdated Type = "contact.updated"
+	TypeContactDeleted Type = "contact.deleted"
+
+	TypeSuppressionCreated Type = "suppression.created"
+	TypeSuppressionDeleted Type = "suppression.deleted"
+
+	TypeBroadcastScheduled Type = "broadcast.scheduled"
+	TypeBroadcastQueued    Type = "broadcast.queued"
+	TypeBroadcastSent      Type = "broadcast.sent"
+	TypeBroadcastFailed    Type = "broadcast.failed"
+	TypeBroadcastCanceled  Type = "broadcast.canceled"
+
 	TypeWebhookTest Type = "webhook.test"
 )
 
@@ -52,6 +65,16 @@ var definitions = []Definition{
 	{Type: TypeEmailOpened, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeEmailClicked, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeEmailSubscriptionChanged, ObjectType: "email", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeContactCreated, ObjectType: "contact", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeContactUpdated, ObjectType: "contact", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeContactDeleted, ObjectType: "contact", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeSuppressionCreated, ObjectType: "suppression", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeSuppressionDeleted, ObjectType: "suppression", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeBroadcastScheduled, ObjectType: "broadcast", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeBroadcastQueued, ObjectType: "broadcast", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeBroadcastSent, ObjectType: "broadcast", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeBroadcastFailed, ObjectType: "broadcast", ObjectIDRequired: true, Subscribable: true},
+	{Type: TypeBroadcastCanceled, ObjectType: "broadcast", ObjectIDRequired: true, Subscribable: true},
 	{Type: TypeWebhookTest, ObjectType: "webhook_endpoint", ObjectIDRequired: true},
 }
 

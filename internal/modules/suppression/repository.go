@@ -7,19 +7,35 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
 var ErrAlreadyExists = errors.New("suppression already exists")
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	db      *pgxpool.Pool
+	emitter eventEmitter
+}
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
+func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
+	return &Repository{db: db, emitter: emitter}
+}
+
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, email string) (Suppression, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Suppression{}, fmt.Errorf("begin suppression creation: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var value Suppression
-	err := r.db.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO suppressions (team_id, email, origin)
 		VALUES ($1, $2, 'manual')
 		RETURNING id, team_id, email, origin, source_id, created_at
@@ -29,6 +45,12 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, email string)
 	}
 	if err != nil {
 		return Suppression{}, fmt.Errorf("create suppression: %w", err)
+	}
+	if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionCreated, value); err != nil {
+		return Suppression{}, fmt.Errorf("emit suppression created event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Suppression{}, fmt.Errorf("commit suppression creation: %w", err)
 	}
 	return value, nil
 }
@@ -67,15 +89,31 @@ func (r *Repository) GetByEmail(ctx context.Context, email string, teamID uuid.U
 }
 
 func (r *Repository) DeleteByID(ctx context.Context, id, teamID uuid.UUID) (Suppression, error) {
-	var value Suppression
-	err := r.db.QueryRow(ctx, `DELETE FROM suppressions WHERE id = $1 AND team_id = $2 RETURNING id, team_id, email, origin, source_id, created_at`, id, teamID).Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt)
-	return value, err
+	return r.delete(ctx, `DELETE FROM suppressions WHERE id = $1 AND team_id = $2 RETURNING id, team_id, email, origin, source_id, created_at`, id, teamID)
 }
 
 func (r *Repository) DeleteByEmail(ctx context.Context, email string, teamID uuid.UUID) (Suppression, error) {
+	return r.delete(ctx, `DELETE FROM suppressions WHERE team_id = $1 AND lower(email) = lower($2) RETURNING id, team_id, email, origin, source_id, created_at`, teamID, email)
+}
+
+func (r *Repository) delete(ctx context.Context, query string, args ...any) (Suppression, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Suppression{}, fmt.Errorf("begin suppression deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var value Suppression
-	err := r.db.QueryRow(ctx, `DELETE FROM suppressions WHERE team_id = $1 AND lower(email) = lower($2) RETURNING id, team_id, email, origin, source_id, created_at`, teamID, email).Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt)
-	return value, err
+	err = tx.QueryRow(ctx, query, args...).Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt)
+	if err != nil {
+		return Suppression{}, err
+	}
+	if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionDeleted, value); err != nil {
+		return Suppression{}, fmt.Errorf("emit suppression deleted event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Suppression{}, fmt.Errorf("commit suppression deletion: %w", err)
+	}
+	return value, nil
 }
 
 func isUniqueViolation(err error) bool {

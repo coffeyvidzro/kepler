@@ -24,7 +24,9 @@ type Emitter struct {
 }
 
 func NewEmitter(store Store) *Emitter {
-	return &Emitter{store: store, now: time.Now}
+	emitter := &Emitter{store: store, now: time.Now}
+	platformevent.SetDefaultEmitter(platformevent.NewEmitter(NewEventSink(emitter)))
+	return emitter
 }
 
 // EmitTx is the compatibility entry point for callers that still construct a
