@@ -62,8 +62,6 @@ CREATE TABLE IF NOT EXISTS broadcast_recipients (
 
     CONSTRAINT fk_broadcast_recipients_broadcast_team FOREIGN KEY (broadcast_id, team_id)
         REFERENCES broadcasts (id, team_id) ON DELETE CASCADE,
-    CONSTRAINT fk_broadcast_recipients_contact_team FOREIGN KEY (contact_id, team_id)
-        REFERENCES contacts (id, team_id) ON DELETE SET NULL,
     CONSTRAINT fk_broadcast_recipients_email_message FOREIGN KEY (email_message_id)
         REFERENCES email_messages (id) ON DELETE SET NULL,
     CONSTRAINT uq_broadcast_recipients_contact UNIQUE (broadcast_id, contact_id),
