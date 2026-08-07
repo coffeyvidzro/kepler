@@ -24,12 +24,12 @@ LIMIT sqlc.arg(page_limit);
 -- name: ListContactPropertiesAfter :many
 SELECT *
 FROM contact_properties
-WHERE team_id = sqlc.arg(team_id)
+WHERE team_id = sqlc.arg(scope_team_id)
   AND (created_at, id) < (
       SELECT created_at, id
       FROM contact_properties
       WHERE id = sqlc.arg(cursor_id)
-        AND team_id = sqlc.arg(team_id)
+        AND team_id = sqlc.arg(scope_team_id)
   )
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit);
@@ -37,12 +37,12 @@ LIMIT sqlc.arg(page_limit);
 -- name: ListContactPropertiesBefore :many
 SELECT *
 FROM contact_properties
-WHERE team_id = sqlc.arg(team_id)
+WHERE team_id = sqlc.arg(scope_team_id)
   AND (created_at, id) > (
       SELECT created_at, id
       FROM contact_properties
       WHERE id = sqlc.arg(cursor_id)
-        AND team_id = sqlc.arg(team_id)
+        AND team_id = sqlc.arg(scope_team_id)
   )
 ORDER BY created_at ASC, id ASC
 LIMIT sqlc.arg(page_limit);
