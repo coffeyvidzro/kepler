@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     queued_at TIMESTAMPTZ,
     sent_at TIMESTAMPTZ,
     canceled_at TIMESTAMPTZ,
+    recipients_materialized_at TIMESTAMPTZ,
     audience_count BIGINT NOT NULL DEFAULT 0,
     eligible_count BIGINT NOT NULL DEFAULT 0,
     suppressed_count BIGINT NOT NULL DEFAULT 0,
@@ -43,6 +44,12 @@ CREATE INDEX IF NOT EXISTS idx_broadcasts_team_created
 CREATE INDEX IF NOT EXISTS idx_broadcasts_due
     ON broadcasts (scheduled_at, id)
     WHERE status = 'scheduled' AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_broadcasts_pending_materialization
+    ON broadcasts (queued_at, id)
+    WHERE status = 'queued'
+      AND recipients_materialized_at IS NULL
+      AND deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS broadcast_recipients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
