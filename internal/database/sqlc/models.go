@@ -57,6 +57,48 @@ type BillingMarket struct {
 	IsEnabled bool   `db:"is_enabled" json:"is_enabled"`
 }
 
+type Broadcast struct {
+	ID                uuid.UUID          `db:"id" json:"id"`
+	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
+	Name              string             `db:"name" json:"name"`
+	Status            string             `db:"status" json:"status"`
+	SegmentID         uuid.UUID          `db:"segment_id" json:"segment_id"`
+	TopicID           *uuid.UUID         `db:"topic_id" json:"topic_id"`
+	TemplateID        uuid.UUID          `db:"template_id" json:"template_id"`
+	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
+	VariableBindings  []byte             `db:"variable_bindings" json:"variable_bindings"`
+	ScheduledAt       pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	SentAt            pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CanceledAt        pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
+	AudienceCount     int64              `db:"audience_count" json:"audience_count"`
+	EligibleCount     int64              `db:"eligible_count" json:"eligible_count"`
+	SuppressedCount   int64              `db:"suppressed_count" json:"suppressed_count"`
+	QueuedCount       int64              `db:"queued_count" json:"queued_count"`
+	FailedCount       int64              `db:"failed_count" json:"failed_count"`
+	Revision          int64              `db:"revision" json:"revision"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt         pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+type BroadcastRecipient struct {
+	ID              uuid.UUID          `db:"id" json:"id"`
+	TeamID          uuid.UUID          `db:"team_id" json:"team_id"`
+	BroadcastID     uuid.UUID          `db:"broadcast_id" json:"broadcast_id"`
+	ContactID       *uuid.UUID         `db:"contact_id" json:"contact_id"`
+	Email           string             `db:"email" json:"email"`
+	NormalizedEmail string             `db:"normalized_email" json:"normalized_email"`
+	FirstName       *string            `db:"first_name" json:"first_name"`
+	LastName        *string            `db:"last_name" json:"last_name"`
+	ContactSnapshot []byte             `db:"contact_snapshot" json:"contact_snapshot"`
+	Status          string             `db:"status" json:"status"`
+	ExclusionReason *string            `db:"exclusion_reason" json:"exclusion_reason"`
+	EmailMessageID  *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueuedAt        pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+}
+
 type Contact struct {
 	ID           uuid.UUID          `db:"id" json:"id"`
 	TeamID       uuid.UUID          `db:"team_id" json:"team_id"`
