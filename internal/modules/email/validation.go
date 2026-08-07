@@ -23,7 +23,7 @@ const (
 	maxBodyBytes           = platformemail.MaxBodyBytes
 	maxMetadataBytes       = 16 << 10
 	maxRecipients          = 50
-	maxAttachmentsBytes    = platformemail.MaxAttachmentsDecodedBytes
+	maxAttachmentsBytes    = platformemail.MaxAttachmentsEncodedBytes
 )
 
 var tagPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -133,7 +133,6 @@ func validateSend(req SendRequest, config ServiceConfig) (validatedSend, error) 
 	if err != nil {
 		return validatedSend{}, err
 	}
-
 	headers, err := normalizeHeaders(req.Headers)
 	if err != nil {
 		return validatedSend{}, err
@@ -221,36 +220,30 @@ func normalizeAttachments(items []Attachment) ([]Attachment, error) {
 	if items == nil {
 		items = []Attachment{}
 	}
-	total := 0
+	totalEncoded := 0
 	for i := range items {
 		items[i].Filename = strings.TrimSpace(items[i].Filename)
 		if items[i].Filename == "" {
 			return nil, apperrors.NewBadRequest("Attachment filename is required")
 		}
-		if (items[i].Content == "") == (items[i].Path == "") {
+		if (strings.TrimSpace(items[i].Content) == "") == (strings.TrimSpace(items[i].Path) == "") {
 			return nil, apperrors.NewBadRequest("Attachment must provide exactly one of content or path")
 		}
-		if items[i].Path != "" {
-			return nil, apperrors.NewBadRequest("Attachment paths are not supported; provide Base64 content")
+		if strings.TrimSpace(items[i].Path) != "" {
+			return nil, apperrors.NewBadRequest("Attachment path could not be resolved")
 		}
-		decodedSize, err := attachmentContentSize(items[i].Content)
+		content := strings.TrimSpace(items[i].Content)
+		decoded, err := base64.StdEncoding.DecodeString(content)
 		if err != nil {
 			return nil, apperrors.NewBadRequest("Attachment content must be valid Base64")
 		}
-		total += decodedSize
-	}
-	if total > maxAttachmentsBytes {
-		return nil, apperrors.NewPayloadTooLarge("Email attachments exceed 7MB")
+		items[i].Content = base64.StdEncoding.EncodeToString(decoded)
+		totalEncoded += len(items[i].Content)
+		if totalEncoded > maxAttachmentsBytes {
+			return nil, apperrors.NewPayloadTooLarge("Email attachments exceed 40MB after Base64 encoding")
+		}
 	}
 	return items, nil
-}
-
-func attachmentContentSize(content string) (int, error) {
-	decoded, err := base64.StdEncoding.DecodeString(content)
-	if err != nil {
-		return 0, err
-	}
-	return len(decoded), nil
 }
 
 func normalizeTags(tags []Tag) ([]Tag, error) {
@@ -279,8 +272,7 @@ func normalizeSchedule(value string) (*time.Time, error) {
 			if numberErr == nil && n > 0 {
 				units := map[string]time.Duration{"second": time.Second, "seconds": time.Second, "sec": time.Second, "minute": time.Minute, "minutes": time.Minute, "min": time.Minute, "hour": time.Hour, "hours": time.Hour, "day": 24 * time.Hour, "days": 24 * time.Hour}
 				if unit, ok := units[parts[2]]; ok {
-					candidate := time.Now().UTC().Add(time.Duration(n) * unit)
-					when = candidate
+					when = time.Now().UTC().Add(time.Duration(n) * unit)
 					err = nil
 				}
 			}
