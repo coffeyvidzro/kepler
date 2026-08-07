@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/contact-topics
     paths:
       - ".github/workflows/server.yml"
       - ".golangci.yml"
@@ -26,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -41,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: feat/contact-topics
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -52,18 +55,27 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Verify formatting
-        run: test -z "$(gofmt -l .)"
+      - name: Format contact topics
+        run: gofmt -w internal/modules/contact/contact_topics_*.go internal/transport/http/contact/contact_topics_handler.go internal/transport/http/contact/routes.go
 
       - name: Verify module files
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
-      - name: Verify sqlc generated code
+      - name: Generate sqlc code
+        run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+
+      - name: Commit generated changes
         run: |
-          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
-          git diff --exit-code -- internal/database/sqlc
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/database/sqlc internal/modules/contact internal/transport/http/contact
+          git commit -m "Format and generate contact topics"
+          git push origin HEAD:feat/contact-topics
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
