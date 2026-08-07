@@ -10,6 +10,8 @@ type AccessMiddleware func(permission tenant.Permission) echo.MiddlewareFunc
 
 func RegisterRoutes(router *echo.Echo, handler *Handler, accessMiddleware AccessMiddleware) {
 	suppressions := router.Group("/suppressions")
+	suppressions.POST("/batch/add", handler.BatchAdd, accessMiddleware(tenant.PermissionSuppressionsWrite))
+	suppressions.POST("/batch/remove", handler.BatchRemove, accessMiddleware(tenant.PermissionSuppressionsWrite))
 	suppressions.POST("", handler.Create, accessMiddleware(tenant.PermissionSuppressionsWrite))
 	suppressions.GET("", handler.List, accessMiddleware(tenant.PermissionSuppressionsRead))
 	suppressions.GET("/:suppression", handler.Get, accessMiddleware(tenant.PermissionSuppressionsRead))
