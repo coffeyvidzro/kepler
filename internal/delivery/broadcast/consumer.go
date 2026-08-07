@@ -11,6 +11,7 @@ import (
 
 type repository interface {
 	QueueNextDueScheduled(context.Context) (broadcastmodule.Broadcast, bool, error)
+	MaterializeNextQueuedRecipients(context.Context) (broadcastmodule.MaterializationResult, bool, error)
 }
 
 type Config struct {
@@ -40,7 +41,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 	for {
 		if err := c.poll(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("scheduled broadcast execution poll failed", "error", err)
+			slog.Error("broadcast execution poll failed", "error", err)
 		}
 
 		timer := time.NewTimer(c.config.PollInterval)
@@ -56,6 +57,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 }
 
 func (c *Consumer) poll(ctx context.Context) error {
+	if err := c.queueDueBroadcasts(ctx); err != nil {
+		return err
+	}
+	return c.materializeQueuedBroadcasts(ctx)
+}
+
+func (c *Consumer) queueDueBroadcasts(ctx context.Context) error {
 	for processed := 0; processed < c.config.BatchSize; processed++ {
 		broadcast, claimed, err := c.repository.QueueNextDueScheduled(ctx)
 		if err != nil {
@@ -69,6 +77,27 @@ func (c *Consumer) poll(ctx context.Context) error {
 			"broadcast_id", broadcast.ID,
 			"team_id", broadcast.TeamID,
 			"scheduled_at", broadcast.ScheduledAt,
+		)
+	}
+	return nil
+}
+
+func (c *Consumer) materializeQueuedBroadcasts(ctx context.Context) error {
+	for processed := 0; processed < c.config.BatchSize; processed++ {
+		result, claimed, err := c.repository.MaterializeNextQueuedRecipients(ctx)
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			return nil
+		}
+		slog.Info(
+			"broadcast recipients materialized",
+			"broadcast_id", result.BroadcastID,
+			"team_id", result.TeamID,
+			"audience_count", result.AudienceCount,
+			"eligible_count", result.EligibleCount,
+			"excluded_count", result.ExcludedCount,
 		)
 	}
 	return nil
