@@ -52,6 +52,10 @@ type UpdateRequest struct {
 	VariableBindings *map[string]any `json:"variable_bindings,omitempty"`
 }
 
+type DuplicateRequest struct {
+	Name string `json:"name"`
+}
+
 type SendRequest struct {
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
 }
