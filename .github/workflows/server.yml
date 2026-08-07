@@ -4,11 +4,15 @@ on:
   push:
     branches:
       - main
-      - agent/templates-topics-compatibility
     paths:
       - ".github/workflows/server.yml"
-      - "scripts/consolidate_templates_topics_modules.py"
-      - "internal/modules/**"
+      - ".golangci.yml"
+      - "go.mod"
+      - "go.sum"
+      - "migrations/**"
+      - "sqlc.yaml"
+      - "**/*.go"
+      - "**/*.sql"
   pull_request:
     paths:
       - ".github/workflows/server.yml"
@@ -22,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -30,41 +34,48 @@ concurrency:
 
 jobs:
   quality:
-    name: Consolidate module files
+    name: Go quality gates
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Checkout branch
+      - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: agent/templates-topics-compatibility
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: go.sum
 
-      - name: Consolidate Templates and Topics modules
-        run: python3 scripts/consolidate_templates_topics_modules.py
+      - name: Download dependencies
+        run: go mod download
 
-      - name: Clean moved imports
-        run: sed -i '/"github.com\/google\/uuid"/d' internal/modules/topic/service.go
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
 
-      - name: Format modules
-        run: gofmt -w internal/modules/messagetemplate internal/modules/topic
-
-      - name: Test affected packages
-        run: go test ./internal/modules/messagetemplate ./internal/modules/topic ./internal/transport/http/messagetemplate ./internal/transport/http/topic
-
-      - name: Commit module sources only
+      - name: Verify module files
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add internal/modules/messagetemplate internal/modules/topic
-          git commit -m "Consolidate Templates and Topics module files"
-          git fetch origin agent/templates-topics-compatibility
-          git rebase origin/agent/templates-topics-compatibility
-          git push origin HEAD:agent/templates-topics-compatibility
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Verify sqlc generated code
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code -- internal/database/sqlc
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Verify golangci-lint config
+        run: golangci-lint config verify --config .golangci.yml
+
+      - name: Run golangci-lint
+        run: golangci-lint run --config .golangci.yml ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race ./...
