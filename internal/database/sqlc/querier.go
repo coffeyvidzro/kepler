@@ -30,6 +30,9 @@ type Querier interface {
 	CreateEmailTenant(ctx context.Context, arg CreateEmailTenantParams) (EmailTenant, error)
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error)
 	CreateMFALoginChallenge(ctx context.Context, arg CreateMFALoginChallengeParams) error
+	CreateMessageTemplate(ctx context.Context, arg CreateMessageTemplateParams) (MessageTemplate, error)
+	CreateMessageTemplatePublication(ctx context.Context, arg CreateMessageTemplatePublicationParams) (MessageTemplatePublication, error)
+	CreateMessageTemplateVersion(ctx context.Context, arg CreateMessageTemplateVersionParams) (MessageTemplateVersion, error)
 	CreateOAuthIdentity(ctx context.Context, arg CreateOAuthIdentityParams) (OauthIdentity, error)
 	CreateRecoveryCode(ctx context.Context, arg CreateRecoveryCodeParams) error
 	CreateSMSMessage(ctx context.Context, arg CreateSMSMessageParams) (SmsMessage, error)
@@ -85,6 +88,9 @@ type Querier interface {
 	GetEmailTenant(ctx context.Context, arg GetEmailTenantParams) (EmailTenant, error)
 	GetEmailTenantByTeamProviderRegion(ctx context.Context, arg GetEmailTenantByTeamProviderRegionParams) (EmailTenant, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
+	GetMessageTemplateByAlias(ctx context.Context, arg GetMessageTemplateByAliasParams) (MessageTemplate, error)
+	GetMessageTemplateByID(ctx context.Context, arg GetMessageTemplateByIDParams) (MessageTemplate, error)
+	GetMessageTemplateVersion(ctx context.Context, arg GetMessageTemplateVersionParams) (MessageTemplateVersion, error)
 	GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityParams) (OauthIdentity, error)
 	GetSMSMessage(ctx context.Context, arg GetSMSMessageParams) (SmsMessage, error)
 	GetSegment(ctx context.Context, arg GetSegmentParams) (Segment, error)
@@ -115,6 +121,8 @@ type Querier interface {
 	ListEmailRecipientAggregateStates(ctx context.Context, arg ListEmailRecipientAggregateStatesParams) ([]ListEmailRecipientAggregateStatesRow, error)
 	ListEmailRecipientLifecycleDetails(ctx context.Context, arg ListEmailRecipientLifecycleDetailsParams) ([]ListEmailRecipientLifecycleDetailsRow, error)
 	ListEmailRecipientsByMessage(ctx context.Context, arg ListEmailRecipientsByMessageParams) ([]EmailRecipient, error)
+	ListMessageTemplateVersions(ctx context.Context, arg ListMessageTemplateVersionsParams) ([]MessageTemplateVersion, error)
+	ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]MessageTemplate, error)
 	ListOAuthIdentitiesByUserID(ctx context.Context, arg ListOAuthIdentitiesByUserIDParams) ([]OauthIdentity, error)
 	ListPendingTeamInvitations(ctx context.Context, arg ListPendingTeamInvitationsParams) ([]TeamInvitation, error)
 	ListSMSMessages(ctx context.Context, arg ListSMSMessagesParams) ([]SmsMessage, error)
@@ -136,6 +144,7 @@ type Querier interface {
 	ListWebhookEvents(ctx context.Context, arg ListWebhookEventsParams) ([]WebhookEvent, error)
 	ListWebhookEventsFiltered(ctx context.Context, arg ListWebhookEventsFilteredParams) ([]WebhookEvent, error)
 	ListWebhookEventsForObject(ctx context.Context, arg ListWebhookEventsForObjectParams) ([]WebhookEvent, error)
+	LockMessageTemplate(ctx context.Context, arg LockMessageTemplateParams) (MessageTemplate, error)
 	MarkEmailProviderEventProcessed(ctx context.Context, arg MarkEmailProviderEventProcessedParams) (int64, error)
 	MarkEmailTenantActive(ctx context.Context, arg MarkEmailTenantActiveParams) (EmailTenant, error)
 	MarkEmailTenantDeleting(ctx context.Context, arg MarkEmailTenantDeletingParams) (EmailTenant, error)
@@ -149,6 +158,7 @@ type Querier interface {
 	MarkUserEmailVerifiedByEmail(ctx context.Context, arg MarkUserEmailVerifiedByEmailParams) (User, error)
 	MarkWebhookDeliveryFailed(ctx context.Context, arg MarkWebhookDeliveryFailedParams) (MarkWebhookDeliveryFailedRow, error)
 	MarkWebhookDeliverySucceeded(ctx context.Context, arg MarkWebhookDeliverySucceededParams) (MarkWebhookDeliverySucceededRow, error)
+	PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error)
 	PutUnverifiedTOTPCredential(ctx context.Context, arg PutUnverifiedTOTPCredentialParams) (int64, error)
 	ReleaseWebhookDeliveryClaim(ctx context.Context, arg ReleaseWebhookDeliveryClaimParams) (int64, error)
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
@@ -164,11 +174,14 @@ type Querier interface {
 	RotateTOTPSecretCiphertext(ctx context.Context, arg RotateTOTPSecretCiphertextParams) error
 	RotateWebhookEndpointSecret(ctx context.Context, arg RotateWebhookEndpointSecretParams) (WebhookEndpoint, error)
 	ScheduleWebhookDeliveryRetry(ctx context.Context, arg ScheduleWebhookDeliveryRetryParams) (WebhookDelivery, error)
+	SetMessageTemplateCurrentVersion(ctx context.Context, arg SetMessageTemplateCurrentVersionParams) (MessageTemplate, error)
+	SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (MessageTemplate, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
 	UpdateContact(ctx context.Context, arg UpdateContactParams) (Contact, error)
 	UpdateContactPropertyFallback(ctx context.Context, arg UpdateContactPropertyFallbackParams) (ContactProperty, error)
 	UpdateEmailRecipientState(ctx context.Context, arg UpdateEmailRecipientStateParams) (int64, error)
+	UpdateMessageTemplateMetadata(ctx context.Context, arg UpdateMessageTemplateMetadataParams) (MessageTemplate, error)
 	UpdateSMSMessageStatus(ctx context.Context, arg UpdateSMSMessageStatusParams) (SmsMessage, error)
 	UpdateTeam(ctx context.Context, arg UpdateTeamParams) (Team, error)
 	UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) (TeamMember, error)

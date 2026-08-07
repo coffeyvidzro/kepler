@@ -251,6 +251,45 @@ type MessageDeliveryAttempt struct {
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type MessageTemplate struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Name               string             `db:"name" json:"name"`
+	Alias              string             `db:"alias" json:"alias"`
+	CurrentVersionID   *uuid.UUID         `db:"current_version_id" json:"current_version_id"`
+	PublishedVersionID *uuid.UUID         `db:"published_version_id" json:"published_version_id"`
+	NextVersionNumber  int32              `db:"next_version_number" json:"next_version_number"`
+	PublishedAt        pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+type MessageTemplatePublication struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	TeamID      uuid.UUID          `db:"team_id" json:"team_id"`
+	TemplateID  uuid.UUID          `db:"template_id" json:"template_id"`
+	VersionID   uuid.UUID          `db:"version_id" json:"version_id"`
+	PublishedAt pgtype.Timestamptz `db:"published_at" json:"published_at"`
+}
+
+type MessageTemplateVersion struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
+	TemplateID       uuid.UUID          `db:"template_id" json:"template_id"`
+	VersionNumber    int32              `db:"version_number" json:"version_number"`
+	FromEmail        *string            `db:"from_email" json:"from_email"`
+	FromName         *string            `db:"from_name" json:"from_name"`
+	ReplyToEmail     *string            `db:"reply_to_email" json:"reply_to_email"`
+	Subject          string             `db:"subject" json:"subject"`
+	HtmlBody         string             `db:"html_body" json:"html_body"`
+	TextBody         *string            `db:"text_body" json:"text_body"`
+	Variables        []byte             `db:"variables" json:"variables"`
+	BasedOnVersionID *uuid.UUID         `db:"based_on_version_id" json:"based_on_version_id"`
+	ChangeNote       *string            `db:"change_note" json:"change_note"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type OauthIdentity struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	UserID      uuid.UUID          `db:"user_id" json:"user_id"`
