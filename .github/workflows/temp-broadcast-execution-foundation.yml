@@ -1,0 +1,80 @@
+name: Temporary Broadcast Execution Foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/broadcast-execution-foundation
+    paths:
+      - ".github/workflows/temp-broadcast-execution-foundation.yml"
+      - "internal/delivery/broadcast/**"
+      - "internal/modules/broadcast/**"
+      - "internal/dugble/worker/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-broadcast-execution-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: feat/broadcast-execution-foundation
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Wire scheduled broadcast execution
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("internal/dugble/worker/wire.go")
+          source = path.read_text()
+
+          dependency_anchor = "\twebhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)\n\tlifecycleEmitter := webhookEmitter\n"
+          dependency_replacement = dependency_anchor + "\tbroadcastExecutionJob := newBroadcastExecutionJob(db, webhookEmitter)\n"
+          if "broadcastExecutionJob := newBroadcastExecutionJob" not in source:
+              if dependency_anchor not in source:
+                  raise SystemExit("worker dependency anchor not found")
+              source = source.replace(dependency_anchor, dependency_replacement, 1)
+
+          job_anchor = "\t\tjob{name: \"sender domain reconciliation consumer\", run: domainConsumer.Run},\n\t\tsenderIDReconciliationJob,\n"
+          job_replacement = "\t\tjob{name: \"sender domain reconciliation consumer\", run: domainConsumer.Run},\n\t\tbroadcastExecutionJob,\n\t\tsenderIDReconciliationJob,\n"
+          if "\t\tbroadcastExecutionJob,\n" not in source:
+              if job_anchor not in source:
+                  raise SystemExit("worker job anchor not found")
+              source = source.replace(job_anchor, job_replacement, 1)
+
+          path.write_text(source)
+          PY
+
+      - name: Format Go
+        run: gofmt -w internal/delivery/broadcast internal/modules/broadcast internal/dugble/worker
+
+      - name: Test
+        run: go test ./...
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/delivery/broadcast internal/modules/broadcast internal/dugble/worker
+          if git diff --cached --quiet; then
+            echo "No formatted or wiring changes to commit."
+            exit 0
+          fi
+          git commit -m "Wire broadcast execution foundation"
+          git push origin HEAD:feat/broadcast-execution-foundation
