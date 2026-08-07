@@ -26,6 +26,7 @@ type Querier interface {
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
 	ConsumeMFALoginChallengeWithTOTP(ctx context.Context, arg ConsumeMFALoginChallengeWithTOTPParams) (int64, error)
 	ContactPropertyCursorExists(ctx context.Context, arg ContactPropertyCursorExistsParams) (bool, error)
+	ContactTopicCursorExists(ctx context.Context, arg ContactTopicCursorExistsParams) (bool, error)
 	CountBroadcastRecipientFanoutState(ctx context.Context, arg CountBroadcastRecipientFanoutStateParams) (CountBroadcastRecipientFanoutStateRow, error)
 	CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) (AuditEvent, error)
 	CreateBroadcast(ctx context.Context, arg CreateBroadcastParams) (Broadcast, error)
@@ -132,6 +133,9 @@ type Querier interface {
 	ListContactPropertiesAfter(ctx context.Context, arg ListContactPropertiesAfterParams) ([]ContactProperty, error)
 	ListContactPropertiesBefore(ctx context.Context, arg ListContactPropertiesBeforeParams) ([]ContactProperty, error)
 	ListContactPropertyValues(ctx context.Context, arg ListContactPropertyValuesParams) ([]ListContactPropertyValuesRow, error)
+	ListContactTopics(ctx context.Context, arg ListContactTopicsParams) ([]ListContactTopicsRow, error)
+	ListContactTopicsAfter(ctx context.Context, arg ListContactTopicsAfterParams) ([]ListContactTopicsAfterRow, error)
+	ListContactTopicsBefore(ctx context.Context, arg ListContactTopicsBeforeParams) ([]ListContactTopicsBeforeRow, error)
 	ListContacts(ctx context.Context, arg ListContactsParams) ([]Contact, error)
 	ListEmailMessages(ctx context.Context, arg ListEmailMessagesParams) ([]ListEmailMessagesRow, error)
 	ListEmailRecipientAggregateStates(ctx context.Context, arg ListEmailRecipientAggregateStatesParams) ([]ListEmailRecipientAggregateStatesRow, error)
@@ -222,6 +226,7 @@ type Querier interface {
 	UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (WebhookEndpoint, error)
 	UpsertContactNumberPropertyValue(ctx context.Context, arg UpsertContactNumberPropertyValueParams) error
 	UpsertContactStringPropertyValue(ctx context.Context, arg UpsertContactStringPropertyValueParams) error
+	UpsertContactTopicSubscription(ctx context.Context, arg UpsertContactTopicSubscriptionParams) (uuid.UUID, error)
 	UseRecoveryCodeAndElevateSession(ctx context.Context, arg UseRecoveryCodeAndElevateSessionParams) (int64, error)
 	VerifyEmailWithToken(ctx context.Context, arg VerifyEmailWithTokenParams) (User, error)
 	VerifyTOTPAndElevateSession(ctx context.Context, arg VerifyTOTPAndElevateSessionParams) (int64, error)

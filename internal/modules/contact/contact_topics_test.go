@@ -68,8 +68,8 @@ func TestValidateContactTopicUpdates(t *testing.T) {
 	}
 
 	for name, request := range map[string]UpdateContactTopicsRequest{
-		"empty":              {},
-		"invalid id":         {{ID: "not-a-uuid", Subscription: SubscriptionOptIn}},
+		"empty":                {},
+		"invalid id":           {{ID: "not-a-uuid", Subscription: SubscriptionOptIn}},
 		"invalid subscription": {{ID: "b6d24b8e-af0b-4c3c-be0c-359bbd97381e", Subscription: "subscribed"}},
 	} {
 		t.Run(name, func(t *testing.T) {
