@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - agent/templates-topics-compatibility
     paths:
       - ".github/workflows/server.yml"
       - ".golangci.yml"
@@ -12,7 +11,6 @@ on:
       - "go.sum"
       - "migrations/**"
       - "sqlc.yaml"
-      - "scripts/apply_templates_topics_compat.py"
       - "**/*.go"
       - "**/*.sql"
   pull_request:
@@ -23,13 +21,12 @@ on:
       - "go.sum"
       - "migrations/**"
       - "sqlc.yaml"
-      - "scripts/apply_templates_topics_compat.py"
       - "**/*.go"
       - "**/*.sql"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -44,9 +41,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: agent/templates-topics-compatibility
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -57,26 +51,6 @@ jobs:
 
       - name: Download dependencies
         run: go mod download
-
-      - name: Apply compatibility changes
-        run: python3 scripts/apply_templates_topics_compat.py
-
-      - name: Format changed files
-        run: gofmt -w internal/modules/messagetemplate internal/modules/topic internal/transport/http/messagetemplate internal/transport/http/topic
-
-      - name: Test affected packages
-        run: go test ./internal/modules/messagetemplate ./internal/modules/topic ./internal/transport/http/messagetemplate ./internal/transport/http/topic
-
-      - name: Commit compatibility implementation
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add internal/modules/messagetemplate internal/modules/topic internal/transport/http/messagetemplate internal/transport/http/topic migrations/029_create_message_templates.sql
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Add Templates and Topics API compatibility"
-          git push origin HEAD:agent/templates-topics-compatibility
 
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
