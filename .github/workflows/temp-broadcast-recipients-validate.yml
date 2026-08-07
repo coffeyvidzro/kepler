@@ -10,12 +10,20 @@ on:
       - "internal/modules/broadcast/**"
       - "internal/delivery/broadcast/**"
       - "migrations/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/temp-broadcast-recipients-validate.yml"
+      - "internal/modules/broadcast/**"
+      - "internal/delivery/broadcast/**"
+      - "migrations/**"
 
 permissions:
   contents: write
 
 concurrency:
-  group: temp-broadcast-recipients-${{ github.ref }}
+  group: temp-broadcast-recipients-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -41,12 +49,19 @@ jobs:
         run: atlas migrate hash --dir file://migrations
 
       - name: Format Go
-        run: gofmt -w internal/modules/broadcast internal/delivery/broadcast
+        shell: bash
+        run: |
+          mapfile -d '' files < <(
+            find internal/modules/broadcast internal/delivery/broadcast \
+              -type f -name '*.go' -print0
+          )
+          gofmt -w "${files[@]}"
 
       - name: Test
         run: go test ./...
 
       - name: Commit generated changes
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
