@@ -202,7 +202,7 @@ func (r *Repository) GetPublishedTemplate(ctx context.Context, teamID uuid.UUID,
 		  AND lower(template.alias) = lower($2)`
 	args := []any{teamID, identifier}
 	if parseErr == nil {
-		query = strings.Replace(query, "lower(template.alias) = lower($2)", "template.id = $2")
+		query = strings.ReplaceAll(query, "lower(template.alias) = lower($2)", "template.id = $2")
 		args = []any{teamID, id}
 	}
 	err := r.db.QueryRow(ctx, query, args...).Scan(
