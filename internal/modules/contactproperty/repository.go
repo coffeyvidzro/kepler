@@ -147,7 +147,11 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest
 	}
 	hasMore := len(values) > int(req.Limit)
 	if hasMore {
-		values = values[:req.Limit]
+		if req.Before != "" {
+			values = values[1:]
+		} else {
+			values = values[:req.Limit]
+		}
 	}
 	return values, hasMore, nil
 }
