@@ -37,10 +37,10 @@ func (r *Repository) ListTopics(ctx context.Context, identifier string, teamID u
 			return nil, false, "", err
 		}
 		rows, queryErr := queries.ListContactTopicsAfter(ctx, dbsqlc.ListContactTopicsAfterParams{
-			ContactID: contactID,
-			ScopeTeamID: teamID,
-			CursorID: cursorID,
-			PageLimit: limit,
+			ScopeContactID: contactID,
+			ScopeTeamID:    teamID,
+			CursorID:       cursorID,
+			PageLimit:      limit,
 		})
 		if queryErr != nil {
 			return nil, false, "", fmt.Errorf("list contact topics after cursor: %w", queryErr)
@@ -58,10 +58,10 @@ func (r *Repository) ListTopics(ctx context.Context, identifier string, teamID u
 			return nil, false, "", err
 		}
 		rows, queryErr := queries.ListContactTopicsBefore(ctx, dbsqlc.ListContactTopicsBeforeParams{
-			ContactID: contactID,
-			ScopeTeamID: teamID,
-			CursorID: cursorID,
-			PageLimit: limit,
+			ScopeContactID: contactID,
+			ScopeTeamID:    teamID,
+			CursorID:       cursorID,
+			PageLimit:      limit,
 		})
 		if queryErr != nil {
 			return nil, false, "", fmt.Errorf("list contact topics before cursor: %w", queryErr)
@@ -72,9 +72,9 @@ func (r *Repository) ListTopics(ctx context.Context, identifier string, teamID u
 		}
 	default:
 		rows, queryErr := queries.ListContactTopics(ctx, dbsqlc.ListContactTopicsParams{
-			ContactID: contactID,
-			TeamID: teamID,
-			PageLimit: limit,
+			ScopeContactID: contactID,
+			ScopeTeamID:    teamID,
+			PageLimit:      limit,
 		})
 		if queryErr != nil {
 			return nil, false, "", fmt.Errorf("list contact topics: %w", queryErr)
@@ -118,9 +118,9 @@ func (r *Repository) UpdateTopics(ctx context.Context, identifier string, teamID
 			return "", fmt.Errorf("validate contact topic: %w", getErr)
 		}
 		if _, upsertErr := queries.UpsertContactTopicSubscription(ctx, dbsqlc.UpsertContactTopicSubscriptionParams{
-			TeamID: teamID,
-			ContactID: contactID,
-			TopicID: topicID,
+			TeamID:       teamID,
+			ContactID:    contactID,
+			TopicID:      topicID,
 			Subscription: update.Subscription,
 		}); upsertErr != nil {
 			return "", fmt.Errorf("update contact topic subscription: %w", upsertErr)
