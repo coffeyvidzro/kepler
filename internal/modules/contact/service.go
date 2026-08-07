@@ -1,0 +1,209 @@
+package contact
+
+import (
+	"context"
+	"errors"
+	"net/mail"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
+	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
+	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
+)
+
+type Service struct{ repository *Repository }
+
+func NewService(repository *Repository) *Service { return &Service{repository: repository} }
+
+func (s *Service) Create(ctx context.Context, req CreateRequest) (Contact, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsWrite)
+	if err != nil {
+		return Contact{}, err
+	}
+	normalized, err := validateCreate(req)
+	if err != nil {
+		return Contact{}, err
+	}
+	value, err := s.repository.Create(ctx, access.Scope.TeamID, normalized)
+	if errors.Is(err, ErrAlreadyExists) {
+		return Contact{}, apperrors.NewConflict("A contact with this email already exists")
+	}
+	if errors.Is(err, ErrUnknownProperty) || errors.Is(err, ErrPropertyTypeMismatch) {
+		return Contact{}, apperrors.NewBadRequest(err.Error())
+	}
+	if err != nil {
+		return Contact{}, apperrors.NewInternal("Unable to create contact", err)
+	}
+	audit.Record(ctx, access, audit.Event{Action: "contact.created", ResourceType: "contact", ResourceID: uuid.MustParse(value.ID)})
+	return value, nil
+}
+
+func (s *Service) List(ctx context.Context, req ListRequest) ([]Contact, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsRead)
+	if err != nil {
+		return nil, err
+	}
+	normalizeListRequest(&req)
+	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
+	if err != nil {
+		return nil, apperrors.NewInternal("Unable to list contacts", err)
+	}
+	return values, nil
+}
+
+func (s *Service) Get(ctx context.Context, value string) (Contact, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsRead)
+	if err != nil {
+		return Contact{}, err
+	}
+	id, err := parseID(value, "Contact")
+	if err != nil {
+		return Contact{}, err
+	}
+	contact, err := s.repository.Get(ctx, id, access.Scope.TeamID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Contact{}, apperrors.NewNotFound("Contact not found")
+	}
+	if err != nil {
+		return Contact{}, apperrors.NewInternal("Unable to get contact", err)
+	}
+	return contact, nil
+}
+
+func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (Contact, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsWrite)
+	if err != nil {
+		return Contact{}, err
+	}
+	id, err := parseID(value, "Contact")
+	if err != nil {
+		return Contact{}, err
+	}
+	current, err := s.repository.Get(ctx, id, access.Scope.TeamID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Contact{}, apperrors.NewNotFound("Contact not found")
+	}
+	if err != nil {
+		return Contact{}, apperrors.NewInternal("Unable to get contact", err)
+	}
+
+	merged := CreateRequest{
+		Email:        current.Email,
+		FirstName:    current.FirstName,
+		LastName:     current.LastName,
+		Unsubscribed: current.Unsubscribed,
+		Properties:   current.Properties,
+	}
+	if req.Email != nil {
+		merged.Email = *req.Email
+	}
+	if req.FirstName != nil {
+		merged.FirstName = normalizeOptional(req.FirstName)
+	}
+	if req.LastName != nil {
+		merged.LastName = normalizeOptional(req.LastName)
+	}
+	if req.Unsubscribed != nil {
+		merged.Unsubscribed = *req.Unsubscribed
+	}
+	if req.Properties != nil {
+		merged.Properties = *req.Properties
+	}
+	merged, err = validateCreate(merged)
+	if err != nil {
+		return Contact{}, err
+	}
+	updated, err := s.repository.Update(ctx, id, access.Scope.TeamID, merged)
+	if errors.Is(err, ErrAlreadyExists) {
+		return Contact{}, apperrors.NewConflict("A contact with this email already exists")
+	}
+	if errors.Is(err, ErrUnknownProperty) || errors.Is(err, ErrPropertyTypeMismatch) {
+		return Contact{}, apperrors.NewBadRequest(err.Error())
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Contact{}, apperrors.NewNotFound("Contact not found")
+	}
+	if err != nil {
+		return Contact{}, apperrors.NewInternal("Unable to update contact", err)
+	}
+	audit.Record(ctx, access, audit.Event{Action: "contact.updated", ResourceType: "contact", ResourceID: id})
+	return updated, nil
+}
+
+func (s *Service) Delete(ctx context.Context, value string) (Contact, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsWrite)
+	if err != nil {
+		return Contact{}, err
+	}
+	id, err := parseID(value, "Contact")
+	if err != nil {
+		return Contact{}, err
+	}
+	deleted, err := s.repository.Delete(ctx, id, access.Scope.TeamID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Contact{}, apperrors.NewNotFound("Contact not found")
+	}
+	if err != nil {
+		return Contact{}, apperrors.NewInternal("Unable to delete contact", err)
+	}
+	audit.Record(ctx, access, audit.Event{Action: "contact.deleted", ResourceType: "contact", ResourceID: id})
+	return deleted, nil
+}
+
+func validateCreate(req CreateRequest) (CreateRequest, error) {
+	address, err := mail.ParseAddress(strings.TrimSpace(req.Email))
+	if err != nil || address.Address == "" || address.Name != "" {
+		return CreateRequest{}, apperrors.NewBadRequest("Email must be a valid email address")
+	}
+	req.Email = strings.ToLower(address.Address)
+	req.FirstName = normalizeOptional(req.FirstName)
+	req.LastName = normalizeOptional(req.LastName)
+	if req.Properties == nil {
+		req.Properties = map[string]any{}
+	}
+	for key := range req.Properties {
+		if strings.TrimSpace(key) == "" {
+			return CreateRequest{}, apperrors.NewBadRequest("Contact property keys cannot be empty")
+		}
+	}
+	return req, nil
+}
+
+func normalizeOptional(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func requireTenant(ctx context.Context, permission tenant.Permission) (tenant.AccessContext, error) {
+	access, decision := tenant.ResolveAccess(ctx, permission)
+	if !decision.Allowed {
+		return tenant.AccessContext{}, apperrors.NewForbidden(decision.Reason)
+	}
+	return access, nil
+}
+
+func parseID(value, resource string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return uuid.Nil, apperrors.NewBadRequest(resource + " id must be a valid UUID")
+	}
+	return id, nil
+}
+
+func normalizeListRequest(req *ListRequest) {
+	if req.Limit <= 0 || req.Limit > 100 {
+		req.Limit = 50
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+}
