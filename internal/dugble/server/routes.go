@@ -6,6 +6,7 @@ import (
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
 	authhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auth"
+	broadcasthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/broadcast"
 	contacthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contact"
 	contactpropertyhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contactproperty"
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
@@ -46,6 +47,7 @@ type serverRouteHandlers struct {
 	topic           *topichttp.Handler
 	suppression     *suppressionhttp.Handler
 	messageTemplate *messagetemplatehttp.Handler
+	broadcast       *broadcasthttp.Handler
 	senderID        *senderidhttp.Handler
 	domain          *domainhttp.Handler
 	sms             *smshttp.Handler
@@ -75,6 +77,7 @@ func newRouteRegistrar(handlers serverRouteHandlers, middleware serverMiddleware
 		topichttp.RegisterRoutes(router, handlers.topic, middleware.tenantAccess)
 		suppressionhttp.RegisterRoutes(router, handlers.suppression, middleware.tenantAccess)
 		messagetemplatehttp.RegisterRoutes(router, handlers.messageTemplate, middleware.tenantAccess)
+		broadcasthttp.RegisterRoutes(router, handlers.broadcast, middleware.tenantAccess)
 		senderidhttp.RegisterRoutes(router, handlers.senderID, middleware.tenantAccess)
 		domainhttp.RegisterRoutes(router, handlers.domain, middleware.tenantAccess)
 		smshttp.RegisterRoutes(router, handlers.sms, middleware.tenantAccess)
@@ -91,6 +94,6 @@ func registerCSRFRoute(router *echo.Echo, csrfMiddleware echo.MiddlewareFunc) {
 		if !ok || token == "" {
 			return httputil.Error(c, apperrors.NewInternal("CSRF token is not available", nil))
 		}
-		return httputil.OK(c, map[string]string{"csrf_token": token})
+		return httputil.OK(c, map[string]string{"csrf_token": token)
 	}, csrfMiddleware)
 }
