@@ -35,6 +35,223 @@ jobs:
       - name: Set up Atlas
         uses: ariga/setup-atlas@v0
 
+      - name: Apply fanout implementation slice
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"anchor not found in {path}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "internal/modules/messagetemplate/repository.go",
+              "func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.UUID, limit, offset int32) ([]Version, error) {",
+              '''func (r *Repository) GetVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID) (Version, error) {
+          var value Version
+          var variables []byte
+          err := tx.QueryRow(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE id=$1 AND template_id=$2 AND team_id=$3`, versionID, templateID, teamID).
+              Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &variables, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt)
+          if errors.Is(err, pgx.ErrNoRows) {
+              return Version{}, ErrVersionNotFound
+          }
+          if err != nil {
+              return Version{}, err
+          }
+          if err := json.Unmarshal(variables, &value.Variables); err != nil {
+              return Version{}, err
+          }
+          return value, nil
+          }
+
+          func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.UUID, limit, offset int32) ([]Version, error) {'''
+          )
+
+          replace_once(
+              "internal/modules/messagetemplate/service.go",
+              '"github.com/google/uuid"\n',
+              '"github.com/google/uuid"\n\t"github.com/jackc/pgx/v5"\n'
+          )
+          replace_once(
+              "internal/modules/messagetemplate/service.go",
+              "func (s *Service) TestSend(ctx context.Context, identifier string, req TestSendRequest) (emailmodule.SendResponse, error) {",
+              '''func (s *Service) RenderVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID, variables map[string]any) (PreviewResponse, error) {
+          if s == nil || s.repository == nil {
+              return PreviewResponse{}, errors.New("message template repository is not configured")
+          }
+          if tx == nil {
+              return PreviewResponse{}, errors.New("message template transaction is not configured")
+          }
+          version, err := s.repository.GetVersionTx(ctx, tx, teamID, templateID, versionID)
+          if err != nil {
+              return PreviewResponse{}, fmt.Errorf("load pinned message template version: %w", err)
+          }
+          rendered, err := Render(version, variables)
+          if err != nil {
+              return PreviewResponse{}, fmt.Errorf("render pinned message template version: %w", err)
+          }
+          return rendered, nil
+          }
+
+          func (s *Service) TestSend(ctx context.Context, identifier string, req TestSendRequest) (emailmodule.SendResponse, error) {'''
+          )
+
+          replace_once(
+              "internal/modules/broadcast/model.go",
+              "type CreateRequest struct {",
+              '''type FanoutRecipient struct {
+          ID                uuid.UUID
+          TeamID            uuid.UUID
+          BroadcastID       uuid.UUID
+          ContactID         *uuid.UUID
+          Email             string
+          FirstName         *string
+          LastName          *string
+          ContactSnapshot   map[string]any
+          TemplateID        uuid.UUID
+          TemplateVersionID uuid.UUID
+          VariableBindings  map[string]any
+          AttemptCount      int32
+          }
+
+          type CreateRequest struct {'''
+          )
+          replace_once(
+              "internal/modules/broadcast/model.go",
+              'import "time"',
+              'import (\n\t"time"\n\n\t"github.com/google/uuid"\n)'
+          )
+
+          replace_once(
+              "internal/modules/broadcast/repository.go",
+              "type MaterializationResult struct {",
+              '''func (r *Repository) BeginFanoutTx(ctx context.Context) (pgx.Tx, error) {
+          if r == nil || r.db == nil {
+              return nil, errors.New("broadcast repository is not configured")
+          }
+          tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+          if err != nil {
+              return nil, fmt.Errorf("begin broadcast fanout transaction: %w", err)
+          }
+          return tx, nil
+          }
+
+          func (r *Repository) ClaimNextRecipientForFanoutTx(ctx context.Context, tx pgx.Tx) (FanoutRecipient, bool, error) {
+          if r == nil || r.queries == nil || tx == nil {
+              return FanoutRecipient{}, false, errors.New("broadcast fanout repository is not configured")
+          }
+          row, err := r.queries.WithTx(tx).ClaimNextBroadcastRecipientForFanout(ctx)
+          if errors.Is(err, pgx.ErrNoRows) {
+              return FanoutRecipient{}, false, nil
+          }
+          if err != nil {
+              return FanoutRecipient{}, false, fmt.Errorf("claim broadcast recipient for fanout: %w", err)
+          }
+          if row.TemplateVersionID == nil {
+              return FanoutRecipient{}, false, errors.New("broadcast recipient has no pinned template version")
+          }
+          snapshot := map[string]any{}
+          if len(row.ContactSnapshot) > 0 {
+              decoder := json.NewDecoder(bytes.NewReader(row.ContactSnapshot))
+              decoder.UseNumber()
+              if err := decoder.Decode(&snapshot); err != nil {
+                  return FanoutRecipient{}, false, fmt.Errorf("decode broadcast recipient snapshot: %w", err)
+              }
+          }
+          bindings := map[string]any{}
+          if len(row.VariableBindings) > 0 {
+              decoder := json.NewDecoder(bytes.NewReader(row.VariableBindings))
+              decoder.UseNumber()
+              if err := decoder.Decode(&bindings); err != nil {
+                  return FanoutRecipient{}, false, fmt.Errorf("decode broadcast variable bindings: %w", err)
+              }
+          }
+          return FanoutRecipient{
+              ID: row.ID, TeamID: row.TeamID, BroadcastID: row.BroadcastID, ContactID: row.ContactID,
+              Email: row.Email, FirstName: row.FirstName, LastName: row.LastName,
+              ContactSnapshot: snapshot, TemplateID: row.TemplateID,
+              TemplateVersionID: *row.TemplateVersionID, VariableBindings: bindings,
+              AttemptCount: row.AttemptCount,
+          }, true, nil
+          }
+
+          func (r *Repository) SetRecipientQueuedTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, emailMessageID uuid.UUID) error {
+          _, err := r.queries.WithTx(tx).SetBroadcastRecipientQueued(ctx, dbsqlc.SetBroadcastRecipientQueuedParams{
+              EmailMessageID: &emailMessageID, ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+          })
+          if errors.Is(err, pgx.ErrNoRows) {
+              return ErrConflict
+          }
+          if err != nil {
+              return fmt.Errorf("mark broadcast recipient queued: %w", err)
+          }
+          return nil
+          }
+
+          func (r *Repository) RetryRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, nextAttemptAt time.Time, code, message string) error {
+          _, err := r.queries.WithTx(tx).RetryBroadcastRecipientFanout(ctx, dbsqlc.RetryBroadcastRecipientFanoutParams{
+              NextAttemptAt: pgtype.Timestamptz{Time: nextAttemptAt, Valid: true},
+              ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message),
+              ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+          })
+          if errors.Is(err, pgx.ErrNoRows) {
+              return ErrConflict
+          }
+          if err != nil {
+              return fmt.Errorf("schedule broadcast recipient retry: %w", err)
+          }
+          return nil
+          }
+
+          func (r *Repository) FailRecipientFanoutTx(ctx context.Context, tx pgx.Tx, recipient FanoutRecipient, code, message string) error {
+          _, err := r.queries.WithTx(tx).FailBroadcastRecipientFanout(ctx, dbsqlc.FailBroadcastRecipientFanoutParams{
+              ErrorCode: stringPointer(code), ErrorMessage: stringPointer(message),
+              ID: recipient.ID, TeamID: recipient.TeamID, BroadcastID: recipient.BroadcastID,
+          })
+          if errors.Is(err, pgx.ErrNoRows) {
+              return ErrConflict
+          }
+          if err != nil {
+              return fmt.Errorf("fail broadcast recipient fanout: %w", err)
+          }
+          return nil
+          }
+
+          func (r *Repository) FinalizeBroadcastFanoutTx(ctx context.Context, tx pgx.Tx, teamID, broadcastID uuid.UUID) (Broadcast, error) {
+          row, err := r.queries.WithTx(tx).FinalizeBroadcastFanout(ctx, dbsqlc.FinalizeBroadcastFanoutParams{
+              BroadcastID: broadcastID, TeamID: teamID,
+          })
+          if errors.Is(err, pgx.ErrNoRows) {
+              return Broadcast{}, ErrConflict
+          }
+          if err != nil {
+              return Broadcast{}, fmt.Errorf("finalize broadcast fanout: %w", err)
+          }
+          return broadcastFromSQLC(row)
+          }
+
+          func stringPointer(value string) *string {
+          if value == "" {
+              return nil
+          }
+          return &value
+          }
+
+          type MaterializationResult struct {'''
+          )
+          replace_once(
+              "internal/modules/broadcast/repository.go",
+              '"context"\n',
+              '"bytes"\n\t"context"\n'
+          )
+          PY
+
       - name: Generate SQLC
         run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
 
@@ -42,21 +259,21 @@ jobs:
         run: atlas migrate hash --dir file://migrations
 
       - name: Format Go
-        run: gofmt -w internal/database/sqlc internal/modules/email internal/modules/broadcast internal/delivery/broadcast internal/dugble/worker
+        run: gofmt -w internal/database/sqlc internal/modules/email internal/modules/messagetemplate internal/modules/broadcast internal/delivery/broadcast internal/dugble/worker
 
       - name: Test
         run: go test ./...
 
-      - name: Commit generated changes
+      - name: Commit validated changes
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A internal/database/sqlc migrations/atlas.sum
+          git add -A internal/database/sqlc internal/modules/email internal/modules/messagetemplate internal/modules/broadcast migrations/atlas.sum
           if git diff --cached --quiet; then
-            echo "No generated changes to commit."
+            echo "No validated changes to commit."
             exit 0
           fi
-          git commit -m "Generate broadcast fanout SQLC bindings"
+          git commit -m "Add broadcast fanout transaction and rendering foundations"
           git push origin HEAD:feat/broadcast-fanout
