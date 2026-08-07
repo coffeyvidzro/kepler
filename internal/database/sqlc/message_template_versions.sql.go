@@ -13,17 +13,46 @@ import (
 
 const createMessageTemplateVersion = `-- name: CreateMessageTemplateVersion :one
 INSERT INTO message_template_versions (
-    team_id, template_id, version_number,
-    from_email, from_name, reply_to_email,
-    subject, html_body, text_body, variables,
-    based_on_version_id, change_note
+    team_id,
+    template_id,
+    version_number,
+    from_email,
+    from_name,
+    reply_to_email,
+    subject,
+    html_body,
+    text_body,
+    variables,
+    based_on_version_id,
+    change_note
 ) VALUES (
-    $1, $2, $3,
-    $4, $5, $6,
-    $7, $8, $9, $10,
-    $11, $12
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
 )
-RETURNING id, team_id, template_id, version_number, from_email, from_name, reply_to_email, subject, html_body, text_body, variables, based_on_version_id, change_note, created_at
+RETURNING id,
+          team_id,
+          template_id,
+          version_number,
+          from_email,
+          from_name,
+          reply_to_email,
+          subject,
+          html_body,
+          text_body,
+          variables,
+          based_on_version_id,
+          change_note,
+          created_at
 `
 
 type CreateMessageTemplateVersionParams struct {
@@ -77,11 +106,24 @@ func (q *Queries) CreateMessageTemplateVersion(ctx context.Context, arg CreateMe
 }
 
 const getMessageTemplateVersion = `-- name: GetMessageTemplateVersion :one
-SELECT id, team_id, template_id, version_number, from_email, from_name, reply_to_email, subject, html_body, text_body, variables, based_on_version_id, change_note, created_at
-FROM message_template_versions
-WHERE id = $1
-  AND template_id = $2
-  AND team_id = $3
+SELECT mtv.id,
+       mtv.team_id,
+       mtv.template_id,
+       mtv.version_number,
+       mtv.from_email,
+       mtv.from_name,
+       mtv.reply_to_email,
+       mtv.subject,
+       mtv.html_body,
+       mtv.text_body,
+       mtv.variables,
+       mtv.based_on_version_id,
+       mtv.change_note,
+       mtv.created_at
+FROM message_template_versions AS mtv
+WHERE mtv.id = $1
+  AND mtv.template_id = $2
+  AND mtv.team_id = $3
 `
 
 type GetMessageTemplateVersionParams struct {
@@ -113,11 +155,24 @@ func (q *Queries) GetMessageTemplateVersion(ctx context.Context, arg GetMessageT
 }
 
 const listMessageTemplateVersions = `-- name: ListMessageTemplateVersions :many
-SELECT id, team_id, template_id, version_number, from_email, from_name, reply_to_email, subject, html_body, text_body, variables, based_on_version_id, change_note, created_at
-FROM message_template_versions
-WHERE team_id = $1
-  AND template_id = $2
-ORDER BY version_number DESC
+SELECT mtv.id,
+       mtv.team_id,
+       mtv.template_id,
+       mtv.version_number,
+       mtv.from_email,
+       mtv.from_name,
+       mtv.reply_to_email,
+       mtv.subject,
+       mtv.html_body,
+       mtv.text_body,
+       mtv.variables,
+       mtv.based_on_version_id,
+       mtv.change_note,
+       mtv.created_at
+FROM message_template_versions AS mtv
+WHERE mtv.team_id = $1
+  AND mtv.template_id = $2
+ORDER BY mtv.version_number DESC
 LIMIT $4
 OFFSET $3
 `
@@ -167,4 +222,27 @@ func (q *Queries) ListMessageTemplateVersions(ctx context.Context, arg ListMessa
 		return nil, err
 	}
 	return items, nil
+}
+
+const messageTemplateVersionExists = `-- name: MessageTemplateVersionExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM message_template_versions AS mtv
+    WHERE mtv.id = $1
+      AND mtv.template_id = $2
+      AND mtv.team_id = $3
+)
+`
+
+type MessageTemplateVersionExistsParams struct {
+	VersionID  uuid.UUID `db:"version_id" json:"version_id"`
+	TemplateID uuid.UUID `db:"template_id" json:"template_id"`
+	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) MessageTemplateVersionExists(ctx context.Context, arg MessageTemplateVersionExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, messageTemplateVersionExists, arg.VersionID, arg.TemplateID, arg.TeamID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

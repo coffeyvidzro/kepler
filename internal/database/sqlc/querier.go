@@ -143,6 +143,8 @@ type Querier interface {
 	ListEmailRecipientsByMessage(ctx context.Context, arg ListEmailRecipientsByMessageParams) ([]EmailRecipient, error)
 	ListMessageTemplateVersions(ctx context.Context, arg ListMessageTemplateVersionsParams) ([]MessageTemplateVersion, error)
 	ListMessageTemplates(ctx context.Context, arg ListMessageTemplatesParams) ([]MessageTemplate, error)
+	ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]MessageTemplate, error)
+	ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]MessageTemplate, error)
 	ListOAuthIdentitiesByUserID(ctx context.Context, arg ListOAuthIdentitiesByUserIDParams) ([]OauthIdentity, error)
 	ListPendingTeamInvitations(ctx context.Context, arg ListPendingTeamInvitationsParams) ([]TeamInvitation, error)
 	ListSMSMessages(ctx context.Context, arg ListSMSMessagesParams) ([]SmsMessage, error)
@@ -183,6 +185,8 @@ type Querier interface {
 	MarkWebhookDeliveryFailed(ctx context.Context, arg MarkWebhookDeliveryFailedParams) (MarkWebhookDeliveryFailedRow, error)
 	MarkWebhookDeliverySucceeded(ctx context.Context, arg MarkWebhookDeliverySucceededParams) (MarkWebhookDeliverySucceededRow, error)
 	MaterializeBroadcastRecipients(ctx context.Context, arg MaterializeBroadcastRecipientsParams) error
+	MessageTemplateCursorExists(ctx context.Context, arg MessageTemplateCursorExistsParams) (bool, error)
+	MessageTemplateVersionExists(ctx context.Context, arg MessageTemplateVersionExistsParams) (bool, error)
 	PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error)
 	PutUnverifiedTOTPCredential(ctx context.Context, arg PutUnverifiedTOTPCredentialParams) (int64, error)
 	QueueBroadcast(ctx context.Context, arg QueueBroadcastParams) (Broadcast, error)

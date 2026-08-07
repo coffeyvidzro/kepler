@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 )
 
 var (
@@ -20,9 +22,14 @@ var (
 	ErrVersionConflict = errors.New("message template version conflict")
 )
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	db      *pgxpool.Pool
+	queries *dbsqlc.Queries
+}
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{db: db, queries: dbsqlc.New(db)}
+}
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Template, Version, error) {
 	tx, err := r.db.Begin(ctx)
@@ -30,124 +37,128 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 		return Template{}, Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var template Template
-	err = tx.QueryRow(ctx, `INSERT INTO message_templates (team_id,name,alias) VALUES ($1,$2,$3)
-		RETURNING id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at`, teamID, req.Name, req.Alias).
-		Scan(&template.ID, &template.TeamID, &template.Name, &template.Alias, &template.CurrentVersionID, &template.PublishedVersionID, &template.PublishedAt, &template.CreatedAt, &template.UpdatedAt)
+	queries := r.queries.WithTx(tx)
+
+	row, err := queries.CreateMessageTemplate(ctx, dbsqlc.CreateMessageTemplateParams{
+		TeamID: teamID,
+		Name:   req.Name,
+		Alias:  req.Alias,
+	})
 	if err != nil {
 		return Template{}, Version{}, mapWriteError(err)
 	}
-	templateID := uuid.MustParse(template.ID)
+
 	variables, err := encodeVariables(req.Variables)
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	version, err := insertVersion(ctx, tx, teamID, templateID, 1, req.FromEmail, req.FromName, req.ReplyTo, req.Subject, req.HTML, req.Text, variables, nil, nil)
+	versionRow, err := queries.CreateMessageTemplateVersion(ctx, dbsqlc.CreateMessageTemplateVersionParams{
+		TeamID:           teamID,
+		TemplateID:       row.ID,
+		VersionNumber:    row.NextVersionNumber,
+		FromEmail:        req.FromEmail,
+		FromName:         req.FromName,
+		ReplyToEmail:     req.ReplyTo,
+		Subject:          req.Subject,
+		HtmlBody:         req.HTML,
+		TextBody:         req.Text,
+		Variables:        variables,
+		BasedOnVersionID: nil,
+		ChangeNote:       nil,
+	})
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	_, err = tx.Exec(ctx, `UPDATE message_templates SET current_version_id=$1,next_version_number=2,updated_at=now() WHERE id=$2 AND team_id=$3`, uuid.MustParse(version.ID), templateID, teamID)
+	version, err := versionFromSQLC(versionRow)
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+
+	row, err = queries.SetMessageTemplateCurrentVersion(ctx, dbsqlc.SetMessageTemplateCurrentVersionParams{
+		VersionID: &versionRow.ID,
+		ID:        row.ID,
+		TeamID:    teamID,
+	})
+	if err != nil {
 		return Template{}, Version{}, err
 	}
-	template.CurrentVersionID = &version.ID
-	return template, version, nil
+	if err := tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return templateFromSQLC(row), version, nil
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Template, error) {
-	rows, err := r.db.Query(ctx, `SELECT id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at FROM message_templates WHERE team_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, teamID, limit, offset)
+	rows, err := r.queries.ListMessageTemplates(ctx, dbsqlc.ListMessageTemplatesParams{
+		TeamID: teamID, PageOffset: offset, PageLimit: limit,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := []Template{}
-	for rows.Next() {
-		var value Template
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt); err != nil {
-			return nil, err
-		}
-		value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
-		result = append(result, value)
-	}
-	return result, rows.Err()
+	return templatesFromSQLC(rows), nil
 }
 
 func (r *Repository) Resolve(ctx context.Context, teamID uuid.UUID, identifier string) (Template, error) {
-	var value Template
-	id, idErr := uuid.Parse(identifier)
-	query := `SELECT id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at FROM message_templates WHERE team_id=$1 AND deleted_at IS NULL AND lower(alias)=lower($2)`
-	args := []any{teamID, identifier}
-	if idErr == nil {
-		query = `SELECT id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at FROM message_templates WHERE team_id=$1 AND id=$2 AND deleted_at IS NULL`
-		args = []any{teamID, id}
+	var (
+		row dbsqlc.MessageTemplate
+		err error
+	)
+	if id, parseErr := uuid.Parse(identifier); parseErr == nil {
+		row, err = r.queries.GetMessageTemplateByID(ctx, dbsqlc.GetMessageTemplateByIDParams{ID: id, TeamID: teamID})
+	} else {
+		row, err = r.queries.GetMessageTemplateByAlias(ctx, dbsqlc.GetMessageTemplateByAliasParams{TeamID: teamID, Alias: identifier})
 	}
-	err := r.db.QueryRow(ctx, query, args...).Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Template{}, ErrNotFound
 	}
 	if err != nil {
 		return Template{}, err
 	}
-	value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
-	return value, nil
+	return templateFromSQLC(row), nil
 }
 
 func (r *Repository) GetVersion(ctx context.Context, teamID, templateID, versionID uuid.UUID) (Version, error) {
-	var value Version
-	var variables []byte
-	err := r.db.QueryRow(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE id=$1 AND template_id=$2 AND team_id=$3`, versionID, templateID, teamID).
-		Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &variables, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt)
+	row, err := r.queries.GetMessageTemplateVersion(ctx, dbsqlc.GetMessageTemplateVersionParams{
+		ID: versionID, TemplateID: templateID, TeamID: teamID,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Version{}, ErrVersionNotFound
 	}
 	if err != nil {
 		return Version{}, err
 	}
-	if err := json.Unmarshal(variables, &value.Variables); err != nil {
-		return Version{}, err
-	}
-	return value, nil
+	return versionFromSQLC(row)
 }
 
 func (r *Repository) GetVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID) (Version, error) {
-	var value Version
-	var variables []byte
-	err := tx.QueryRow(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE id=$1 AND template_id=$2 AND team_id=$3`, versionID, templateID, teamID).
-		Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &variables, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt)
+	row, err := r.queries.WithTx(tx).GetMessageTemplateVersion(ctx, dbsqlc.GetMessageTemplateVersionParams{
+		ID: versionID, TemplateID: templateID, TeamID: teamID,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Version{}, ErrVersionNotFound
 	}
 	if err != nil {
 		return Version{}, err
 	}
-	if err := json.Unmarshal(variables, &value.Variables); err != nil {
-		return Version{}, err
-	}
-	return value, nil
+	return versionFromSQLC(row)
 }
 
 func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.UUID, limit, offset int32) ([]Version, error) {
-	rows, err := r.db.Query(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE template_id=$1 AND team_id=$2 ORDER BY version_number DESC LIMIT $3 OFFSET $4`, templateID, teamID, limit, offset)
+	rows, err := r.queries.ListMessageTemplateVersions(ctx, dbsqlc.ListMessageTemplateVersionsParams{
+		TeamID: teamID, TemplateID: templateID, PageOffset: offset, PageLimit: limit,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := []Version{}
-	for rows.Next() {
-		var value Version
-		var variables []byte
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &variables, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(variables, &value.Variables); err != nil {
-			return nil, err
+	result := make([]Version, 0, len(rows))
+	for _, row := range rows {
+		value, convertErr := versionFromSQLC(row)
+		if convertErr != nil {
+			return nil, convertErr
 		}
 		result = append(result, value)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Template, base Version, req UpdateRequest) (Template, Version, error) {
@@ -156,18 +167,20 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 		return Template{}, Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var currentID *uuid.UUID
-	var next int32
-	err = tx.QueryRow(ctx, `SELECT current_version_id,next_version_number FROM message_templates WHERE id=$1 AND team_id=$2 AND deleted_at IS NULL FOR UPDATE`, uuid.MustParse(template.ID), teamID).Scan(&currentID, &next)
+	queries := r.queries.WithTx(tx)
+	templateID := uuid.MustParse(template.ID)
+
+	locked, err := queries.LockMessageTemplate(ctx, dbsqlc.LockMessageTemplateParams{ID: templateID, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Template{}, Version{}, ErrNotFound
 	}
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	if currentID == nil || currentID.String() != base.ID {
+	if locked.CurrentVersionID == nil || locked.CurrentVersionID.String() != base.ID {
 		return Template{}, Version{}, ErrVersionConflict
 	}
+
 	name, alias := template.Name, template.Alias
 	if req.Name != nil {
 		name = *req.Name
@@ -175,11 +188,14 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 	if req.Alias != nil {
 		alias = *req.Alias
 	}
-	_, err = tx.Exec(ctx, `UPDATE message_templates SET name=$1,alias=$2,updated_at=now() WHERE id=$3 AND team_id=$4`, name, alias, uuid.MustParse(template.ID), teamID)
-	if err != nil {
+	if _, err = queries.UpdateMessageTemplateMetadata(ctx, dbsqlc.UpdateMessageTemplateMetadataParams{
+		Name: name, Alias: alias, ID: templateID, TeamID: teamID,
+	}); err != nil {
 		return Template{}, Version{}, mapWriteError(err)
 	}
-	fromEmail, fromName, replyTo, subject, htmlBody, textBody, variables := base.FromEmail, base.FromName, base.ReplyToEmail, base.Subject, base.HTML, base.Text, base.Variables
+
+	fromEmail, fromName, replyTo := base.FromEmail, base.FromName, base.ReplyToEmail
+	subject, htmlBody, textBody, variables := base.Subject, base.HTML, base.Text, base.Variables
 	if req.FromEmail != nil {
 		fromEmail = *req.FromEmail
 	}
@@ -205,23 +221,30 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	based := uuid.MustParse(base.ID)
-	version, err := insertVersion(ctx, tx, teamID, uuid.MustParse(template.ID), next, fromEmail, fromName, replyTo, subject, htmlBody, textBody, encoded, &based, req.ChangeNote)
+	basedOn := uuid.MustParse(base.ID)
+	versionRow, err := queries.CreateMessageTemplateVersion(ctx, dbsqlc.CreateMessageTemplateVersionParams{
+		TeamID: teamID, TemplateID: templateID, VersionNumber: locked.NextVersionNumber,
+		FromEmail: fromEmail, FromName: fromName, ReplyToEmail: replyTo,
+		Subject: subject, HtmlBody: htmlBody, TextBody: textBody, Variables: encoded,
+		BasedOnVersionID: &basedOn, ChangeNote: req.ChangeNote,
+	})
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	_, err = tx.Exec(ctx, `UPDATE message_templates SET current_version_id=$1,next_version_number=next_version_number+1,updated_at=now() WHERE id=$2 AND team_id=$3`, uuid.MustParse(version.ID), uuid.MustParse(template.ID), teamID)
+	version, err := versionFromSQLC(versionRow)
 	if err != nil {
 		return Template{}, Version{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	finalRow, err := queries.SetMessageTemplateCurrentVersion(ctx, dbsqlc.SetMessageTemplateCurrentVersionParams{
+		VersionID: &versionRow.ID, ID: templateID, TeamID: teamID,
+	})
+	if err != nil {
 		return Template{}, Version{}, err
 	}
-	template.Name = name
-	template.Alias = alias
-	template.CurrentVersionID = &version.ID
-	template.HasUnpublishedChanges = true
-	return template, version, nil
+	if err := tx.Commit(ctx); err != nil {
+		return Template{}, Version{}, err
+	}
+	return templateFromSQLC(finalRow), version, nil
 }
 
 func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, versionID uuid.UUID) (Template, error) {
@@ -230,51 +253,122 @@ func (r *Repository) Publish(ctx context.Context, teamID uuid.UUID, templateID, 
 		return Template{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var exists bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM message_template_versions WHERE id=$1 AND template_id=$2 AND team_id=$3)`, versionID, templateID, teamID).Scan(&exists)
-	if err != nil || !exists {
-		if err == nil {
-			err = ErrVersionNotFound
-		}
+	queries := r.queries.WithTx(tx)
+
+	exists, err := queries.MessageTemplateVersionExists(ctx, dbsqlc.MessageTemplateVersionExistsParams{
+		VersionID: versionID, TemplateID: templateID, TeamID: teamID,
+	})
+	if err != nil {
 		return Template{}, err
 	}
-	var value Template
-	err = tx.QueryRow(ctx, `UPDATE message_templates SET published_version_id=$1,published_at=now(),updated_at=now() WHERE id=$2 AND team_id=$3 AND deleted_at IS NULL RETURNING id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at`, versionID, templateID, teamID).Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt)
+	if !exists {
+		return Template{}, ErrVersionNotFound
+	}
+	row, err := queries.PublishMessageTemplateVersion(ctx, dbsqlc.PublishMessageTemplateVersionParams{
+		VersionID: &versionID, ID: templateID, TeamID: teamID,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Template{}, ErrNotFound
 	}
 	if err != nil {
 		return Template{}, err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO message_template_publications(team_id,template_id,version_id) VALUES($1,$2,$3)`, teamID, templateID, versionID)
-	if err != nil {
+	if _, err = queries.CreateMessageTemplatePublication(ctx, dbsqlc.CreateMessageTemplatePublicationParams{
+		TeamID: teamID, TemplateID: templateID, VersionID: versionID,
+	}); err != nil {
 		return Template{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return Template{}, err
 	}
-	value.HasUnpublishedChanges = value.CurrentVersionID != nil && *value.CurrentVersionID != versionID.String()
-	return value, nil
+	return templateFromSQLC(row), nil
 }
 
 func (r *Repository) Delete(ctx context.Context, teamID, templateID uuid.UUID) (Template, error) {
-	var value Template
-	err := r.db.QueryRow(ctx, `UPDATE message_templates SET deleted_at=now(),updated_at=now() WHERE id=$1 AND team_id=$2 AND deleted_at IS NULL RETURNING id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at`, templateID, teamID).Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt)
+	row, err := r.queries.SoftDeleteMessageTemplate(ctx, dbsqlc.SoftDeleteMessageTemplateParams{ID: templateID, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Template{}, ErrNotFound
 	}
-	return value, err
+	if err != nil {
+		return Template{}, err
+	}
+	return templateFromSQLC(row), nil
 }
 
-func insertVersion(ctx context.Context, tx pgx.Tx, teamID, templateID uuid.UUID, number int32, fromEmail, fromName, replyTo *string, subject, htmlBody string, textBody *string, variables []byte, basedOn *uuid.UUID, note *string) (Version, error) {
-	var value Version
-	var raw []byte
-	err := tx.QueryRow(ctx, `INSERT INTO message_template_versions(team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at`, teamID, templateID, number, fromEmail, fromName, replyTo, subject, htmlBody, textBody, variables, basedOn, note).Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &raw, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt)
+func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
+	return r.queries.MessageTemplateCursorExists(ctx, dbsqlc.MessageTemplateCursorExistsParams{
+		CursorID: cursorID, TeamID: teamID,
+	})
+}
+
+func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
+	var (
+		rows []dbsqlc.MessageTemplate
+		err  error
+	)
+	switch {
+	case after != nil:
+		rows, err = r.queries.ListMessageTemplatesAfter(ctx, dbsqlc.ListMessageTemplatesAfterParams{
+			ScopeTeamID: teamID, CursorID: *after, PageLimit: limit,
+		})
+	case before != nil:
+		rows, err = r.queries.ListMessageTemplatesBefore(ctx, dbsqlc.ListMessageTemplatesBeforeParams{
+			ScopeTeamID: teamID, CursorID: *before, PageLimit: limit,
+		})
+	default:
+		rows, err = r.queries.ListMessageTemplates(ctx, dbsqlc.ListMessageTemplatesParams{
+			TeamID: teamID, PageOffset: 0, PageLimit: limit,
+		})
+	}
 	if err != nil {
+		return nil, err
+	}
+	return templatesFromSQLC(rows), nil
+}
+
+func templateFromSQLC(row dbsqlc.MessageTemplate) Template {
+	value := Template{
+		ID: row.ID.String(), TeamID: row.TeamID.String(), Name: row.Name, Alias: row.Alias,
+		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+	}
+	if row.CurrentVersionID != nil {
+		id := row.CurrentVersionID.String()
+		value.CurrentVersionID = &id
+	}
+	if row.PublishedVersionID != nil {
+		id := row.PublishedVersionID.String()
+		value.PublishedVersionID = &id
+	}
+	if row.PublishedAt.Valid {
+		publishedAt := row.PublishedAt.Time
+		value.PublishedAt = &publishedAt
+	}
+	value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
+	return value
+}
+
+func templatesFromSQLC(rows []dbsqlc.MessageTemplate) []Template {
+	values := make([]Template, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, templateFromSQLC(row))
+	}
+	return values
+}
+
+func versionFromSQLC(row dbsqlc.MessageTemplateVersion) (Version, error) {
+	variables := make([]Variable, 0)
+	if err := json.Unmarshal(row.Variables, &variables); err != nil {
 		return Version{}, err
 	}
-	if err = json.Unmarshal(raw, &value.Variables); err != nil {
-		return Version{}, err
+	value := Version{
+		ID: row.ID.String(), TeamID: row.TeamID.String(), TemplateID: row.TemplateID.String(),
+		VersionNumber: row.VersionNumber, FromEmail: row.FromEmail, FromName: row.FromName,
+		ReplyToEmail: row.ReplyToEmail, Subject: row.Subject, HTML: row.HtmlBody, Text: row.TextBody,
+		Variables: variables, ChangeNote: row.ChangeNote, CreatedAt: row.CreatedAt.Time,
+	}
+	if row.BasedOnVersionID != nil {
+		id := row.BasedOnVersionID.String()
+		value.BasedOnVersionID = &id
 	}
 	return value, nil
 }
@@ -285,45 +379,4 @@ func mapWriteError(err error) error {
 		return ErrAliasConflict
 	}
 	return fmt.Errorf("write message template: %w", err)
-}
-
-func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	var exists bool
-	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM message_templates WHERE id=$1 AND team_id=$2 AND deleted_at IS NULL)`, cursorID, teamID).Scan(&exists)
-	return exists, err
-}
-
-func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
-	query := `SELECT id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at FROM message_templates WHERE team_id=$1 AND deleted_at IS NULL`
-	args := []any{teamID}
-	if after != nil {
-		query += ` AND (created_at,id) < (SELECT created_at,id FROM message_templates WHERE id=$2 AND team_id=$1 AND deleted_at IS NULL)`
-		args = append(args, *after)
-	}
-	if before != nil {
-		query += ` AND (created_at,id) > (SELECT created_at,id FROM message_templates WHERE id=$2 AND team_id=$1 AND deleted_at IS NULL)`
-		args = append(args, *before)
-	}
-	if before != nil {
-		query += ` ORDER BY created_at ASC,id ASC`
-	} else {
-		query += ` ORDER BY created_at DESC,id DESC`
-	}
-	args = append(args, limit)
-	query += fmt.Sprintf(` LIMIT $%d`, len(args))
-	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := make([]Template, 0)
-	for rows.Next() {
-		var value Template
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt); err != nil {
-			return nil, err
-		}
-		value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
-		result = append(result, value)
-	}
-	return result, rows.Err()
 }

@@ -14,7 +14,17 @@ import (
 const createMessageTemplate = `-- name: CreateMessageTemplate :one
 INSERT INTO message_templates (team_id, name, alias)
 VALUES ($1, $2, $3)
-RETURNING id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
+RETURNING id,
+          team_id,
+          name,
+          alias,
+          current_version_id,
+          published_version_id,
+          next_version_number,
+          published_at,
+          created_at,
+          updated_at,
+          deleted_at
 `
 
 type CreateMessageTemplateParams struct {
@@ -68,11 +78,21 @@ func (q *Queries) CreateMessageTemplatePublication(ctx context.Context, arg Crea
 }
 
 const getMessageTemplateByAlias = `-- name: GetMessageTemplateByAlias :one
-SELECT id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
-FROM message_templates
-WHERE team_id = $1
-  AND lower(alias) = lower($2)
-  AND deleted_at IS NULL
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.team_id = $1
+  AND lower(mt.alias) = lower($2)
+  AND mt.deleted_at IS NULL
 `
 
 type GetMessageTemplateByAliasParams struct {
@@ -100,11 +120,21 @@ func (q *Queries) GetMessageTemplateByAlias(ctx context.Context, arg GetMessageT
 }
 
 const getMessageTemplateByID = `-- name: GetMessageTemplateByID :one
-SELECT id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
-FROM message_templates
-WHERE id = $1
-  AND team_id = $2
-  AND deleted_at IS NULL
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.id = $1
+  AND mt.team_id = $2
+  AND mt.deleted_at IS NULL
 `
 
 type GetMessageTemplateByIDParams struct {
@@ -132,11 +162,21 @@ func (q *Queries) GetMessageTemplateByID(ctx context.Context, arg GetMessageTemp
 }
 
 const listMessageTemplates = `-- name: ListMessageTemplates :many
-SELECT id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
-FROM message_templates
-WHERE team_id = $1
-  AND deleted_at IS NULL
-ORDER BY created_at DESC, id DESC
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.team_id = $1
+  AND mt.deleted_at IS NULL
+ORDER BY mt.created_at DESC, mt.id DESC
 LIMIT $3
 OFFSET $2
 `
@@ -179,12 +219,150 @@ func (q *Queries) ListMessageTemplates(ctx context.Context, arg ListMessageTempl
 	return items, nil
 }
 
+const listMessageTemplatesAfter = `-- name: ListMessageTemplatesAfter :many
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.team_id = $1
+  AND mt.deleted_at IS NULL
+  AND (mt.created_at, mt.id) < (
+      SELECT cursor_template.created_at, cursor_template.id
+      FROM message_templates AS cursor_template
+      WHERE cursor_template.id = $2
+        AND cursor_template.team_id = $1
+        AND cursor_template.deleted_at IS NULL
+  )
+ORDER BY mt.created_at DESC, mt.id DESC
+LIMIT $3
+`
+
+type ListMessageTemplatesAfterParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListMessageTemplatesAfter(ctx context.Context, arg ListMessageTemplatesAfterParams) ([]MessageTemplate, error) {
+	rows, err := q.db.Query(ctx, listMessageTemplatesAfter, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessageTemplate{}
+	for rows.Next() {
+		var i MessageTemplate
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.Alias,
+			&i.CurrentVersionID,
+			&i.PublishedVersionID,
+			&i.NextVersionNumber,
+			&i.PublishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessageTemplatesBefore = `-- name: ListMessageTemplatesBefore :many
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.team_id = $1
+  AND mt.deleted_at IS NULL
+  AND (mt.created_at, mt.id) > (
+      SELECT cursor_template.created_at, cursor_template.id
+      FROM message_templates AS cursor_template
+      WHERE cursor_template.id = $2
+        AND cursor_template.team_id = $1
+        AND cursor_template.deleted_at IS NULL
+  )
+ORDER BY mt.created_at ASC, mt.id ASC
+LIMIT $3
+`
+
+type ListMessageTemplatesBeforeParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListMessageTemplatesBefore(ctx context.Context, arg ListMessageTemplatesBeforeParams) ([]MessageTemplate, error) {
+	rows, err := q.db.Query(ctx, listMessageTemplatesBefore, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MessageTemplate{}
+	for rows.Next() {
+		var i MessageTemplate
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.Alias,
+			&i.CurrentVersionID,
+			&i.PublishedVersionID,
+			&i.NextVersionNumber,
+			&i.PublishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockMessageTemplate = `-- name: LockMessageTemplate :one
-SELECT id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
-FROM message_templates
-WHERE id = $1
-  AND team_id = $2
-  AND deleted_at IS NULL
+SELECT mt.id,
+       mt.team_id,
+       mt.name,
+       mt.alias,
+       mt.current_version_id,
+       mt.published_version_id,
+       mt.next_version_number,
+       mt.published_at,
+       mt.created_at,
+       mt.updated_at,
+       mt.deleted_at
+FROM message_templates AS mt
+WHERE mt.id = $1
+  AND mt.team_id = $2
+  AND mt.deleted_at IS NULL
 FOR UPDATE
 `
 
@@ -212,6 +390,28 @@ func (q *Queries) LockMessageTemplate(ctx context.Context, arg LockMessageTempla
 	return i, err
 }
 
+const messageTemplateCursorExists = `-- name: MessageTemplateCursorExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM message_templates AS mt
+    WHERE mt.id = $1
+      AND mt.team_id = $2
+      AND mt.deleted_at IS NULL
+)
+`
+
+type MessageTemplateCursorExistsParams struct {
+	CursorID uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	TeamID   uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) MessageTemplateCursorExists(ctx context.Context, arg MessageTemplateCursorExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, messageTemplateCursorExists, arg.CursorID, arg.TeamID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const publishMessageTemplateVersion = `-- name: PublishMessageTemplateVersion :one
 UPDATE message_templates
 SET published_version_id = $1,
@@ -220,7 +420,17 @@ SET published_version_id = $1,
 WHERE id = $2
   AND team_id = $3
   AND deleted_at IS NULL
-RETURNING id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
+RETURNING id,
+          team_id,
+          name,
+          alias,
+          current_version_id,
+          published_version_id,
+          next_version_number,
+          published_at,
+          created_at,
+          updated_at,
+          deleted_at
 `
 
 type PublishMessageTemplateVersionParams struct {
@@ -256,7 +466,17 @@ SET current_version_id = $1,
 WHERE id = $2
   AND team_id = $3
   AND deleted_at IS NULL
-RETURNING id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
+RETURNING id,
+          team_id,
+          name,
+          alias,
+          current_version_id,
+          published_version_id,
+          next_version_number,
+          published_at,
+          created_at,
+          updated_at,
+          deleted_at
 `
 
 type SetMessageTemplateCurrentVersionParams struct {
@@ -291,7 +511,17 @@ SET deleted_at = now(),
 WHERE id = $1
   AND team_id = $2
   AND deleted_at IS NULL
-RETURNING id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
+RETURNING id,
+          team_id,
+          name,
+          alias,
+          current_version_id,
+          published_version_id,
+          next_version_number,
+          published_at,
+          created_at,
+          updated_at,
+          deleted_at
 `
 
 type SoftDeleteMessageTemplateParams struct {
@@ -326,7 +556,17 @@ SET name = $1,
 WHERE id = $3
   AND team_id = $4
   AND deleted_at IS NULL
-RETURNING id, team_id, name, alias, current_version_id, published_version_id, next_version_number, published_at, created_at, updated_at, deleted_at
+RETURNING id,
+          team_id,
+          name,
+          alias,
+          current_version_id,
+          published_version_id,
+          next_version_number,
+          published_at,
+          created_at,
+          updated_at,
+          deleted_at
 `
 
 type UpdateMessageTemplateMetadataParams struct {
