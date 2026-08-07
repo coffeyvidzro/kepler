@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS message_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    alias VARCHAR(100) NOT NULL,
+    alias VARCHAR(100),
     current_version_id UUID,
     published_version_id UUID,
     next_version_number INTEGER NOT NULL DEFAULT 1,
@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS message_template_versions (
         REFERENCES message_template_versions (id)
         ON DELETE SET NULL,
     CONSTRAINT chk_message_template_versions_number CHECK (version_number > 0),
-    CONSTRAINT chk_message_template_versions_subject CHECK (length(btrim(subject)) > 0),
     CONSTRAINT chk_message_template_versions_html CHECK (length(btrim(html_body)) > 0),
     CONSTRAINT chk_message_template_versions_variables CHECK (jsonb_typeof(variables) = 'array')
 );

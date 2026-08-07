@@ -286,3 +286,44 @@ func mapWriteError(err error) error {
 	}
 	return fmt.Errorf("write message template: %w", err)
 }
+
+func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM message_templates WHERE id=$1 AND team_id=$2 AND deleted_at IS NULL)`, cursorID, teamID).Scan(&exists)
+	return exists, err
+}
+
+func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
+	query := `SELECT id,team_id,name,alias,current_version_id,published_version_id,published_at,created_at,updated_at FROM message_templates WHERE team_id=$1 AND deleted_at IS NULL`
+	args := []any{teamID}
+	if after != nil {
+		query += ` AND (created_at,id) < (SELECT created_at,id FROM message_templates WHERE id=$2 AND team_id=$1 AND deleted_at IS NULL)`
+		args = append(args, *after)
+	}
+	if before != nil {
+		query += ` AND (created_at,id) > (SELECT created_at,id FROM message_templates WHERE id=$2 AND team_id=$1 AND deleted_at IS NULL)`
+		args = append(args, *before)
+	}
+	if before != nil {
+		query += ` ORDER BY created_at ASC,id ASC`
+	} else {
+		query += ` ORDER BY created_at DESC,id DESC`
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(` LIMIT $%d`, len(args))
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]Template, 0)
+	for rows.Next() {
+		var value Template
+		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Alias, &value.CurrentVersionID, &value.PublishedVersionID, &value.PublishedAt, &value.CreatedAt, &value.UpdatedAt); err != nil {
+			return nil, err
+		}
+		value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
+		result = append(result, value)
+	}
+	return result, rows.Err()
+}

@@ -2,7 +2,8 @@ package topic
 
 import (
 	"encoding/json"
-	"strconv"
+	"errors"
+	"io"
 
 	"github.com/labstack/echo/v5"
 
@@ -19,23 +20,27 @@ func (h *Handler) Create(c *echo.Context) error {
 	if err := decodeJSON(c, &req); err != nil {
 		return err
 	}
-	value, err := h.service.Create(c.Request().Context(), req)
+	value, err := h.service.CreateAPI(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.Created(c, value)
+	return httputil.OK(c, value)
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	values, err := h.service.List(c.Request().Context(), ListRequest{Limit: parseInt32(c.QueryParam("limit")), Offset: parseInt32(c.QueryParam("offset"))})
+	value, err := h.service.ListAPI(c.Request().Context(), APIListRequest{
+		Limit:  httputil.QueryInt32(c, "limit"),
+		After:  c.QueryParam("after"),
+		Before: c.QueryParam("before"),
+	})
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, values)
+	return httputil.OK(c, value)
 }
 
 func (h *Handler) Get(c *echo.Context) error {
-	value, err := h.service.Get(c.Request().Context(), c.Param("topic_id"))
+	value, err := h.service.GetAPI(c.Request().Context(), c.Param("topic_id"))
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -47,7 +52,7 @@ func (h *Handler) Update(c *echo.Context) error {
 	if err := decodeJSON(c, &req); err != nil {
 		return err
 	}
-	value, err := h.service.Update(c.Request().Context(), c.Param("topic_id"), req)
+	value, err := h.service.UpdateAPI(c.Request().Context(), c.Param("topic_id"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -55,7 +60,7 @@ func (h *Handler) Update(c *echo.Context) error {
 }
 
 func (h *Handler) Delete(c *echo.Context) error {
-	value, err := h.service.Delete(c.Request().Context(), c.Param("topic_id"))
+	value, err := h.service.DeleteAPI(c.Request().Context(), c.Param("topic_id"))
 	if err != nil {
 		return httputil.Error(c, err)
 	}
@@ -63,16 +68,13 @@ func (h *Handler) Delete(c *echo.Context) error {
 }
 
 func decodeJSON(c *echo.Context, dst any) error {
-	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
+	decoder := json.NewDecoder(c.Request().Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
 	}
 	return nil
-}
-
-func parseInt32(value string) int32 {
-	parsed, err := strconv.ParseInt(value, 10, 32)
-	if err != nil {
-		return 0
-	}
-	return int32(parsed)
 }
