@@ -19,8 +19,41 @@ SELECT *
 FROM contact_properties
 WHERE team_id = sqlc.arg(team_id)
 ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(page_limit)
-OFFSET sqlc.arg(page_offset);
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListContactPropertiesAfter :many
+SELECT property.*
+FROM contact_properties AS property
+WHERE property.team_id = sqlc.arg(scope_team_id)
+  AND (property.created_at, property.id) < (
+      SELECT cursor_property.created_at, cursor_property.id
+      FROM contact_properties AS cursor_property
+      WHERE cursor_property.id = sqlc.arg(cursor_id)
+        AND cursor_property.team_id = sqlc.arg(scope_team_id)
+  )
+ORDER BY property.created_at DESC, property.id DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListContactPropertiesBefore :many
+SELECT property.*
+FROM contact_properties AS property
+WHERE property.team_id = sqlc.arg(scope_team_id)
+  AND (property.created_at, property.id) > (
+      SELECT cursor_property.created_at, cursor_property.id
+      FROM contact_properties AS cursor_property
+      WHERE cursor_property.id = sqlc.arg(cursor_id)
+        AND cursor_property.team_id = sqlc.arg(scope_team_id)
+  )
+ORDER BY property.created_at ASC, property.id ASC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ContactPropertyCursorExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM contact_properties
+    WHERE id = sqlc.arg(cursor_id)
+      AND team_id = sqlc.arg(team_id)
+);
 
 -- name: GetContactProperty :one
 SELECT *
