@@ -14,7 +14,7 @@ import (
 
 const claimNextBroadcastRecipientForFanout = `-- name: ClaimNextBroadcastRecipientForFanout :one
 SELECT
-    recipient.id, recipient.team_id, recipient.broadcast_id, recipient.contact_id, recipient.email, recipient.normalized_email, recipient.first_name, recipient.last_name, recipient.contact_snapshot, recipient.status, recipient.exclusion_reason, recipient.email_message_id, recipient.created_at, recipient.queued_at, recipient.attempt_count, recipient.next_attempt_at, recipient.last_error_code, recipient.last_error_message, recipient.failed_at,
+    recipient.id, recipient.team_id, recipient.broadcast_id, recipient.contact_id, recipient.email, recipient.normalized_email, recipient.first_name, recipient.last_name, recipient.contact_snapshot, recipient.status, recipient.exclusion_reason, recipient.email_message_id, recipient.attempt_count, recipient.next_attempt_at, recipient.last_error_code, recipient.last_error_message, recipient.failed_at, recipient.created_at, recipient.queued_at,
     broadcast.template_id,
     broadcast.template_version_id,
     broadcast.variable_bindings
@@ -46,13 +46,13 @@ type ClaimNextBroadcastRecipientForFanoutRow struct {
 	Status            string             `db:"status" json:"status"`
 	ExclusionReason   *string            `db:"exclusion_reason" json:"exclusion_reason"`
 	EmailMessageID    *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
 	AttemptCount      int32              `db:"attempt_count" json:"attempt_count"`
 	NextAttemptAt     pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
 	LastErrorCode     *string            `db:"last_error_code" json:"last_error_code"`
 	LastErrorMessage  *string            `db:"last_error_message" json:"last_error_message"`
 	FailedAt          pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
 	TemplateID        uuid.UUID          `db:"template_id" json:"template_id"`
 	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
 	VariableBindings  []byte             `db:"variable_bindings" json:"variable_bindings"`
@@ -74,13 +74,13 @@ func (q *Queries) ClaimNextBroadcastRecipientForFanout(ctx context.Context) (Cla
 		&i.Status,
 		&i.ExclusionReason,
 		&i.EmailMessageID,
-		&i.CreatedAt,
-		&i.QueuedAt,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
 		&i.LastErrorCode,
 		&i.LastErrorMessage,
 		&i.FailedAt,
+		&i.CreatedAt,
+		&i.QueuedAt,
 		&i.TemplateID,
 		&i.TemplateVersionID,
 		&i.VariableBindings,
@@ -126,7 +126,7 @@ INSERT INTO broadcast_recipients (
     $7, $8, $9,
     $10
 )
-RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, created_at, queued_at, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at
+RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at, created_at, queued_at
 `
 
 type CreateBroadcastRecipientParams struct {
@@ -169,13 +169,13 @@ func (q *Queries) CreateBroadcastRecipient(ctx context.Context, arg CreateBroadc
 		&i.Status,
 		&i.ExclusionReason,
 		&i.EmailMessageID,
-		&i.CreatedAt,
-		&i.QueuedAt,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
 		&i.LastErrorCode,
 		&i.LastErrorMessage,
 		&i.FailedAt,
+		&i.CreatedAt,
+		&i.QueuedAt,
 	)
 	return i, err
 }
@@ -192,7 +192,7 @@ WHERE id = $3
   AND team_id = $4
   AND broadcast_id = $5
   AND status = 'pending'
-RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, created_at, queued_at, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at
+RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at, created_at, queued_at
 `
 
 type FailBroadcastRecipientFanoutParams struct {
@@ -225,19 +225,19 @@ func (q *Queries) FailBroadcastRecipientFanout(ctx context.Context, arg FailBroa
 		&i.Status,
 		&i.ExclusionReason,
 		&i.EmailMessageID,
-		&i.CreatedAt,
-		&i.QueuedAt,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
 		&i.LastErrorCode,
 		&i.LastErrorMessage,
 		&i.FailedAt,
+		&i.CreatedAt,
+		&i.QueuedAt,
 	)
 	return i, err
 }
 
 const listBroadcastRecipients = `-- name: ListBroadcastRecipients :many
-SELECT id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, created_at, queued_at, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at
+SELECT id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at, created_at, queued_at
 FROM broadcast_recipients
 WHERE team_id = $1
   AND broadcast_id = $2
@@ -280,13 +280,13 @@ func (q *Queries) ListBroadcastRecipients(ctx context.Context, arg ListBroadcast
 			&i.Status,
 			&i.ExclusionReason,
 			&i.EmailMessageID,
-			&i.CreatedAt,
-			&i.QueuedAt,
 			&i.AttemptCount,
 			&i.NextAttemptAt,
 			&i.LastErrorCode,
 			&i.LastErrorMessage,
 			&i.FailedAt,
+			&i.CreatedAt,
+			&i.QueuedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -403,7 +403,7 @@ WHERE id = $4
   AND team_id = $5
   AND broadcast_id = $6
   AND status = 'pending'
-RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, created_at, queued_at, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at
+RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at, created_at, queued_at
 `
 
 type RetryBroadcastRecipientFanoutParams struct {
@@ -438,13 +438,13 @@ func (q *Queries) RetryBroadcastRecipientFanout(ctx context.Context, arg RetryBr
 		&i.Status,
 		&i.ExclusionReason,
 		&i.EmailMessageID,
-		&i.CreatedAt,
-		&i.QueuedAt,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
 		&i.LastErrorCode,
 		&i.LastErrorMessage,
 		&i.FailedAt,
+		&i.CreatedAt,
+		&i.QueuedAt,
 	)
 	return i, err
 }
@@ -461,7 +461,7 @@ WHERE id = $2
   AND team_id = $3
   AND broadcast_id = $4
   AND status = 'pending'
-RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, created_at, queued_at, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at
+RETURNING id, team_id, broadcast_id, contact_id, email, normalized_email, first_name, last_name, contact_snapshot, status, exclusion_reason, email_message_id, attempt_count, next_attempt_at, last_error_code, last_error_message, failed_at, created_at, queued_at
 `
 
 type SetBroadcastRecipientQueuedParams struct {
@@ -492,13 +492,13 @@ func (q *Queries) SetBroadcastRecipientQueued(ctx context.Context, arg SetBroadc
 		&i.Status,
 		&i.ExclusionReason,
 		&i.EmailMessageID,
-		&i.CreatedAt,
-		&i.QueuedAt,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
 		&i.LastErrorCode,
 		&i.LastErrorMessage,
 		&i.FailedAt,
+		&i.CreatedAt,
+		&i.QueuedAt,
 	)
 	return i, err
 }

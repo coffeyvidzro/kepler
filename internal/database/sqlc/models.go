@@ -96,13 +96,13 @@ type BroadcastRecipient struct {
 	Status           string             `db:"status" json:"status"`
 	ExclusionReason  *string            `db:"exclusion_reason" json:"exclusion_reason"`
 	EmailMessageID   *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	QueuedAt         pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
 	AttemptCount     int32              `db:"attempt_count" json:"attempt_count"`
 	NextAttemptAt    pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
 	LastErrorCode    *string            `db:"last_error_code" json:"last_error_code"`
 	LastErrorMessage *string            `db:"last_error_message" json:"last_error_message"`
 	FailedAt         pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueuedAt         pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
 }
 
 type Contact struct {
