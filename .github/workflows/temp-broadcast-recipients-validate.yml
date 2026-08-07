@@ -1,25 +1,13 @@
 name: Temporary Broadcast Recipients Validate
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - feat/broadcast-recipients
-    paths:
-      - ".github/workflows/temp-broadcast-recipients-validate.yml"
-      - "internal/modules/broadcast/**"
-      - "internal/delivery/broadcast/**"
-      - "internal/dugble/worker/**"
-      - "migrations/**"
   pull_request:
     branches:
       - main
-    paths:
-      - ".github/workflows/temp-broadcast-recipients-validate.yml"
-      - "internal/modules/broadcast/**"
-      - "internal/delivery/broadcast/**"
-      - "internal/dugble/worker/**"
-      - "migrations/**"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -48,8 +36,9 @@ jobs:
         uses: ariga/setup-atlas@v0
 
       - name: Consolidate broadcast structure
-        shell: python
+        shell: bash
         run: |
+          python <<'PY'
           from pathlib import Path
 
           def append_once(target_path: str, source_path: str, marker: str) -> None:
@@ -128,6 +117,7 @@ jobs:
           worker_helper = Path("internal/dugble/worker/broadcast_execution.go")
           if worker_helper.exists():
               worker_helper.unlink()
+          PY
 
       - name: Hash migrations
         run: atlas migrate hash --dir file://migrations
