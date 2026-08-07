@@ -6,113 +6,130 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 )
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	queries *dbsqlc.Queries
+}
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{queries: dbsqlc.New(db)}
+}
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Topic, error) {
-	var value Topic
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO topics (team_id, name, description, default_subscription, visibility)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-	`, teamID, req.Name, req.Description, req.DefaultSubscription, req.Visibility).Scan(
-		&value.ID, &value.TeamID, &value.Name, &value.Description,
-		&value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt,
-	)
+	row, err := r.queries.CreateTopic(ctx, dbsqlc.CreateTopicParams{
+		TeamID:              teamID,
+		Name:                req.Name,
+		Description:         req.Description,
+		DefaultSubscription: req.DefaultSubscription,
+		Visibility:          req.Visibility,
+	})
 	if err != nil {
 		return Topic{}, fmt.Errorf("create topic: %w", err)
 	}
-	return value, nil
+	return topicFromSQLC(row), nil
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Topic, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-		FROM topics WHERE team_id = $1
-		ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3
-	`, teamID, limit, offset)
+	rows, err := r.queries.ListTopics(ctx, dbsqlc.ListTopicsParams{
+		TeamID:     teamID,
+		PageOffset: offset,
+		PageLimit:  limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list topics: %w", err)
 	}
-	defer rows.Close()
-	values := make([]Topic, 0)
-	for rows.Next() {
-		var value Topic
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan topic: %w", err)
-		}
-		values = append(values, value)
-	}
-	return values, rows.Err()
+	return topicsFromSQLC(rows), nil
 }
 
 func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Topic, error) {
-	var value Topic
-	err := r.db.QueryRow(ctx, `
-		SELECT id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-		FROM topics WHERE id = $1 AND team_id = $2
-	`, id, teamID).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
-	return value, err
+	row, err := r.queries.GetTopic(ctx, dbsqlc.GetTopicParams{ID: id, TeamID: teamID})
+	if err != nil {
+		return Topic{}, err
+	}
+	return topicFromSQLC(row), nil
 }
 
 func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, name string, description *string, visibility string) (Topic, error) {
-	var value Topic
-	err := r.db.QueryRow(ctx, `
-		UPDATE topics SET name = $3, description = $4, visibility = $5, updated_at = now()
-		WHERE id = $1 AND team_id = $2
-		RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-	`, id, teamID, name, description, visibility).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
-	return value, err
+	row, err := r.queries.UpdateTopic(ctx, dbsqlc.UpdateTopicParams{
+		Name:        name,
+		Description: description,
+		Visibility:  visibility,
+		ID:          id,
+		TeamID:      teamID,
+	})
+	if err != nil {
+		return Topic{}, err
+	}
+	return topicFromSQLC(row), nil
 }
 
 func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Topic, error) {
-	var value Topic
-	err := r.db.QueryRow(ctx, `
-		DELETE FROM topics WHERE id = $1 AND team_id = $2
-		RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-	`, id, teamID).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
-	return value, err
+	row, err := r.queries.DeleteTopic(ctx, dbsqlc.DeleteTopicParams{ID: id, TeamID: teamID})
+	if err != nil {
+		return Topic{}, err
+	}
+	return topicFromSQLC(row), nil
 }
 
 func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	var exists bool
-	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM topics WHERE id=$1 AND team_id=$2)`, cursorID, teamID).Scan(&exists)
-	return exists, err
+	return r.queries.TopicCursorExists(ctx, dbsqlc.TopicCursorExistsParams{
+		CursorID: cursorID,
+		TeamID:   teamID,
+	})
 }
 
 func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Topic, error) {
-	query := `SELECT id,team_id,name,description,default_subscription,visibility,created_at,updated_at FROM topics WHERE team_id=$1`
-	args := []any{teamID}
-	if after != nil {
-		query += ` AND (created_at,id) < (SELECT created_at,id FROM topics WHERE id=$2 AND team_id=$1)`
-		args = append(args, *after)
+	var (
+		rows []dbsqlc.Topic
+		err  error
+	)
+
+	switch {
+	case after != nil:
+		rows, err = r.queries.ListTopicsAfter(ctx, dbsqlc.ListTopicsAfterParams{
+			ScopeTeamID: teamID,
+			CursorID:    *after,
+			PageLimit:   limit,
+		})
+	case before != nil:
+		rows, err = r.queries.ListTopicsBefore(ctx, dbsqlc.ListTopicsBeforeParams{
+			ScopeTeamID: teamID,
+			CursorID:    *before,
+			PageLimit:   limit,
+		})
+	default:
+		rows, err = r.queries.ListTopics(ctx, dbsqlc.ListTopicsParams{
+			TeamID:     teamID,
+			PageOffset: 0,
+			PageLimit:  limit,
+		})
 	}
-	if before != nil {
-		query += ` AND (created_at,id) > (SELECT created_at,id FROM topics WHERE id=$2 AND team_id=$1)`
-		args = append(args, *before)
-	}
-	if before != nil {
-		query += ` ORDER BY created_at ASC,id ASC`
-	} else {
-		query += ` ORDER BY created_at DESC,id DESC`
-	}
-	args = append(args, limit)
-	query += fmt.Sprintf(` LIMIT $%d`, len(args))
-	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list topic page: %w", err)
 	}
-	defer rows.Close()
-	values := make([]Topic, 0)
-	for rows.Next() {
-		var value Topic
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan topic page: %w", err)
-		}
-		values = append(values, value)
+	return topicsFromSQLC(rows), nil
+}
+
+func topicsFromSQLC(rows []dbsqlc.Topic) []Topic {
+	values := make([]Topic, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, topicFromSQLC(row))
 	}
-	return values, rows.Err()
+	return values
+}
+
+func topicFromSQLC(row dbsqlc.Topic) Topic {
+	return Topic{
+		ID:                  row.ID.String(),
+		TeamID:              row.TeamID.String(),
+		Name:                row.Name,
+		Description:         row.Description,
+		DefaultSubscription: row.DefaultSubscription,
+		Visibility:          row.Visibility,
+		CreatedAt:           row.CreatedAt,
+		UpdatedAt:           row.UpdatedAt,
+	}
 }
