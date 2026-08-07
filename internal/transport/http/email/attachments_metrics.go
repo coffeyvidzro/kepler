@@ -24,7 +24,6 @@ func (handler *Handler) ListAttachments(c *echo.Context) error {
 	for index := range response.Data {
 		response.Data[index].DownloadURL = attachmentDownloadURL(c, c.Param("message_id"), response.Data[index].ID)
 	}
-	// These endpoints intentionally use the Resend wire response directly.
 	return c.JSON(http.StatusOK, response)
 }
 
@@ -50,7 +49,7 @@ func (handler *Handler) DownloadAttachment(c *echo.Context) error {
 	}
 	c.Response().Header().Set(echo.HeaderContentType, download.ContentType)
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename=%q`, download.ContentDisposition, download.Filename))
-	c.Response().Header().Set(echo.HeaderCacheControl, "private, max-age=900")
+	c.Response().Header().Set("Cache-Control", "private, max-age=900")
 	return c.Blob(http.StatusOK, download.ContentType, download.Content)
 }
 
@@ -89,10 +88,16 @@ func attachmentDownloadURL(c *echo.Context, messageID, attachmentID string) stri
 	request := c.Request()
 	scheme := request.Header.Get("X-Forwarded-Proto")
 	if scheme == "" {
-		if request.TLS != nil { scheme = "https" } else { scheme = "http" }
+		if request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
 	}
 	host := request.Header.Get("X-Forwarded-Host")
-	if host == "" { host = request.Host }
+	if host == "" {
+		host = request.Host
+	}
 	path := "/emails/" + url.PathEscape(messageID) + "/attachments/" + url.PathEscape(attachmentID) + "/download"
 	return scheme + "://" + host + path
 }
