@@ -90,6 +90,13 @@ type ContactPropertyValue struct {
 	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type ContactSegment struct {
+	TeamID    uuid.UUID          `db:"team_id" json:"team_id"`
+	ContactID uuid.UUID          `db:"contact_id" json:"contact_id"`
+	SegmentID uuid.UUID          `db:"segment_id" json:"segment_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Currency struct {
 	Code      string `db:"code" json:"code"`
 	MinorUnit int16  `db:"minor_unit" json:"minor_unit"`
@@ -285,6 +292,13 @@ type RecoveryCode struct {
 	UserID    uuid.UUID          `db:"user_id" json:"user_id"`
 	CodeHash  string             `db:"code_hash" json:"code_hash"`
 	UsedAt    pgtype.Timestamptz `db:"used_at" json:"used_at"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Segment struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	TeamID    uuid.UUID          `db:"team_id" json:"team_id"`
+	Name      string             `db:"name" json:"name"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
