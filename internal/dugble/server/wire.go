@@ -23,6 +23,7 @@ import (
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant/provisioning"
+	messagetemplatemodule "github.com/coffeyvidzro/dugble/server/internal/modules/messagetemplate"
 	mfamodule "github.com/coffeyvidzro/dugble/server/internal/modules/mfa"
 	segmentmodule "github.com/coffeyvidzro/dugble/server/internal/modules/segment"
 	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
@@ -49,6 +50,7 @@ import (
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
 	emailhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/email"
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
+	messagetemplatehttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/messagetemplate"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
 	segmenthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/segment"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
@@ -168,6 +170,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	segmentRepository := segmentmodule.NewRepository(db)
 	topicRepository := topicmodule.NewRepository(db)
 	suppressionRepository := suppressionmodule.NewRepository(db)
+	messageTemplateRepository := messagetemplatemodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
@@ -196,6 +199,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		},
 		billingService,
 	)
+	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
 	domainService := domainmodule.NewService(domainRepository, emailClient, netdns.New(), emailTenantService)
 
@@ -220,6 +224,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		segment:         segmenthttp.NewHandler(segmentmodule.NewService(segmentRepository)),
 		topic:           topichttp.NewHandler(topicmodule.NewService(topicRepository)),
 		suppression:     suppressionhttp.NewHandler(suppressionmodule.NewService(suppressionRepository)),
+		messageTemplate: messagetemplatehttp.NewHandler(messageTemplateService),
 		teamToken: teamtokenhttp.NewHandler(
 			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
 		),
