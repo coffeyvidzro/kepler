@@ -85,6 +85,38 @@ WHERE id = sqlc.arg(id)
   AND deleted_at IS NULL
 RETURNING *;
 
+-- name: QueueScheduledBroadcast :one
+UPDATE broadcasts
+SET status = 'queued',
+    queued_at = now(),
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND status = 'scheduled'
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: QueueNextDueBroadcast :one
+WITH candidate AS (
+    SELECT id
+    FROM broadcasts
+    WHERE status = 'scheduled'
+      AND scheduled_at <= now()
+      AND deleted_at IS NULL
+    ORDER BY scheduled_at, id
+    FOR UPDATE SKIP LOCKED
+    LIMIT 1
+)
+UPDATE broadcasts AS broadcast
+SET status = 'queued',
+    queued_at = now(),
+    revision = broadcast.revision + 1,
+    updated_at = now()
+FROM candidate
+WHERE broadcast.id = candidate.id
+RETURNING broadcast.*;
+
 -- name: CancelScheduledBroadcast :one
 UPDATE broadcasts
 SET status = 'canceled',
@@ -98,6 +130,29 @@ WHERE id = sqlc.arg(id)
   AND deleted_at IS NULL
 RETURNING *;
 
+-- name: MarkBroadcastSent :one
+UPDATE broadcasts
+SET status = 'sent',
+    sent_at = now(),
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND status = 'queued'
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: MarkBroadcastFailed :one
+UPDATE broadcasts
+SET status = 'failed',
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND team_id = sqlc.arg(team_id)
+  AND status = 'queued'
+  AND deleted_at IS NULL
+RETURNING *;
+
 -- name: SoftDeleteBroadcast :one
 UPDATE broadcasts
 SET deleted_at = now(), updated_at = now()
@@ -106,3 +161,40 @@ WHERE id = sqlc.arg(id)
   AND status IN ('draft','canceled')
   AND deleted_at IS NULL
 RETURNING *;
+
+-- name: ClaimNextQueuedBroadcastForMaterialization :one
+SELECT id, team_id, segment_id, topic_id
+FROM broadcasts
+WHERE status = 'queued'
+  AND recipients_materialized_at IS NULL
+  AND deleted_at IS NULL
+ORDER BY queued_at, id
+FOR UPDATE SKIP LOCKED
+LIMIT 1;
+
+-- name: CompleteBroadcastRecipientMaterialization :one
+WITH counts AS (
+    SELECT
+        count(*) AS audience_count,
+        count(*) FILTER (WHERE status = 'pending') AS eligible_count,
+        count(*) FILTER (WHERE status = 'excluded') AS excluded_count
+    FROM broadcast_recipients
+    WHERE broadcast_id = sqlc.arg(broadcast_id)
+      AND team_id = sqlc.arg(team_id)
+)
+UPDATE broadcasts AS broadcast
+SET audience_count = counts.audience_count,
+    eligible_count = counts.eligible_count,
+    suppressed_count = counts.excluded_count,
+    failed_count = 0,
+    recipients_materialized_at = now(),
+    revision = broadcast.revision + 1,
+    updated_at = now()
+FROM counts
+WHERE broadcast.id = sqlc.arg(broadcast_id)
+  AND broadcast.team_id = sqlc.arg(team_id)
+RETURNING broadcast.id AS broadcast_id,
+          broadcast.team_id,
+          counts.audience_count,
+          counts.eligible_count,
+          counts.excluded_count;
