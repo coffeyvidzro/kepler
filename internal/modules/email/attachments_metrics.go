@@ -42,7 +42,7 @@ type AttachmentDownload struct {
 	Filename           string
 	ContentType        string
 	ContentDisposition string
-	Content             []byte
+	Content            []byte
 }
 
 type MetricsRequest struct {
@@ -207,10 +207,18 @@ func (s *Service) Metrics(ctx context.Context, req MetricsRequest) (MetricsRespo
 		Totals: selectMetrics(totals, metrics),
 	}
 	if response.SortBy == "" {
-		if len(dimensions) == 1 { response.SortBy = "date" } else { response.SortBy = "sent" }
+		if len(dimensions) == 1 {
+			response.SortBy = "date"
+		} else {
+			response.SortBy = "sent"
+		}
 	}
 	if response.SortOrder == "" {
-		if response.SortBy == "date" { response.SortOrder = "asc" } else { response.SortOrder = "desc" }
+		if response.SortBy == "date" {
+			response.SortOrder = "asc"
+		} else {
+			response.SortOrder = "desc"
+		}
 	}
 	if response.SortOrder != "asc" && response.SortOrder != "desc" {
 		return MetricsResponse{}, apperrors.NewBadRequest("sort_order must be asc or desc")
@@ -227,7 +235,9 @@ func (s *Service) Metrics(ctx context.Context, req MetricsRequest) (MetricsRespo
 			response.Data = append(response.Data, selected)
 		}
 		if response.SortOrder == "desc" {
-			sort.Slice(response.Data, func(i, j int) bool { return fmt.Sprint(response.Data[i]["period"]) > fmt.Sprint(response.Data[j]["period"]) })
+			sort.Slice(response.Data, func(i, j int) bool {
+				return fmt.Sprint(response.Data[i]["period"]) > fmt.Sprint(response.Data[j]["period"])
+			})
 		}
 	}
 	return response, nil
@@ -239,35 +249,56 @@ func metricsRange(startValue, endValue string) (time.Time, time.Time, error) {
 	var err error
 	if strings.TrimSpace(endValue) != "" {
 		end, err = parseMetricTime(endValue, false)
-		if err != nil { return time.Time{}, time.Time{}, apperrors.NewBadRequest("end_date must be an ISO 8601 date or datetime") }
-		if end.After(now) { end = now }
+		if err != nil {
+			return time.Time{}, time.Time{}, apperrors.NewBadRequest("end_date must be an ISO 8601 date or datetime")
+		}
+		if end.After(now) {
+			end = now
+		}
 	}
 	start := end.AddDate(0, 0, -6)
 	if strings.TrimSpace(startValue) != "" {
 		start, err = parseMetricTime(startValue, true)
-		if err != nil { return time.Time{}, time.Time{}, apperrors.NewBadRequest("start_date must be an ISO 8601 date or datetime") }
+		if err != nil {
+			return time.Time{}, time.Time{}, apperrors.NewBadRequest("start_date must be an ISO 8601 date or datetime")
+		}
 	}
-	if start.After(end) { return time.Time{}, time.Time{}, apperrors.NewBadRequest("start_date must be on or before end_date") }
+	if start.After(end) {
+		return time.Time{}, time.Time{}, apperrors.NewBadRequest("start_date must be on or before end_date")
+	}
 	return start.UTC(), end.UTC(), nil
 }
 
 func parseMetricTime(value string, startOfDay bool) (time.Time, error) {
 	value = strings.TrimSpace(value)
-	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil { return parsed.UTC(), nil }
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC(), nil
+	}
 	parsed, err := time.Parse("2006-01-02", value)
-	if err != nil { return time.Time{}, err }
-	if !startOfDay { parsed = parsed.Add(24*time.Hour - time.Nanosecond) }
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !startOfDay {
+		parsed = parsed.Add(24*time.Hour - time.Nanosecond)
+	}
 	return parsed.UTC(), nil
 }
 
 func normalizeMetricNames(values []string) ([]string, error) {
-	if len(values) == 0 { return append([]string(nil), defaultMetricNames...), nil }
+	if len(values) == 0 {
+		return append([]string(nil), defaultMetricNames...), nil
+	}
 	result := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {
 		name := strings.ToLower(strings.TrimSpace(value))
-		if _, ok := metricNameSet[name]; !ok { return nil, apperrors.NewBadRequest("Unsupported email metric: " + name) }
-		if _, ok := seen[name]; !ok { result = append(result, name); seen[name] = struct{}{} }
+		if _, ok := metricNameSet[name]; !ok {
+			return nil, apperrors.NewBadRequest("Unsupported email metric: " + name)
+		}
+		if _, ok := seen[name]; !ok {
+			result = append(result, name)
+			seen[name] = struct{}{}
+		}
 	}
 	return result, nil
 }
@@ -277,8 +308,13 @@ func normalizeDimensions(values []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	for _, value := range values {
 		name := strings.ToLower(strings.TrimSpace(value))
-		if name != "period" && name != "domain" && name != "email" { return nil, apperrors.NewBadRequest("Unsupported email metric dimension: " + name) }
-		if _, ok := seen[name]; !ok { result = append(result, name); seen[name] = struct{}{} }
+		if name != "period" && name != "domain" && name != "email" {
+			return nil, apperrors.NewBadRequest("Unsupported email metric dimension: " + name)
+		}
+		if _, ok := seen[name]; !ok {
+			result = append(result, name)
+			seen[name] = struct{}{}
+		}
 	}
 	return result, nil
 }
@@ -286,7 +322,11 @@ func normalizeDimensions(values []string) ([]string, error) {
 func selectMetrics(values map[string]any, metrics []string) map[string]any {
 	result := make(map[string]any, len(metrics))
 	for _, metric := range metrics {
-		if value, ok := values[metric]; ok { result[metric] = value } else { result[metric] = 0 }
+		if value, ok := values[metric]; ok {
+			result[metric] = value
+		} else {
+			result[metric] = 0
+		}
 	}
 	return result
 }
@@ -301,7 +341,7 @@ func (r *Repository) EmailMetricTotals(ctx context.Context, teamID uuid.UUID, st
 }
 
 func (r *Repository) EmailMetricPeriods(ctx context.Context, teamID uuid.UUID, start, end time.Time, granularity string) ([]metricPeriod, error) {
-	unit := map[string]string{"hourly":"hour", "daily":"day", "weekly":"week"}[granularity]
+	unit := map[string]string{"hourly": "hour", "daily": "day", "weekly": "week"}[granularity]
 	rows, err := r.db.Query(ctx, fmt.Sprintf(`
 		SELECT date_trunc('%s', bucket.created_at) AS period,
 		       count(*)::bigint AS sent,
@@ -313,16 +353,22 @@ func (r *Repository) EmailMetricPeriods(ctx context.Context, teamID uuid.UUID, s
 		FROM email_messages bucket
 		WHERE bucket.team_id = $1 AND bucket.created_at >= $2 AND bucket.created_at <= $3
 		GROUP BY 1 ORDER BY 1 ASC`, unit), teamID, start, end)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	result := []metricPeriod{}
 	for rows.Next() {
 		var period time.Time
 		var sent, delivered, failed, bounced, complained, delayed int64
-		if err := rows.Scan(&period, &sent, &delivered, &failed, &bounced, &complained, &delayed); err != nil { return nil, err }
+		if err := rows.Scan(&period, &sent, &delivered, &failed, &bounced, &complained, &delayed); err != nil {
+			return nil, err
+		}
 		values := metricValues(sent, delivered, failed, bounced, complained, delayed, 0, 0, 0, 0)
 		format := "2006-01-02"
-		if granularity == "hourly" { format = time.RFC3339 }
+		if granularity == "hourly" {
+			format = time.RFC3339
+		}
 		result = append(result, metricPeriod{Period: period.UTC().Format(format), Values: values})
 	}
 	return result, rows.Err()
@@ -340,7 +386,9 @@ func (r *Repository) emailMetricValues(ctx context.Context, teamID uuid.UUID, st
 		FROM email_messages
 		WHERE team_id = $1 AND created_at >= $2 AND created_at <= $3
 	`, teamID, start, end).Scan(&sent, &delivered, &failed, &bounced, &complained, &delayed)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) { return nil, err }
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
 	var opened, clicked, uniqueOpened, uniqueClicked int64
 	err = r.db.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE event.event_type = 'open')::bigint,
@@ -351,7 +399,9 @@ func (r *Repository) emailMetricValues(ctx context.Context, teamID uuid.UUID, st
 		JOIN email_messages message ON message.id = event.email_message_id
 		WHERE message.team_id = $1 AND event.occurred_at >= $2 AND event.occurred_at <= $3
 	`, teamID, start, end).Scan(&opened, &clicked, &uniqueOpened, &uniqueClicked)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) { return nil, err }
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
 	return metricValues(sent, delivered, failed, bounced, complained, delayed, opened, clicked, uniqueOpened, uniqueClicked), nil
 }
 
@@ -373,6 +423,8 @@ func metricValues(sent, delivered, failed, bounced, complained, delayed, opened,
 }
 
 func percentage(value, total int64) float64 {
-	if total == 0 { return 0 }
+	if total == 0 {
+		return 0
+	}
 	return float64(value) * 100 / float64(total)
 }
