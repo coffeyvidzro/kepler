@@ -48,6 +48,7 @@ type Querier interface {
 	CreateSegment(ctx context.Context, arg CreateSegmentParams) (Segment, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateSuppression(ctx context.Context, arg CreateSuppressionParams) (Suppression, error)
+	CreateSuppressions(ctx context.Context, arg CreateSuppressionsParams) ([]Suppression, error)
 	CreateTeamInvitation(ctx context.Context, arg CreateTeamInvitationParams) (TeamInvitation, error)
 	CreateTeamMember(ctx context.Context, arg CreateTeamMemberParams) (TeamMember, error)
 	CreateTeamToken(ctx context.Context, arg CreateTeamTokenParams) (TeamToken, error)
@@ -74,6 +75,8 @@ type Querier interface {
 	DeleteSegment(ctx context.Context, arg DeleteSegmentParams) (Segment, error)
 	DeleteSuppressionByEmail(ctx context.Context, arg DeleteSuppressionByEmailParams) (Suppression, error)
 	DeleteSuppressionByID(ctx context.Context, arg DeleteSuppressionByIDParams) (Suppression, error)
+	DeleteSuppressionsByEmails(ctx context.Context, arg DeleteSuppressionsByEmailsParams) ([]Suppression, error)
+	DeleteSuppressionsByIDs(ctx context.Context, arg DeleteSuppressionsByIDsParams) ([]Suppression, error)
 	DeleteTOTPCredential(ctx context.Context, arg DeleteTOTPCredentialParams) error
 	DeleteTopic(ctx context.Context, arg DeleteTopicParams) (Topic, error)
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
@@ -153,6 +156,9 @@ type Querier interface {
 	ListSessionsByUserID(ctx context.Context, arg ListSessionsByUserIDParams) ([]Session, error)
 	ListSubscribedWebhookEndpoints(ctx context.Context, arg ListSubscribedWebhookEndpointsParams) ([]WebhookEndpoint, error)
 	ListSuppressions(ctx context.Context, arg ListSuppressionsParams) ([]Suppression, error)
+	ListSuppressionsAfter(ctx context.Context, arg ListSuppressionsAfterParams) ([]Suppression, error)
+	ListSuppressionsBefore(ctx context.Context, arg ListSuppressionsBeforeParams) ([]Suppression, error)
+	ListSuppressionsFiltered(ctx context.Context, arg ListSuppressionsFilteredParams) ([]Suppression, error)
 	ListTOTPSecretsForRotation(ctx context.Context) ([]ListTOTPSecretsForRotationRow, error)
 	ListTeamAuditEvents(ctx context.Context, arg ListTeamAuditEventsParams) ([]AuditEvent, error)
 	ListTeamMembers(ctx context.Context, arg ListTeamMembersParams) ([]TeamMember, error)
@@ -212,6 +218,7 @@ type Querier interface {
 	SetMessageTemplateCurrentVersion(ctx context.Context, arg SetMessageTemplateCurrentVersionParams) (MessageTemplate, error)
 	SoftDeleteBroadcast(ctx context.Context, arg SoftDeleteBroadcastParams) (Broadcast, error)
 	SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (MessageTemplate, error)
+	SuppressionCursorExists(ctx context.Context, arg SuppressionCursorExistsParams) (bool, error)
 	TopicCursorExists(ctx context.Context, arg TopicCursorExistsParams) (bool, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error

@@ -23,7 +23,12 @@ INSERT INTO suppressions (
     $3,
     $4
 )
-RETURNING id, team_id, email, origin, source_id, created_at
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
 `
 
 type CreateSuppressionParams struct {
@@ -52,11 +57,67 @@ func (q *Queries) CreateSuppression(ctx context.Context, arg CreateSuppressionPa
 	return i, err
 }
 
+const createSuppressions = `-- name: CreateSuppressions :many
+INSERT INTO suppressions (
+    team_id,
+    email,
+    origin
+)
+SELECT $1,
+       lower(batch_email.email),
+       'manual'
+FROM unnest($2::text[]) WITH ORDINALITY AS batch_email(email, position)
+ORDER BY batch_email.position
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
+`
+
+type CreateSuppressionsParams struct {
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	Emails []string  `db:"emails" json:"emails"`
+}
+
+func (q *Queries) CreateSuppressions(ctx context.Context, arg CreateSuppressionsParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, createSuppressions, arg.TeamID, arg.Emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteSuppressionByEmail = `-- name: DeleteSuppressionByEmail :one
 DELETE FROM suppressions
 WHERE team_id = $1
   AND lower(email) = lower($2)
-RETURNING id, team_id, email, origin, source_id, created_at
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
 `
 
 type DeleteSuppressionByEmailParams struct {
@@ -82,7 +143,12 @@ const deleteSuppressionByID = `-- name: DeleteSuppressionByID :one
 DELETE FROM suppressions
 WHERE id = $1
   AND team_id = $2
-RETURNING id, team_id, email, origin, source_id, created_at
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
 `
 
 type DeleteSuppressionByIDParams struct {
@@ -104,11 +170,104 @@ func (q *Queries) DeleteSuppressionByID(ctx context.Context, arg DeleteSuppressi
 	return i, err
 }
 
-const getSuppressionByEmail = `-- name: GetSuppressionByEmail :one
-SELECT id, team_id, email, origin, source_id, created_at
-FROM suppressions
+const deleteSuppressionsByEmails = `-- name: DeleteSuppressionsByEmails :many
+DELETE FROM suppressions
 WHERE team_id = $1
-  AND lower(email) = lower($2)
+  AND lower(email) = ANY($2::text[])
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
+`
+
+type DeleteSuppressionsByEmailsParams struct {
+	TeamID uuid.UUID `db:"team_id" json:"team_id"`
+	Emails []string  `db:"emails" json:"emails"`
+}
+
+func (q *Queries) DeleteSuppressionsByEmails(ctx context.Context, arg DeleteSuppressionsByEmailsParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, deleteSuppressionsByEmails, arg.TeamID, arg.Emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteSuppressionsByIDs = `-- name: DeleteSuppressionsByIDs :many
+DELETE FROM suppressions
+WHERE team_id = $1
+  AND id = ANY($2::uuid[])
+RETURNING id,
+          team_id,
+          email,
+          origin,
+          source_id,
+          created_at
+`
+
+type DeleteSuppressionsByIDsParams struct {
+	TeamID uuid.UUID   `db:"team_id" json:"team_id"`
+	Ids    []uuid.UUID `db:"ids" json:"ids"`
+}
+
+func (q *Queries) DeleteSuppressionsByIDs(ctx context.Context, arg DeleteSuppressionsByIDsParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, deleteSuppressionsByIDs, arg.TeamID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSuppressionByEmail = `-- name: GetSuppressionByEmail :one
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.team_id = $1
+  AND lower(s.email) = lower($2)
 `
 
 type GetSuppressionByEmailParams struct {
@@ -131,10 +290,15 @@ func (q *Queries) GetSuppressionByEmail(ctx context.Context, arg GetSuppressionB
 }
 
 const getSuppressionByID = `-- name: GetSuppressionByID :one
-SELECT id, team_id, email, origin, source_id, created_at
-FROM suppressions
-WHERE id = $1
-  AND team_id = $2
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.id = $1
+  AND s.team_id = $2
 `
 
 type GetSuppressionByIDParams struct {
@@ -157,10 +321,15 @@ func (q *Queries) GetSuppressionByID(ctx context.Context, arg GetSuppressionByID
 }
 
 const listSuppressions = `-- name: ListSuppressions :many
-SELECT id, team_id, email, origin, source_id, created_at
-FROM suppressions
-WHERE team_id = $1
-ORDER BY created_at DESC, id DESC
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.team_id = $1
+ORDER BY s.created_at DESC, s.id DESC
 LIMIT $3
 OFFSET $2
 `
@@ -196,4 +365,190 @@ func (q *Queries) ListSuppressions(ctx context.Context, arg ListSuppressionsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const listSuppressionsAfter = `-- name: ListSuppressionsAfter :many
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.team_id = $1
+  AND ($2::text IS NULL OR s.origin = $2)
+  AND (s.created_at, s.id) < (
+      SELECT cursor_suppression.created_at, cursor_suppression.id
+      FROM suppressions AS cursor_suppression
+      WHERE cursor_suppression.id = $3
+        AND cursor_suppression.team_id = $1
+  )
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT $4
+`
+
+type ListSuppressionsAfterParams struct {
+	ScopeTeamID  uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	FilterOrigin *string   `db:"filter_origin" json:"filter_origin"`
+	CursorID     uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit    int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListSuppressionsAfter(ctx context.Context, arg ListSuppressionsAfterParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, listSuppressionsAfter,
+		arg.ScopeTeamID,
+		arg.FilterOrigin,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSuppressionsBefore = `-- name: ListSuppressionsBefore :many
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.team_id = $1
+  AND ($2::text IS NULL OR s.origin = $2)
+  AND (s.created_at, s.id) > (
+      SELECT cursor_suppression.created_at, cursor_suppression.id
+      FROM suppressions AS cursor_suppression
+      WHERE cursor_suppression.id = $3
+        AND cursor_suppression.team_id = $1
+  )
+ORDER BY s.created_at ASC, s.id ASC
+LIMIT $4
+`
+
+type ListSuppressionsBeforeParams struct {
+	ScopeTeamID  uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	FilterOrigin *string   `db:"filter_origin" json:"filter_origin"`
+	CursorID     uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit    int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListSuppressionsBefore(ctx context.Context, arg ListSuppressionsBeforeParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, listSuppressionsBefore,
+		arg.ScopeTeamID,
+		arg.FilterOrigin,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSuppressionsFiltered = `-- name: ListSuppressionsFiltered :many
+SELECT s.id,
+       s.team_id,
+       s.email,
+       s.origin,
+       s.source_id,
+       s.created_at
+FROM suppressions AS s
+WHERE s.team_id = $1
+  AND ($2::text IS NULL OR s.origin = $2)
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT $3
+`
+
+type ListSuppressionsFilteredParams struct {
+	TeamID       uuid.UUID `db:"team_id" json:"team_id"`
+	FilterOrigin *string   `db:"filter_origin" json:"filter_origin"`
+	PageLimit    int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListSuppressionsFiltered(ctx context.Context, arg ListSuppressionsFilteredParams) ([]Suppression, error) {
+	rows, err := q.db.Query(ctx, listSuppressionsFiltered, arg.TeamID, arg.FilterOrigin, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Suppression{}
+	for rows.Next() {
+		var i Suppression
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Email,
+			&i.Origin,
+			&i.SourceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const suppressionCursorExists = `-- name: SuppressionCursorExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM suppressions AS s
+    WHERE s.id = $1
+      AND s.team_id = $2
+)
+`
+
+type SuppressionCursorExistsParams struct {
+	CursorID uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	TeamID   uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) SuppressionCursorExists(ctx context.Context, arg SuppressionCursorExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, suppressionCursorExists, arg.CursorID, arg.TeamID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
