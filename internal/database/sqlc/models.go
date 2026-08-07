@@ -84,20 +84,25 @@ type Broadcast struct {
 }
 
 type BroadcastRecipient struct {
-	ID              uuid.UUID          `db:"id" json:"id"`
-	TeamID          uuid.UUID          `db:"team_id" json:"team_id"`
-	BroadcastID     uuid.UUID          `db:"broadcast_id" json:"broadcast_id"`
-	ContactID       *uuid.UUID         `db:"contact_id" json:"contact_id"`
-	Email           string             `db:"email" json:"email"`
-	NormalizedEmail string             `db:"normalized_email" json:"normalized_email"`
-	FirstName       *string            `db:"first_name" json:"first_name"`
-	LastName        *string            `db:"last_name" json:"last_name"`
-	ContactSnapshot []byte             `db:"contact_snapshot" json:"contact_snapshot"`
-	Status          string             `db:"status" json:"status"`
-	ExclusionReason *string            `db:"exclusion_reason" json:"exclusion_reason"`
-	EmailMessageID  *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	QueuedAt        pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	ID               uuid.UUID          `db:"id" json:"id"`
+	TeamID           uuid.UUID          `db:"team_id" json:"team_id"`
+	BroadcastID      uuid.UUID          `db:"broadcast_id" json:"broadcast_id"`
+	ContactID        *uuid.UUID         `db:"contact_id" json:"contact_id"`
+	Email            string             `db:"email" json:"email"`
+	NormalizedEmail  string             `db:"normalized_email" json:"normalized_email"`
+	FirstName        *string            `db:"first_name" json:"first_name"`
+	LastName         *string            `db:"last_name" json:"last_name"`
+	ContactSnapshot  []byte             `db:"contact_snapshot" json:"contact_snapshot"`
+	Status           string             `db:"status" json:"status"`
+	ExclusionReason  *string            `db:"exclusion_reason" json:"exclusion_reason"`
+	EmailMessageID   *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueuedAt         pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	AttemptCount     int32              `db:"attempt_count" json:"attempt_count"`
+	NextAttemptAt    pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	LastErrorCode    *string            `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage *string            `db:"last_error_message" json:"last_error_message"`
+	FailedAt         pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
 }
 
 type Contact struct {

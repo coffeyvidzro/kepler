@@ -17,6 +17,7 @@ type Querier interface {
 	CancelWebhookDeliveriesForEndpoint(ctx context.Context, arg CancelWebhookDeliveriesForEndpointParams) (int64, error)
 	ClaimDueEmailProviderEvents(ctx context.Context, arg ClaimDueEmailProviderEventsParams) ([]ClaimDueEmailProviderEventsRow, error)
 	ClaimEmailProviderEvent(ctx context.Context, arg ClaimEmailProviderEventParams) (ClaimEmailProviderEventRow, error)
+	ClaimNextBroadcastRecipientForFanout(ctx context.Context) (ClaimNextBroadcastRecipientForFanoutRow, error)
 	ClaimNextQueuedBroadcastForMaterialization(ctx context.Context) (ClaimNextQueuedBroadcastForMaterializationRow, error)
 	ClaimWebhookDeliveries(ctx context.Context, arg ClaimWebhookDeliveriesParams) ([]ClaimWebhookDeliveriesRow, error)
 	CompleteBroadcastRecipientMaterialization(ctx context.Context, arg CompleteBroadcastRecipientMaterializationParams) (CompleteBroadcastRecipientMaterializationRow, error)
@@ -24,6 +25,7 @@ type Querier interface {
 	ConfirmTOTPCredential(ctx context.Context, arg ConfirmTOTPCredentialParams) (int64, error)
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
 	ConsumeMFALoginChallengeWithTOTP(ctx context.Context, arg ConsumeMFALoginChallengeWithTOTPParams) (int64, error)
+	CountBroadcastRecipientFanoutState(ctx context.Context, arg CountBroadcastRecipientFanoutStateParams) (CountBroadcastRecipientFanoutStateRow, error)
 	CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) (AuditEvent, error)
 	CreateBroadcast(ctx context.Context, arg CreateBroadcastParams) (Broadcast, error)
 	CreateBroadcastRecipient(ctx context.Context, arg CreateBroadcastRecipientParams) (BroadcastRecipient, error)
@@ -80,6 +82,8 @@ type Querier interface {
 	DowngradeSessionAfterMFADisable(ctx context.Context, arg DowngradeSessionAfterMFADisableParams) error
 	DuplicateBroadcast(ctx context.Context, arg DuplicateBroadcastParams) (Broadcast, error)
 	ElevateSessionAfterMFAEnrollment(ctx context.Context, arg ElevateSessionAfterMFAEnrollmentParams) (int64, error)
+	FailBroadcastRecipientFanout(ctx context.Context, arg FailBroadcastRecipientFanoutParams) (BroadcastRecipient, error)
+	FinalizeBroadcastFanout(ctx context.Context, arg FinalizeBroadcastFanoutParams) (Broadcast, error)
 	FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMSSenderParams) (uuid.UUID, error)
 	GetActiveMFALoginChallenge(ctx context.Context, arg GetActiveMFALoginChallengeParams) (GetActiveMFALoginChallengeRow, error)
 	GetActiveProductRate(ctx context.Context, arg GetActiveProductRateParams) (ProductRate, error)
@@ -180,6 +184,7 @@ type Querier interface {
 	ReplayWebhookDelivery(ctx context.Context, arg ReplayWebhookDeliveryParams) (WebhookDelivery, error)
 	RescheduleEmailProviderEvent(ctx context.Context, arg RescheduleEmailProviderEventParams) (int64, error)
 	ResetPasswordWithToken(ctx context.Context, arg ResetPasswordWithTokenParams) (ResetPasswordWithTokenRow, error)
+	RetryBroadcastRecipientFanout(ctx context.Context, arg RetryBroadcastRecipientFanoutParams) (BroadcastRecipient, error)
 	RetryWebhookDelivery(ctx context.Context, arg RetryWebhookDeliveryParams) (WebhookDelivery, error)
 	RevokeOtherSessionsAfterMFADisable(ctx context.Context, arg RevokeOtherSessionsAfterMFADisableParams) error
 	RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) error
