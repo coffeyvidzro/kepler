@@ -196,13 +196,27 @@ func (r *Repository) Update(ctx context.Context, teamID uuid.UUID, template Temp
 
 	fromEmail, fromName, replyTo := base.FromEmail, base.FromName, base.ReplyToEmail
 	subject, htmlBody, textBody, variables := base.Subject, base.HTML, base.Text, base.Variables
-	if req.FromEmail != nil { fromEmail = *req.FromEmail }
-	if req.FromName != nil { fromName = *req.FromName }
-	if req.ReplyTo != nil { replyTo = *req.ReplyTo }
-	if req.Subject != nil { subject = *req.Subject }
-	if req.HTML != nil { htmlBody = *req.HTML }
-	if req.Text != nil { textBody = *req.Text }
-	if req.Variables != nil { variables = *req.Variables }
+	if req.FromEmail != nil {
+		fromEmail = *req.FromEmail
+	}
+	if req.FromName != nil {
+		fromName = *req.FromName
+	}
+	if req.ReplyTo != nil {
+		replyTo = *req.ReplyTo
+	}
+	if req.Subject != nil {
+		subject = *req.Subject
+	}
+	if req.HTML != nil {
+		htmlBody = *req.HTML
+	}
+	if req.Text != nil {
+		textBody = *req.Text
+	}
+	if req.Variables != nil {
+		variables = *req.Variables
+	}
 	encoded, err := encodeVariables(variables)
 	if err != nil {
 		return Template{}, Version{}, err
@@ -290,7 +304,7 @@ func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUI
 func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Template, error) {
 	var (
 		rows []dbsqlc.MessageTemplate
-		err error
+		err  error
 	)
 	switch {
 	case after != nil:
@@ -317,16 +331,27 @@ func templateFromSQLC(row dbsqlc.MessageTemplate) Template {
 		ID: row.ID.String(), TeamID: row.TeamID.String(), Name: row.Name, Alias: row.Alias,
 		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
-	if row.CurrentVersionID != nil { id := row.CurrentVersionID.String(); value.CurrentVersionID = &id }
-	if row.PublishedVersionID != nil { id := row.PublishedVersionID.String(); value.PublishedVersionID = &id }
-	if row.PublishedAt.Valid { publishedAt := row.PublishedAt.Time; value.PublishedAt = &publishedAt }
+	if row.CurrentVersionID != nil {
+		id := row.CurrentVersionID.String()
+		value.CurrentVersionID = &id
+	}
+	if row.PublishedVersionID != nil {
+		id := row.PublishedVersionID.String()
+		value.PublishedVersionID = &id
+	}
+	if row.PublishedAt.Valid {
+		publishedAt := row.PublishedAt.Time
+		value.PublishedAt = &publishedAt
+	}
 	value.HasUnpublishedChanges = value.CurrentVersionID != nil && (value.PublishedVersionID == nil || *value.CurrentVersionID != *value.PublishedVersionID)
 	return value
 }
 
 func templatesFromSQLC(rows []dbsqlc.MessageTemplate) []Template {
 	values := make([]Template, 0, len(rows))
-	for _, row := range rows { values = append(values, templateFromSQLC(row)) }
+	for _, row := range rows {
+		values = append(values, templateFromSQLC(row))
+	}
 	return values
 }
 
@@ -341,7 +366,10 @@ func versionFromSQLC(row dbsqlc.MessageTemplateVersion) (Version, error) {
 		ReplyToEmail: row.ReplyToEmail, Subject: row.Subject, HTML: row.HtmlBody, Text: row.TextBody,
 		Variables: variables, ChangeNote: row.ChangeNote, CreatedAt: row.CreatedAt.Time,
 	}
-	if row.BasedOnVersionID != nil { id := row.BasedOnVersionID.String(); value.BasedOnVersionID = &id }
+	if row.BasedOnVersionID != nil {
+		id := row.BasedOnVersionID.String()
+		value.BasedOnVersionID = &id
+	}
 	return value, nil
 }
 
