@@ -1,10 +1,10 @@
 package tenant
 
 const (
-	PermissionTopicsRead         Permission = "topics:read"
-	PermissionTopicsWrite        Permission = "topics:write"
-	PermissionSuppressionsRead   Permission = "suppressions:read"
-	PermissionSuppressionsWrite  Permission = "suppressions:write"
+	PermissionTopicsRead        Permission = "topics:read"
+	PermissionTopicsWrite       Permission = "topics:write"
+	PermissionSuppressionsRead  Permission = "suppressions:read"
+	PermissionSuppressionsWrite Permission = "suppressions:write"
 )
 
 func init() {

@@ -24,8 +24,12 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, email string)
 		VALUES ($1, $2, 'manual')
 		RETURNING id, team_id, email, origin, source_id, created_at
 	`, teamID, email).Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt)
-	if isUniqueViolation(err) { return Suppression{}, ErrAlreadyExists }
-	if err != nil { return Suppression{}, fmt.Errorf("create suppression: %w", err) }
+	if isUniqueViolation(err) {
+		return Suppression{}, ErrAlreadyExists
+	}
+	if err != nil {
+		return Suppression{}, fmt.Errorf("create suppression: %w", err)
+	}
 	return value, nil
 }
 
@@ -35,12 +39,16 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset i
 		FROM suppressions WHERE team_id = $1
 		ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3
 	`, teamID, limit, offset)
-	if err != nil { return nil, fmt.Errorf("list suppressions: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("list suppressions: %w", err)
+	}
 	defer rows.Close()
 	values := make([]Suppression, 0)
 	for rows.Next() {
 		var value Suppression
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt); err != nil { return nil, fmt.Errorf("scan suppression: %w", err) }
+		if err := rows.Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan suppression: %w", err)
+		}
 		values = append(values, value)
 	}
 	return values, rows.Err()

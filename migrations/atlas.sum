@@ -1,4 +1,4 @@
-h1:p+7oUfqb7iGuBkC5iPLRR0RKe/A/LFqQtFWmeloJv2k=
+h1:mKrYYBPNrmNpQI1CtN3W3+CzVVt5Hrw6onWK2UoPhNI=
 001_create_users.sql h1:SzmfDnKV7pBVweNm8IRsVvEKfzDN7VsSIdAckXWPOvM=
 002_create_sessions.sql h1:mfuQWhqrJwMca/G2R2DOzDoDjNojK/TXxjbs5FYtLuI=
 003_create_oauth_identities.sql h1:HlnI5yb6AX7pB3Snz6S3JrUeOe0JFpB2Ugjgx+RZNhQ=
@@ -25,3 +25,5 @@ h1:p+7oUfqb7iGuBkC5iPLRR0RKe/A/LFqQtFWmeloJv2k=
 024_create_message_delivery_attempts.sql h1:dwoQUeCYUYsVdzhImmwWRAw3DIKvw7/uuVUIZvb+sz8=
 025_create_contacts.sql h1:1aa8MR/o76w/PZfwU9GdNGjXJWB6UMxFpmcvDyEIcJc=
 026_create_segments.sql h1:Ioe8JQ/bqVwIaLkBicy3rrn1SgoOXsZBtb+iHOFSmUU=
+027_create_topics.sql h1:k9gz1c43wZcMWsme+QbG5rZkpbQL8+qBsrlar7aLs/0=
+028_create_suppressions.sql h1:goa7aIgdgjClbeiK2k9CPaT8FIbsvKurRbmR0y8sCss=

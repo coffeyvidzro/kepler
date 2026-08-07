@@ -34,12 +34,16 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset i
 		FROM topics WHERE team_id = $1
 		ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3
 	`, teamID, limit, offset)
-	if err != nil { return nil, fmt.Errorf("list topics: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("list topics: %w", err)
+	}
 	defer rows.Close()
 	values := make([]Topic, 0)
 	for rows.Next() {
 		var value Topic
-		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt); err != nil { return nil, fmt.Errorf("scan topic: %w", err) }
+		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan topic: %w", err)
+		}
 		values = append(values, value)
 	}
 	return values, rows.Err()

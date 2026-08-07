@@ -97,6 +97,15 @@ type ContactSegment struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type ContactTopicSubscription struct {
+	TeamID       uuid.UUID          `db:"team_id" json:"team_id"`
+	ContactID    uuid.UUID          `db:"contact_id" json:"contact_id"`
+	TopicID      uuid.UUID          `db:"topic_id" json:"topic_id"`
+	Subscription string             `db:"subscription" json:"subscription"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type Currency struct {
 	Code      string `db:"code" json:"code"`
 	MinorUnit int16  `db:"minor_unit" json:"minor_unit"`
@@ -418,6 +427,15 @@ type SmsRate struct {
 	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type Suppression struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	TeamID    uuid.UUID          `db:"team_id" json:"team_id"`
+	Email     string             `db:"email" json:"email"`
+	Origin    string             `db:"origin" json:"origin"`
+	SourceID  *string            `db:"source_id" json:"source_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Team struct {
 	ID         uuid.UUID          `db:"id" json:"id"`
 	Name       string             `db:"name" json:"name"`
@@ -480,6 +498,17 @@ type TeamWallet struct {
 	PendingTierEffectiveAt pgtype.Timestamptz `db:"pending_tier_effective_at" json:"pending_tier_effective_at"`
 	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type Topic struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	TeamID              uuid.UUID          `db:"team_id" json:"team_id"`
+	Name                string             `db:"name" json:"name"`
+	Description         *string            `db:"description" json:"description"`
+	DefaultSubscription string             `db:"default_subscription" json:"default_subscription"`
+	Visibility          string             `db:"visibility" json:"visibility"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type TotpCredential struct {
