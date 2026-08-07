@@ -28,8 +28,10 @@ import (
 	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
+	suppressionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/suppression"
 	teammodule "github.com/coffeyvidzro/dugble/server/internal/modules/team"
 	teamtokenmodule "github.com/coffeyvidzro/dugble/server/internal/modules/teamtoken"
+	topicmodule "github.com/coffeyvidzro/dugble/server/internal/modules/topic"
 	usermodule "github.com/coffeyvidzro/dugble/server/internal/modules/user"
 	walletmodule "github.com/coffeyvidzro/dugble/server/internal/modules/wallet"
 	webhooksmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
@@ -52,8 +54,10 @@ import (
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
+	suppressionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/suppression"
 	teamhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/team"
 	teamtokenhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/teamtoken"
+	topichttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/topic"
 	userhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/user"
 	wallethttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/wallet"
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
@@ -107,15 +111,15 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 
 	arcjetClient, err := newArcjetClient(cfg)
 	if err != nil {
-		return fail(fmt.Errorf("initialize Arcjet: %w", err))
+		return fail(fmt.Errorf("initialize Arcjet client: %w", err))
 	}
 	renderer, err := systemmail.NewRenderer()
 	if err != nil {
-		return fail(fmt.Errorf("initialize email renderer: %w", err))
+		return fail(fmt.Errorf("initialize system email renderer: %w", err))
 	}
 	emailClient, err := newEmailClient(cfg)
 	if err != nil {
-		return fail(fmt.Errorf("initialize SES email client: %w", err))
+		return fail(fmt.Errorf("initialize email client: %w", err))
 	}
 
 	outboxRepository := outbox.NewRepository(db)
@@ -162,6 +166,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	contactRepository := contactmodule.NewRepository(db)
 	contactPropertyRepository := contactpropertymodule.NewRepository(db)
 	segmentRepository := segmentmodule.NewRepository(db)
+	topicRepository := topicmodule.NewRepository(db)
+	suppressionRepository := suppressionmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
@@ -212,6 +218,8 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		contact:         contacthttp.NewHandler(contactmodule.NewService(contactRepository)),
 		contactProperty: contactpropertyhttp.NewHandler(contactpropertymodule.NewService(contactPropertyRepository)),
 		segment:         segmenthttp.NewHandler(segmentmodule.NewService(segmentRepository)),
+		topic:           topichttp.NewHandler(topicmodule.NewService(topicRepository)),
+		suppression:     suppressionhttp.NewHandler(suppressionmodule.NewService(suppressionRepository)),
 		teamToken: teamtokenhttp.NewHandler(
 			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
 		),

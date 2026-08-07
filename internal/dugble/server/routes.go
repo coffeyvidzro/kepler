@@ -17,8 +17,10 @@ import (
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
+	suppressionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/suppression"
 	teamhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/team"
 	teamtokenhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/teamtoken"
+	topichttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/topic"
 	userhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/user"
 	wallethttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/wallet"
 	webhookshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/webhooks"
@@ -40,6 +42,8 @@ type serverRouteHandlers struct {
 	contact         *contacthttp.Handler
 	contactProperty *contactpropertyhttp.Handler
 	segment         *segmenthttp.Handler
+	topic           *topichttp.Handler
+	suppression     *suppressionhttp.Handler
 	senderID        *senderidhttp.Handler
 	domain          *domainhttp.Handler
 	sms             *smshttp.Handler
@@ -66,6 +70,8 @@ func newRouteRegistrar(handlers serverRouteHandlers, middleware serverMiddleware
 		contacthttp.RegisterRoutes(router, handlers.contact, middleware.tenantAccess)
 		contactpropertyhttp.RegisterRoutes(router, handlers.contactProperty, middleware.tenantAccess)
 		segmenthttp.RegisterRoutes(router, handlers.segment, middleware.tenantAccess)
+		topichttp.RegisterRoutes(router, handlers.topic, middleware.tenantAccess)
+		suppressionhttp.RegisterRoutes(router, handlers.suppression, middleware.tenantAccess)
 		senderidhttp.RegisterRoutes(router, handlers.senderID, middleware.tenantAccess)
 		domainhttp.RegisterRoutes(router, handlers.domain, middleware.tenantAccess)
 		smshttp.RegisterRoutes(router, handlers.sms, middleware.tenantAccess)
