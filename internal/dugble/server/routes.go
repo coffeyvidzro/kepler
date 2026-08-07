@@ -13,6 +13,7 @@ import (
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
 	httpmiddleware "github.com/coffeyvidzro/dugble/server/internal/transport/http/middleware"
+	segmenthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/segment"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
@@ -27,23 +28,24 @@ import (
 )
 
 type serverRouteHandlers struct {
-	health           *healthhttp.Handler
-	providerSNS      *providersns.Handler
-	auth             *authhttp.Handler
-	mfa              *mfahttp.Handler
-	user             *userhttp.Handler
-	team             *teamhttp.Handler
-	wallet           *wallethttp.Handler
-	auditEvent       *auditeventhttp.Handler
-	teamToken        *teamtokenhttp.Handler
-	contact          *contacthttp.Handler
-	contactProperty  *contactpropertyhttp.Handler
-	senderID         *senderidhttp.Handler
-	domain           *domainhttp.Handler
-	sms              *smshttp.Handler
-	email            *emailhttp.Handler
-	webhooks         *webhookshttp.Handler
-	session          *sessionhttp.Handler
+	health          *healthhttp.Handler
+	providerSNS     *providersns.Handler
+	auth            *authhttp.Handler
+	mfa             *mfahttp.Handler
+	user            *userhttp.Handler
+	team            *teamhttp.Handler
+	wallet          *wallethttp.Handler
+	auditEvent      *auditeventhttp.Handler
+	teamToken       *teamtokenhttp.Handler
+	contact         *contacthttp.Handler
+	contactProperty *contactpropertyhttp.Handler
+	segment         *segmenthttp.Handler
+	senderID        *senderidhttp.Handler
+	domain          *domainhttp.Handler
+	sms             *smshttp.Handler
+	email           *emailhttp.Handler
+	webhooks        *webhookshttp.Handler
+	session         *sessionhttp.Handler
 }
 
 func newRouteRegistrar(handlers serverRouteHandlers, middleware serverMiddleware) httptransport.Registrar {
@@ -63,6 +65,7 @@ func newRouteRegistrar(handlers serverRouteHandlers, middleware serverMiddleware
 		teamtokenhttp.RegisterRoutes(router, handlers.teamToken, middleware.auth, middleware.csrf, middleware.tenant)
 		contacthttp.RegisterRoutes(router, handlers.contact, middleware.tenantAccess)
 		contactpropertyhttp.RegisterRoutes(router, handlers.contactProperty, middleware.tenantAccess)
+		segmenthttp.RegisterRoutes(router, handlers.segment, middleware.tenantAccess)
 		senderidhttp.RegisterRoutes(router, handlers.senderID, middleware.tenantAccess)
 		domainhttp.RegisterRoutes(router, handlers.domain, middleware.tenantAccess)
 		smshttp.RegisterRoutes(router, handlers.sms, middleware.tenantAccess)
@@ -77,10 +80,7 @@ func registerCSRFRoute(router *echo.Echo, csrfMiddleware echo.MiddlewareFunc) {
 	router.GET("/csrf", func(c *echo.Context) error {
 		token, ok := c.Get(httpmiddleware.CSRFContextKey).(string)
 		if !ok || token == "" {
-			return httputil.Error(
-				c,
-				apperrors.NewInternal("CSRF token is not available", nil),
-			)
+			return httputil.Error(c, apperrors.NewInternal("CSRF token is not available", nil))
 		}
 		return httputil.OK(c, map[string]string{"csrf_token": token})
 	}, csrfMiddleware)
