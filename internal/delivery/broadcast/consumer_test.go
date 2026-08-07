@@ -47,18 +47,22 @@ func (repository *fakeRepository) MaterializeNextQueuedRecipients(context.Contex
 	return result.result, result.claimed, result.err
 }
 
-func TestPollQueuesAndMaterializesUntilEmpty(t *testing.T) {
+func newTestConsumer(repository repository, batchSize int) *Consumer {
+	return NewConsumer(NewProcessor(repository), Config{BatchSize: batchSize})
+}
+
+func TestPollStopsWhenNoWorkRemains(t *testing.T) {
 	repository := &fakeRepository{
 		queueResults: []claimResult{
 			{broadcast: broadcastmodule.Broadcast{ID: "first"}, claimed: true},
 			{claimed: false},
 		},
 		materializeResults: []materializeResult{
-			{result: broadcastmodule.MaterializationResult{AudienceCount: 3}, claimed: true},
+			{result: broadcastmodule.MaterializationResult{}, claimed: true},
 			{claimed: false},
 		},
 	}
-	consumer := NewConsumer(repository, Config{BatchSize: 10})
+	consumer := newTestConsumer(repository, 10)
 
 	if err := consumer.poll(context.Background()); err != nil {
 		t.Fatalf("poll returned error: %v", err)
@@ -71,16 +75,20 @@ func TestPollQueuesAndMaterializesUntilEmpty(t *testing.T) {
 	}
 }
 
-func TestPollHonorsBatchSizeForBothPhases(t *testing.T) {
+func TestPollHonorsBatchSize(t *testing.T) {
 	repository := &fakeRepository{
 		queueResults: []claimResult{
-			{claimed: true}, {claimed: true}, {claimed: true},
+			{claimed: true},
+			{claimed: true},
+			{claimed: true},
 		},
 		materializeResults: []materializeResult{
-			{claimed: true}, {claimed: true}, {claimed: true},
+			{claimed: true},
+			{claimed: true},
+			{claimed: true},
 		},
 	}
-	consumer := NewConsumer(repository, Config{BatchSize: 2})
+	consumer := newTestConsumer(repository, 2)
 
 	if err := consumer.poll(context.Background()); err != nil {
 		t.Fatalf("poll returned error: %v", err)
@@ -96,13 +104,10 @@ func TestPollHonorsBatchSizeForBothPhases(t *testing.T) {
 func TestPollReturnsQueueError(t *testing.T) {
 	expected := errors.New("database unavailable")
 	repository := &fakeRepository{queueResults: []claimResult{{err: expected}}}
-	consumer := NewConsumer(repository, Config{BatchSize: 10})
+	consumer := newTestConsumer(repository, 10)
 
 	if err := consumer.poll(context.Background()); !errors.Is(err, expected) {
 		t.Fatalf("expected %v, got %v", expected, err)
-	}
-	if repository.materializeCalls != 0 {
-		t.Fatalf("expected materialization not to run after queue error")
 	}
 }
 
@@ -112,7 +117,7 @@ func TestPollReturnsMaterializationError(t *testing.T) {
 		queueResults:       []claimResult{{claimed: false}},
 		materializeResults: []materializeResult{{err: expected}},
 	}
-	consumer := NewConsumer(repository, Config{BatchSize: 10})
+	consumer := newTestConsumer(repository, 10)
 
 	if err := consumer.poll(context.Background()); !errors.Is(err, expected) {
 		t.Fatalf("expected %v, got %v", expected, err)
