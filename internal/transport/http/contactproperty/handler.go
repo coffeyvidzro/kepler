@@ -5,15 +5,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	contactpropertymodule "github.com/coffeyvidzro/dugble/server/internal/modules/contactproperty"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
-
-type Service = contactpropertymodule.Service
-type CreateRequest = contactpropertymodule.CreateRequest
-type UpdateRequest = contactpropertymodule.UpdateRequest
-type ListRequest = contactpropertymodule.ListRequest
 
 type Handler struct{ service *Service }
 
