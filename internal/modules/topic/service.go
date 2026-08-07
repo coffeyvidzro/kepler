@@ -3,9 +3,9 @@ package topic
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/coffeyvidzro/dugble/server/internal/platform/audit"
@@ -16,6 +16,97 @@ import (
 type Service struct{ repository *Repository }
 
 func NewService(repository *Repository) *Service { return &Service{repository: repository} }
+
+func (s *Service) CreateAPI(ctx context.Context, request CreateRequest) (MutationResponse, error) {
+	value, err := s.Create(ctx, request)
+	if err != nil {
+		return MutationResponse{}, err
+	}
+	return MutationResponse{Object: ObjectTopic, ID: value.ID}, nil
+}
+
+func (s *Service) ListAPI(ctx context.Context, request APIListRequest) (ListResponse, error) {
+	access, err := requireTenant(ctx, tenant.PermissionTopicsRead)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	if err := normalizeAPIListRequest(&request); err != nil {
+		return ListResponse{}, err
+	}
+	after, err := parseTopicCursor(request.After)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	before, err := parseTopicCursor(request.Before)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	cursor := after
+	if cursor == nil {
+		cursor = before
+	}
+	if cursor != nil {
+		exists, lookupErr := s.repository.CursorExists(ctx, access.Scope.TeamID, *cursor)
+		if lookupErr != nil {
+			return ListResponse{}, apperrors.NewInternal("Unable to validate topic cursor", lookupErr)
+		}
+		if !exists {
+			return ListResponse{}, apperrors.NewNotFound("Topic cursor not found")
+		}
+	}
+	values, err := s.repository.ListPage(ctx, access.Scope.TeamID, request.Limit+1, after, before)
+	if err != nil {
+		return ListResponse{}, apperrors.NewInternal("Unable to list topics", err)
+	}
+	hasMore := len(values) > int(request.Limit)
+	if hasMore {
+		values = values[:request.Limit]
+	}
+	if before != nil {
+		slices.Reverse(values)
+	}
+	data := make([]Resource, 0, len(values))
+	for _, value := range values {
+		data = append(data, resourceFromTopic(value))
+	}
+	return ListResponse{Object: ObjectList, HasMore: hasMore, Data: data}, nil
+}
+
+func (s *Service) GetAPI(ctx context.Context, identifier string) (Resource, error) {
+	value, err := s.Get(ctx, identifier)
+	if err != nil {
+		return Resource{}, err
+	}
+	return resourceFromTopic(value), nil
+}
+
+func (s *Service) UpdateAPI(ctx context.Context, identifier string, request UpdateRequest) (MutationResponse, error) {
+	value, err := s.Update(ctx, identifier, request)
+	if err != nil {
+		return MutationResponse{}, err
+	}
+	return MutationResponse{Object: ObjectTopic, ID: value.ID}, nil
+}
+
+func (s *Service) DeleteAPI(ctx context.Context, identifier string) (DeleteResponse, error) {
+	value, err := s.Delete(ctx, identifier)
+	if err != nil {
+		return DeleteResponse{}, err
+	}
+	return DeleteResponse{Object: ObjectTopic, ID: value.ID, Deleted: true}, nil
+}
+
+func resourceFromTopic(value Topic) Resource {
+	return Resource{
+		Object:              ObjectTopic,
+		ID:                  value.ID,
+		Name:                value.Name,
+		Description:         value.Description,
+		DefaultSubscription: value.DefaultSubscription,
+		Visibility:          value.Visibility,
+		CreatedAt:           value.CreatedAt,
+	}
+}
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (Topic, error) {
 	access, err := requireTenant(ctx, tenant.PermissionTopicsWrite)
@@ -131,68 +222,10 @@ func (s *Service) Delete(ctx context.Context, value string) (Topic, error) {
 	return result, nil
 }
 
-func validateCreate(req CreateRequest) (CreateRequest, error) {
-	req.Name = strings.TrimSpace(req.Name)
-	req.Description = normalizeOptional(req.Description)
-	req.DefaultSubscription = strings.ToLower(strings.TrimSpace(req.DefaultSubscription))
-	req.Visibility = strings.ToLower(strings.TrimSpace(req.Visibility))
-	if req.Visibility == "" {
-		req.Visibility = "private"
-	}
-	if err := validateNameDescription(req.Name, req.Description); err != nil {
-		return CreateRequest{}, err
-	}
-	if req.DefaultSubscription != "opt_in" && req.DefaultSubscription != "opt_out" {
-		return CreateRequest{}, apperrors.NewBadRequest("Default subscription must be opt_in or opt_out")
-	}
-	if req.Visibility != "public" && req.Visibility != "private" {
-		return CreateRequest{}, apperrors.NewBadRequest("Visibility must be public or private")
-	}
-	return req, nil
-}
-
-func validateNameDescription(name string, description *string) error {
-	if name == "" || len(name) > 50 {
-		return apperrors.NewBadRequest("Topic name is required and must be at most 50 characters")
-	}
-	if description != nil && len(*description) > 200 {
-		return apperrors.NewBadRequest("Topic description must be at most 200 characters")
-	}
-	return nil
-}
-
-func normalizeOptional(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
-func parseID(value string) (uuid.UUID, error) {
-	id, err := uuid.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return uuid.Nil, apperrors.NewBadRequest("Topic id must be a valid UUID")
-	}
-	return id, nil
-}
-
 func requireTenant(ctx context.Context, permission tenant.Permission) (tenant.AccessContext, error) {
 	access, decision := tenant.ResolveAccess(ctx, permission)
 	if !decision.Allowed {
 		return tenant.AccessContext{}, apperrors.NewForbidden(decision.Reason)
 	}
 	return access, nil
-}
-
-func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
-		req.Limit = 50
-	}
-	if req.Offset < 0 {
-		req.Offset = 0
-	}
 }
