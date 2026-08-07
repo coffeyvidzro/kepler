@@ -30,6 +30,11 @@ type scheduledDeliveryQueue interface {
 	RescheduleEmailDeliveryTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, time.Time) error
 }
 
+type QueuedMessage struct {
+	Message Message
+	Charge  platformbilling.CommittedCharge
+}
+
 func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (MutationResponse, error) {
 	tc, err := requireTenant(ctx, tenant.PermissionEmailSend)
 	if err != nil {
@@ -165,59 +170,38 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	if err != nil {
 		return Message{}, err
 	}
-	validated, err := validateSend(req, s.config)
-	if err != nil {
-		return Message{}, err
-	}
-	if err := s.authorizeSender(ctx, tc.Scope.TeamID, &validated); err != nil {
-		return Message{}, err
-	}
-	if s.delivery == nil {
-		return Message{}, apperrors.NewInternal("Email delivery queue is not configured", nil)
-	}
-	if s.repository == nil || s.routes == nil {
+	if s == nil || s.repository == nil {
 		return Message{}, apperrors.NewInternal("Customer email routing is not configured", nil)
-	}
-	if s.billing == nil {
-		return Message{}, apperrors.NewInternal("Email billing charge is not configured", nil)
 	}
 	tx, err := s.repository.BeginTx(ctx)
 	if err != nil {
 		return Message{}, apperrors.NewInternal("Unable to begin email transaction", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if validated.DeliveryRoute.SESTenantName == "" {
-		validated.DeliveryRoute, err = s.routes.ResolveActiveCustomerRouteTx(ctx, tx, tc.Scope.TeamID, validated.Provider, validated.ProviderRegion, validated.MessageType)
-		if errors.Is(err, ErrActiveEmailTenantNotFound) {
-			return Message{}, apperrors.NewConflict("Customer email tenant is not active")
-		}
-		if err != nil {
-			return Message{}, apperrors.NewInternal("Unable to resolve customer email route", err)
-		}
-	}
-	m, err := s.repository.CreateTx(ctx, tx, tc.Scope.TeamID, validated)
+	queued, err := s.EnqueueTx(ctx, tx, tc.Scope.TeamID, req)
 	if err != nil {
-		return Message{}, apperrors.NewInternal("Unable to create email message", err)
-	}
-	messageID := uuid.MustParse(m.ID)
-	charge, err := s.billing.ChargeEmail(ctx, tx, platformbilling.EmailChargeInput{
-		TeamID: tc.Scope.TeamID, MessageID: messageID,
-		RecipientCount: emailRecipientCount(validated),
-	})
-	if err != nil {
-		return Message{}, emailBillingError(err)
-	}
-	if err := enqueueDelivery(ctx, s.delivery, tx, messageID, tc.Scope.TeamID, validated.ScheduledAt); err != nil {
-		return Message{}, apperrors.NewInternal("Unable to enqueue email delivery", err)
+		return Message{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Message{}, apperrors.NewInternal("Unable to commit email transaction", err)
 	}
-	s.billing.ObserveCommittedCharge(ctx, platformbilling.CommittedCharge{
-		Charge: charge, Channel: platformbilling.ChannelEmail,
-		TeamID: tc.Scope.TeamID, MessageID: messageID,
-	})
-	return m, nil
+	s.ObserveCommitted(ctx, queued)
+	return queued.Message, nil
+}
+
+func (s *Service) EnqueueTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, req SendRequest) (QueuedMessage, error) {
+	validated, err := s.prepareSend(ctx, teamID, req)
+	if err != nil {
+		return QueuedMessage{}, err
+	}
+	return s.enqueueValidatedTx(ctx, tx, teamID, validated)
+}
+
+func (s *Service) ObserveCommitted(ctx context.Context, queued QueuedMessage) {
+	if s == nil || s.billing == nil {
+		return
+	}
+	s.billing.ObserveCommittedCharge(ctx, queued.Charge)
 }
 
 func (s *Service) Get(ctx context.Context, value string) (Message, error) {
@@ -265,14 +249,8 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 	if err != nil {
 		return nil, err
 	}
-	if s.delivery == nil {
-		return nil, apperrors.NewInternal("Email delivery queue is not configured", nil)
-	}
-	if s.repository == nil || s.routes == nil {
-		return nil, apperrors.NewInternal("Customer email routing is not configured", nil)
-	}
-	if s.billing == nil {
-		return nil, apperrors.NewInternal("Email billing charge is not configured", nil)
+	if err := s.ensureEnqueueConfigured(); err != nil {
+		return nil, err
 	}
 
 	validated := make([]validatedSend, len(req.Messages))
@@ -281,11 +259,8 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 		if len(item.Attachments) > 0 {
 			return nil, apperrors.NewBadRequest("attachments are not supported in batch emails")
 		}
-		validated[index], err = validateSend(item, s.config)
+		validated[index], err = s.prepareSend(ctx, tc.Scope.TeamID, item)
 		if err != nil {
-			return nil, err
-		}
-		if err = s.authorizeSender(ctx, tc.Scope.TeamID, &validated[index]); err != nil {
 			return nil, err
 		}
 		totalPayloadBytes += bodySize(validated[index].HTMLBody) + bodySize(validated[index].TextBody) + len(validated[index].Metadata)
@@ -301,45 +276,87 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	result := make([]Message, 0, len(validated))
-	committedCharges := make([]platformbilling.CommittedCharge, 0, len(validated))
+	queuedMessages := make([]QueuedMessage, 0, len(validated))
 	for index := range validated {
-		if validated[index].DeliveryRoute.SESTenantName == "" {
-			validated[index].DeliveryRoute, err = s.routes.ResolveActiveCustomerRouteTx(ctx, tx, tc.Scope.TeamID, validated[index].Provider, validated[index].ProviderRegion, validated[index].MessageType)
-			if errors.Is(err, ErrActiveEmailTenantNotFound) {
-				return nil, apperrors.NewConflict("Customer email tenant is not active")
-			}
-			if err != nil {
-				return nil, apperrors.NewInternal("Unable to resolve customer email route", err)
-			}
+		queued, enqueueErr := s.enqueueValidatedTx(ctx, tx, tc.Scope.TeamID, validated[index])
+		if enqueueErr != nil {
+			return nil, enqueueErr
 		}
-		message, createErr := s.repository.CreateTx(ctx, tx, tc.Scope.TeamID, validated[index])
-		if createErr != nil {
-			return nil, apperrors.NewInternal("Unable to create email message", createErr)
-		}
-		messageID := uuid.MustParse(message.ID)
-		charge, billingErr := s.billing.ChargeEmail(ctx, tx, platformbilling.EmailChargeInput{
-			TeamID: tc.Scope.TeamID, MessageID: messageID,
-			RecipientCount: emailRecipientCount(validated[index]),
-		})
-		if billingErr != nil {
-			return nil, emailBillingError(billingErr)
-		}
-		if enqueueErr := enqueueDelivery(ctx, s.delivery, tx, messageID, tc.Scope.TeamID, validated[index].ScheduledAt); enqueueErr != nil {
-			return nil, apperrors.NewInternal("Unable to enqueue email delivery", enqueueErr)
-		}
-		result = append(result, message)
-		committedCharges = append(committedCharges, platformbilling.CommittedCharge{
-			Charge: charge, Channel: platformbilling.ChannelEmail,
-			TeamID: tc.Scope.TeamID, MessageID: messageID,
-		})
+		result = append(result, queued.Message)
+		queuedMessages = append(queuedMessages, queued)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, apperrors.NewInternal("Unable to commit email batch transaction", err)
 	}
-	for _, charge := range committedCharges {
-		s.billing.ObserveCommittedCharge(ctx, charge)
+	for _, queued := range queuedMessages {
+		s.ObserveCommitted(ctx, queued)
 	}
 	return result, nil
+}
+
+func (s *Service) prepareSend(ctx context.Context, teamID uuid.UUID, req SendRequest) (validatedSend, error) {
+	validated, err := validateSend(req, s.config)
+	if err != nil {
+		return validatedSend{}, err
+	}
+	if err := s.authorizeSender(ctx, teamID, &validated); err != nil {
+		return validatedSend{}, err
+	}
+	if err := s.ensureEnqueueConfigured(); err != nil {
+		return validatedSend{}, err
+	}
+	return validated, nil
+}
+
+func (s *Service) ensureEnqueueConfigured() error {
+	if s == nil || s.delivery == nil {
+		return apperrors.NewInternal("Email delivery queue is not configured", nil)
+	}
+	if s.repository == nil || s.routes == nil {
+		return apperrors.NewInternal("Customer email routing is not configured", nil)
+	}
+	if s.billing == nil {
+		return apperrors.NewInternal("Email billing charge is not configured", nil)
+	}
+	return nil
+}
+
+func (s *Service) enqueueValidatedTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, validated validatedSend) (QueuedMessage, error) {
+	if tx == nil {
+		return QueuedMessage{}, apperrors.NewInternal("Email transaction is not configured", nil)
+	}
+	if validated.DeliveryRoute.SESTenantName == "" {
+		var err error
+		validated.DeliveryRoute, err = s.routes.ResolveActiveCustomerRouteTx(ctx, tx, teamID, validated.Provider, validated.ProviderRegion, validated.MessageType)
+		if errors.Is(err, ErrActiveEmailTenantNotFound) {
+			return QueuedMessage{}, apperrors.NewConflict("Customer email tenant is not active")
+		}
+		if err != nil {
+			return QueuedMessage{}, apperrors.NewInternal("Unable to resolve customer email route", err)
+		}
+	}
+	message, err := s.repository.CreateTx(ctx, tx, teamID, validated)
+	if err != nil {
+		return QueuedMessage{}, apperrors.NewInternal("Unable to create email message", err)
+	}
+	messageID := uuid.MustParse(message.ID)
+	charge, err := s.billing.ChargeEmail(ctx, tx, platformbilling.EmailChargeInput{
+		TeamID: teamID, MessageID: messageID,
+		RecipientCount: emailRecipientCount(validated),
+	})
+	if err != nil {
+		return QueuedMessage{}, emailBillingError(err)
+	}
+	if err := enqueueDelivery(ctx, s.delivery, tx, messageID, teamID, validated.ScheduledAt); err != nil {
+		return QueuedMessage{}, apperrors.NewInternal("Unable to enqueue email delivery", err)
+	}
+	return QueuedMessage{
+		Message: message,
+		Charge: platformbilling.CommittedCharge{
+			Charge: charge, Channel: platformbilling.ChannelEmail,
+			TeamID: teamID, MessageID: messageID,
+		},
+	}, nil
 }
 
 func emailBillingError(err error) error {
