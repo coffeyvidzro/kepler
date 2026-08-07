@@ -19,6 +19,9 @@ type eventEmitter interface {
 
 func emitContactEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, eventType platformevent.Type, current Contact, previous *Contact) error {
 	if emitter == nil {
+		emitter = platformevent.DefaultEmitter()
+	}
+	if emitter == nil {
 		return nil
 	}
 	teamID, err := uuid.Parse(current.TeamID)
