@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/contact-topics
     paths:
       - ".github/workflows/server.yml"
       - ".golangci.yml"
@@ -27,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -42,9 +41,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: feat/contact-topics
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -55,65 +51,6 @@ jobs:
 
       - name: Download dependencies
         run: go mod download
-
-      - name: Consolidate contact topic module files
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          root = Path("internal/modules/contact")
-          topic_model = root / "contact_topics_model.go"
-          topic_repository = root / "contact_topics_repository.go"
-          topic_service = root / "contact_topics_service.go"
-
-          if topic_model.exists():
-              target = root / "model.go"
-              extra = topic_model.read_text().removeprefix("package contact\n\n")
-              target.write_text(target.read_text().rstrip() + "\n\n" + extra.rstrip() + "\n")
-              topic_model.unlink()
-
-          if topic_repository.exists():
-              target = root / "repository.go"
-              content = target.read_text()
-              content = content.replace(
-                  '\t"fmt"\n\t"strconv"',
-                  '\t"fmt"\n\t"slices"\n\t"strconv"',
-                  1,
-              )
-              content = content.replace(
-                  '\tplatformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"\n',
-                  '\tdbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"\n'
-                  '\tplatformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"\n',
-                  1,
-              )
-              source = topic_repository.read_text()
-              marker = "var (\n\tErrContactTopicCursorNotFound"
-              extra = source[source.index(marker):]
-              target.write_text(content.rstrip() + "\n\n" + extra.rstrip() + "\n")
-              topic_repository.unlink()
-
-          if topic_service.exists():
-              target = root / "service.go"
-              source = topic_service.read_text()
-              marker = "func (s *Service) ListTopics"
-              extra = source[source.index(marker):]
-              target.write_text(target.read_text().rstrip() + "\n\n" + extra.rstrip() + "\n")
-              topic_service.unlink()
-          PY
-          gofmt -w internal/modules/contact/model.go internal/modules/contact/repository.go internal/modules/contact/service.go
-
-      - name: Commit consolidation
-        run: |
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add internal/modules/contact
-          git commit -m "Consolidate contact topic module files"
-          git fetch origin feat/contact-topics
-          git rebase origin/feat/contact-topics
-          git push origin HEAD:feat/contact-topics
 
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
@@ -129,7 +66,7 @@ jobs:
           git diff --exit-code -- internal/database/sqlc
 
       - name: Install golangci-lint
-        run: go install github.com/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
       - name: Verify golangci-lint config
         run: golangci-lint config verify --config .golangci.yml
