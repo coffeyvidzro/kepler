@@ -14,6 +14,14 @@ type Contact struct {
 	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
+type SegmentMembership struct {
+	ID         string    `json:"id"`
+	TeamID     string    `json:"team_id"`
+	Name       string    `json:"name"`
+	CreatedAt  time.Time `json:"created_at"`
+	AssignedAt time.Time `json:"assigned_at"`
+}
+
 type CreateRequest struct {
 	Email        string         `json:"email"`
 	FirstName    *string        `json:"first_name,omitempty"`

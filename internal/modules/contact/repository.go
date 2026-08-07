@@ -19,6 +19,8 @@ var (
 	ErrAlreadyExists        = errors.New("contact already exists")
 	ErrUnknownProperty      = errors.New("unknown contact property")
 	ErrPropertyTypeMismatch = errors.New("contact property type mismatch")
+	ErrContactNotFound      = errors.New("contact not found")
+	ErrSegmentNotFound      = errors.New("segment not found")
 )
 
 type Repository struct {
@@ -197,6 +199,135 @@ func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Contact,
 		return Contact{}, fmt.Errorf("commit contact deletion: %w", err)
 	}
 	return result, nil
+}
+
+func (r *Repository) ListSegments(ctx context.Context, contactID, teamID uuid.UUID) ([]SegmentMembership, error) {
+	if err := ensureContactExists(ctx, r.db, contactID, teamID, false); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT segment.id, segment.team_id, segment.name, segment.created_at, membership.created_at
+		FROM contact_segments AS membership
+		JOIN segments AS segment
+		  ON segment.id = membership.segment_id
+		 AND segment.team_id = membership.team_id
+		WHERE membership.team_id = $1
+		  AND membership.contact_id = $2
+		ORDER BY membership.created_at DESC, segment.id DESC
+	`, teamID, contactID)
+	if err != nil {
+		return nil, fmt.Errorf("list contact segments: %w", err)
+	}
+	defer rows.Close()
+
+	memberships := make([]SegmentMembership, 0)
+	for rows.Next() {
+		var membership SegmentMembership
+		if err := rows.Scan(&membership.ID, &membership.TeamID, &membership.Name, &membership.CreatedAt, &membership.AssignedAt); err != nil {
+			return nil, fmt.Errorf("scan contact segment membership: %w", err)
+		}
+		memberships = append(memberships, membership)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate contact segment memberships: %w", err)
+	}
+	return memberships, nil
+}
+
+func (r *Repository) AddSegment(ctx context.Context, contactID, segmentID, teamID uuid.UUID) (SegmentMembership, bool, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return SegmentMembership{}, false, fmt.Errorf("begin contact segment assignment: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := ensureContactExists(ctx, tx, contactID, teamID, true); err != nil {
+		return SegmentMembership{}, false, err
+	}
+	membership, err := getMembershipSegment(ctx, tx, segmentID, teamID, true)
+	if err != nil {
+		return SegmentMembership{}, false, err
+	}
+
+	created := true
+	err = tx.QueryRow(ctx, `
+		INSERT INTO contact_segments (team_id, contact_id, segment_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (contact_id, segment_id) DO NOTHING
+		RETURNING created_at
+	`, teamID, contactID, segmentID).Scan(&membership.AssignedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		created = false
+		err = tx.QueryRow(ctx, `
+			SELECT created_at FROM contact_segments
+			WHERE team_id = $1 AND contact_id = $2 AND segment_id = $3
+		`, teamID, contactID, segmentID).Scan(&membership.AssignedAt)
+	}
+	if err != nil {
+		return SegmentMembership{}, false, fmt.Errorf("assign contact to segment: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SegmentMembership{}, false, fmt.Errorf("commit contact segment assignment: %w", err)
+	}
+	return membership, created, nil
+}
+
+func (r *Repository) RemoveSegment(ctx context.Context, contactID, segmentID, teamID uuid.UUID) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return false, fmt.Errorf("begin contact segment removal: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := ensureContactExists(ctx, tx, contactID, teamID, true); err != nil {
+		return false, err
+	}
+	if _, err := getMembershipSegment(ctx, tx, segmentID, teamID, true); err != nil {
+		return false, err
+	}
+	command, err := tx.Exec(ctx, `
+		DELETE FROM contact_segments
+		WHERE team_id = $1 AND contact_id = $2 AND segment_id = $3
+	`, teamID, contactID, segmentID)
+	if err != nil {
+		return false, fmt.Errorf("remove contact from segment: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit contact segment removal: %w", err)
+	}
+	return command.RowsAffected() > 0, nil
+}
+
+func ensureContactExists(ctx context.Context, db contactQueryer, contactID, teamID uuid.UUID, lock bool) error {
+	query := `SELECT 1 FROM contacts WHERE id = $1 AND team_id = $2`
+	if lock {
+		query += ` FOR SHARE`
+	}
+	var exists int
+	err := db.QueryRow(ctx, query, contactID, teamID).Scan(&exists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrContactNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("validate contact for segment membership: %w", err)
+	}
+	return nil
+}
+
+func getMembershipSegment(ctx context.Context, db contactQueryer, segmentID, teamID uuid.UUID, lock bool) (SegmentMembership, error) {
+	query := `SELECT id, team_id, name, created_at FROM segments WHERE id = $1 AND team_id = $2`
+	if lock {
+		query += ` FOR SHARE`
+	}
+	var membership SegmentMembership
+	err := db.QueryRow(ctx, query, segmentID, teamID).Scan(&membership.ID, &membership.TeamID, &membership.Name, &membership.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SegmentMembership{}, ErrSegmentNotFound
+	}
+	if err != nil {
+		return SegmentMembership{}, fmt.Errorf("validate segment for contact membership: %w", err)
+	}
+	return membership, nil
 }
 
 type contactQueryer interface {

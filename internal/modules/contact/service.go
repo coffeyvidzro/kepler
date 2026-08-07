@@ -153,6 +153,83 @@ func (s *Service) Delete(ctx context.Context, value string) (Contact, error) {
 	return deleted, nil
 }
 
+func (s *Service) ListSegments(ctx context.Context, contactValue string) ([]SegmentMembership, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsRead)
+	if err != nil {
+		return nil, err
+	}
+	contactID, err := parseID(contactValue, "Contact")
+	if err != nil {
+		return nil, err
+	}
+	memberships, err := s.repository.ListSegments(ctx, contactID, access.Scope.TeamID)
+	if errors.Is(err, ErrContactNotFound) {
+		return nil, apperrors.NewNotFound("Contact not found")
+	}
+	if err != nil {
+		return nil, apperrors.NewInternal("Unable to list contact segments", err)
+	}
+	return memberships, nil
+}
+
+func (s *Service) AddSegment(ctx context.Context, contactValue, segmentValue string) (SegmentMembership, bool, error) {
+	access, err := requireTenant(ctx, tenant.PermissionContactsWrite)
+	if err != nil {
+		return SegmentMembership{}, false, err
+	}
+	contactID, err := parseID(contactValue, "Contact")
+	if err != nil {
+		return SegmentMembership{}, false, err
+	}
+	segmentID, err := parseID(segmentValue, "Segment")
+	if err != nil {
+		return SegmentMembership{}, false, err
+	}
+	membership, created, err := s.repository.AddSegment(ctx, contactID, segmentID, access.Scope.TeamID)
+	if errors.Is(err, ErrContactNotFound) {
+		return SegmentMembership{}, false, apperrors.NewNotFound("Contact not found")
+	}
+	if errors.Is(err, ErrSegmentNotFound) {
+		return SegmentMembership{}, false, apperrors.NewNotFound("Segment not found")
+	}
+	if err != nil {
+		return SegmentMembership{}, false, apperrors.NewInternal("Unable to add contact to segment", err)
+	}
+	if created {
+		audit.Record(ctx, access, audit.Event{Action: "contact.segment_added", ResourceType: "contact", ResourceID: contactID.String()})
+	}
+	return membership, created, nil
+}
+
+func (s *Service) RemoveSegment(ctx context.Context, contactValue, segmentValue string) error {
+	access, err := requireTenant(ctx, tenant.PermissionContactsWrite)
+	if err != nil {
+		return err
+	}
+	contactID, err := parseID(contactValue, "Contact")
+	if err != nil {
+		return err
+	}
+	segmentID, err := parseID(segmentValue, "Segment")
+	if err != nil {
+		return err
+	}
+	removed, err := s.repository.RemoveSegment(ctx, contactID, segmentID, access.Scope.TeamID)
+	if errors.Is(err, ErrContactNotFound) {
+		return apperrors.NewNotFound("Contact not found")
+	}
+	if errors.Is(err, ErrSegmentNotFound) {
+		return apperrors.NewNotFound("Segment not found")
+	}
+	if err != nil {
+		return apperrors.NewInternal("Unable to remove contact from segment", err)
+	}
+	if removed {
+		audit.Record(ctx, access, audit.Event{Action: "contact.segment_removed", ResourceType: "contact", ResourceID: contactID.String()})
+	}
+	return nil
+}
+
 func validateCreate(req CreateRequest) (CreateRequest, error) {
 	address, err := mail.ParseAddress(strings.TrimSpace(req.Email))
 	if err != nil || address.Address == "" || address.Name != "" {

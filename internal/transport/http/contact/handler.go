@@ -65,6 +65,32 @@ func (h *Handler) Delete(c *echo.Context) error {
 	return httputil.OK(c, value)
 }
 
+func (h *Handler) ListSegments(c *echo.Context) error {
+	value, err := h.service.ListSegments(c.Request().Context(), c.Param("contact_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) AddSegment(c *echo.Context) error {
+	value, created, err := h.service.AddSegment(c.Request().Context(), c.Param("contact_id"), c.Param("segment_id"))
+	if err != nil {
+		return httputil.Error(c, err)
+	}
+	if created {
+		return httputil.Created(c, value)
+	}
+	return httputil.OK(c, value)
+}
+
+func (h *Handler) RemoveSegment(c *echo.Context) error {
+	if err := h.service.RemoveSegment(c.Request().Context(), c.Param("contact_id"), c.Param("segment_id")); err != nil {
+		return httputil.Error(c, err)
+	}
+	return httputil.NoContent(c)
+}
+
 func decodeJSON(c *echo.Context, dst any) error {
 	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
 		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
