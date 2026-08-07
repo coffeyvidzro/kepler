@@ -83,6 +83,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	webhookModuleRepository := webhookmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)
 	lifecycleEmitter := webhookEmitter
+	broadcastExecutionJob := newBroadcastExecutionJob(db, webhookEmitter)
 
 	emailSender, err := awsses.NewSESSender(
 		startupCtx,
@@ -290,6 +291,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		job{name: "SMS feedback reconciler", run: smsFeedbackConsumer.Run},
 		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
 		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
+		broadcastExecutionJob,
 		senderIDReconciliationJob,
 	)
 	if err != nil {
