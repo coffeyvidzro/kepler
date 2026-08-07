@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
 var (
@@ -19,9 +21,16 @@ var (
 	ErrPropertyTypeMismatch = errors.New("contact property type mismatch")
 )
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	db      *pgxpool.Pool
+	emitter eventEmitter
+}
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+
+func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
+	return &Repository{db: db, emitter: emitter}
+}
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Contact, error) {
 	tx, err := r.db.Begin(ctx)
@@ -59,10 +68,13 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 	if err := replaceProperties(ctx, tx, teamID, contactID, req.Properties); err != nil {
 		return Contact{}, err
 	}
+	result.Properties = cloneProperties(req.Properties)
+	if err := emitContactEvent(ctx, tx, r.emitter, platformevent.TypeContactCreated, result, nil); err != nil {
+		return Contact{}, fmt.Errorf("emit contact created event: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Contact{}, fmt.Errorf("commit contact creation: %w", err)
 	}
-	result.Properties = cloneProperties(req.Properties)
 	return result, nil
 }
 
@@ -106,29 +118,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset i
 }
 
 func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Contact, error) {
-	var result Contact
-	err := r.db.QueryRow(ctx, `
-		SELECT id, team_id, email, first_name, last_name, unsubscribed, created_at, updated_at
-		FROM contacts
-		WHERE id = $1 AND team_id = $2
-	`, id, teamID).Scan(
-		&result.ID,
-		&result.TeamID,
-		&result.Email,
-		&result.FirstName,
-		&result.LastName,
-		&result.Unsubscribed,
-		&result.CreatedAt,
-		&result.UpdatedAt,
-	)
-	if err != nil {
-		return Contact{}, err
-	}
-	result.Properties, err = loadProperties(ctx, r.db, teamID, id)
-	if err != nil {
-		return Contact{}, err
-	}
-	return result, nil
+	return getContact(ctx, r.db, id, teamID)
 }
 
 func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, req CreateRequest) (Contact, error) {
@@ -137,6 +127,11 @@ func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, req Creat
 		return Contact{}, fmt.Errorf("begin contact update: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	previous, err := getContact(ctx, tx, id, teamID)
+	if err != nil {
+		return Contact{}, err
+	}
 
 	var result Contact
 	err = tx.QueryRow(ctx, `
@@ -167,19 +162,54 @@ func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, req Creat
 	if err := replaceProperties(ctx, tx, teamID, id, req.Properties); err != nil {
 		return Contact{}, err
 	}
+	result.Properties = cloneProperties(req.Properties)
+	if err := emitContactEvent(ctx, tx, r.emitter, platformevent.TypeContactUpdated, result, &previous); err != nil {
+		return Contact{}, fmt.Errorf("emit contact updated event: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Contact{}, fmt.Errorf("commit contact update: %w", err)
 	}
-	result.Properties = cloneProperties(req.Properties)
 	return result, nil
 }
 
 func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Contact, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Contact{}, fmt.Errorf("begin contact deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	result, err := getContact(ctx, tx, id, teamID)
+	if err != nil {
+		return Contact{}, err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM contacts WHERE id = $1 AND team_id = $2`, id, teamID)
+	if err != nil {
+		return Contact{}, err
+	}
+	if command.RowsAffected() == 0 {
+		return Contact{}, pgx.ErrNoRows
+	}
+	if err := emitContactEvent(ctx, tx, r.emitter, platformevent.TypeContactDeleted, result, nil); err != nil {
+		return Contact{}, fmt.Errorf("emit contact deleted event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Contact{}, fmt.Errorf("commit contact deletion: %w", err)
+	}
+	return result, nil
+}
+
+type contactQueryer interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func getContact(ctx context.Context, db contactQueryer, id, teamID uuid.UUID) (Contact, error) {
 	var result Contact
-	err := r.db.QueryRow(ctx, `
-		DELETE FROM contacts
+	err := db.QueryRow(ctx, `
+		SELECT id, team_id, email, first_name, last_name, unsubscribed, created_at, updated_at
+		FROM contacts
 		WHERE id = $1 AND team_id = $2
-		RETURNING id, team_id, email, first_name, last_name, unsubscribed, created_at, updated_at
 	`, id, teamID).Scan(
 		&result.ID,
 		&result.TeamID,
@@ -193,7 +223,10 @@ func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Contact,
 	if err != nil {
 		return Contact{}, err
 	}
-	result.Properties = map[string]any{}
+	result.Properties, err = loadProperties(ctx, db, teamID, id)
+	if err != nil {
+		return Contact{}, err
+	}
 	return result, nil
 }
 
