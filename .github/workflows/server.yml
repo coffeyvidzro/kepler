@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -41,8 +41,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -62,17 +60,10 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
-      - name: Regenerate sqlc code
+      - name: Verify sqlc generated code
         run: |
           go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
-          if git diff --quiet -- internal/database/sqlc; then
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add internal/database/sqlc
-          git commit -m "Regenerate contact property sqlc"
-          git push origin HEAD:agent/contact-property-compatibility
+          git diff --exit-code -- internal/database/sqlc
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
