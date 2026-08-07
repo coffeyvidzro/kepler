@@ -66,12 +66,12 @@ func (property Property) DeleteResponse() DeleteResponse {
 
 func (property Property) ResourceResponse() ResourceResponse {
 	return ResourceResponse{
-		Object: ObjectContactProperty,
-		ID: property.ID,
-		Key: property.Key,
-		Type: property.Type,
+		Object:        ObjectContactProperty,
+		ID:            property.ID,
+		Key:           property.Key,
+		Type:          property.Type,
 		FallbackValue: property.FallbackValue,
-		CreatedAt: property.CreatedAt,
+		CreatedAt:     property.CreatedAt,
 	}
 }
 
