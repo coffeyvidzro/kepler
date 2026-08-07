@@ -20,106 +20,111 @@ type Service struct{ repository *Repository }
 
 func NewService(repository *Repository) *Service { return &Service{repository: repository} }
 
-func (s *Service) Create(ctx context.Context, req CreateRequest) (Property, error) {
+func (s *Service) Create(ctx context.Context, req CreateRequest) (MutationResponse, error) {
 	access, err := requireTenant(ctx, tenant.PermissionContactPropertiesWrite)
 	if err != nil {
-		return Property{}, err
+		return MutationResponse{}, err
 	}
 	validated, err := validateCreate(req)
 	if err != nil {
-		return Property{}, err
+		return MutationResponse{}, err
 	}
 	value, err := s.repository.Create(ctx, access.Scope.TeamID, validated)
 	if errors.Is(err, ErrAlreadyExists) {
-		return Property{}, apperrors.NewConflict("A contact property with this key already exists")
+		return MutationResponse{}, apperrors.NewConflict("A contact property with this key already exists")
 	}
 	if err != nil {
-		return Property{}, apperrors.NewInternal("Unable to create contact property", err)
+		return MutationResponse{}, apperrors.NewInternal("Unable to create contact property", err)
 	}
 	audit.Record(ctx, access, audit.Event{Action: "contact_property.created", ResourceType: "contact_property", ResourceID: value.ID})
-	return value, nil
+	return value.MutationResponse(), nil
 }
 
-func (s *Service) List(ctx context.Context, req ListRequest) ([]Property, error) {
+func (s *Service) List(ctx context.Context, req ListRequest) (ListResponse, error) {
 	access, err := requireTenant(ctx, tenant.PermissionContactPropertiesRead)
 	if err != nil {
-		return nil, err
+		return ListResponse{}, err
 	}
-	normalizeListRequest(&req)
-	values, err := s.repository.List(ctx, access.Scope.TeamID, req.Limit, req.Offset)
+	if err := normalizeListRequest(&req); err != nil {
+		return ListResponse{}, err
+	}
+	values, hasMore, err := s.repository.List(ctx, access.Scope.TeamID, req)
+	if errors.Is(err, ErrCursorNotFound) {
+		return ListResponse{}, apperrors.NewBadRequest("Contact property cursor is invalid")
+	}
 	if err != nil {
-		return nil, apperrors.NewInternal("Unable to list contact properties", err)
+		return ListResponse{}, apperrors.NewInternal("Unable to list contact properties", err)
 	}
-	return values, nil
+	return ListResponse{Object: "list", HasMore: hasMore, Data: ResourceResponses(values)}, nil
 }
 
-func (s *Service) Get(ctx context.Context, value string) (Property, error) {
+func (s *Service) Get(ctx context.Context, value string) (ResourceResponse, error) {
 	access, err := requireTenant(ctx, tenant.PermissionContactPropertiesRead)
 	if err != nil {
-		return Property{}, err
+		return ResourceResponse{}, err
 	}
 	id, err := parseID(value)
 	if err != nil {
-		return Property{}, err
+		return ResourceResponse{}, err
 	}
 	property, err := s.repository.Get(ctx, id, access.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Property{}, apperrors.NewNotFound("Contact property not found")
+		return ResourceResponse{}, apperrors.NewNotFound("Contact property not found")
 	}
 	if err != nil {
-		return Property{}, apperrors.NewInternal("Unable to get contact property", err)
+		return ResourceResponse{}, apperrors.NewInternal("Unable to get contact property", err)
 	}
-	return property, nil
+	return property.ResourceResponse(), nil
 }
 
-func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (Property, error) {
+func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (MutationResponse, error) {
 	access, err := requireTenant(ctx, tenant.PermissionContactPropertiesWrite)
 	if err != nil {
-		return Property{}, err
+		return MutationResponse{}, err
 	}
 	id, err := parseID(value)
 	if err != nil {
-		return Property{}, err
+		return MutationResponse{}, err
 	}
 	current, err := s.repository.Get(ctx, id, access.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Property{}, apperrors.NewNotFound("Contact property not found")
+		return MutationResponse{}, apperrors.NewNotFound("Contact property not found")
 	}
 	if err != nil {
-		return Property{}, apperrors.NewInternal("Unable to get contact property", err)
+		return MutationResponse{}, apperrors.NewInternal("Unable to get contact property", err)
 	}
 	if err := validateFallback(current.Type, req.FallbackValue); err != nil {
-		return Property{}, err
+		return MutationResponse{}, err
 	}
 	updated, err := s.repository.Update(ctx, id, access.Scope.TeamID, current.Type, req.FallbackValue)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Property{}, apperrors.NewNotFound("Contact property not found")
+		return MutationResponse{}, apperrors.NewNotFound("Contact property not found")
 	}
 	if err != nil {
-		return Property{}, apperrors.NewInternal("Unable to update contact property", err)
+		return MutationResponse{}, apperrors.NewInternal("Unable to update contact property", err)
 	}
 	audit.Record(ctx, access, audit.Event{Action: "contact_property.updated", ResourceType: "contact_property", ResourceID: id.String()})
-	return updated, nil
+	return updated.MutationResponse(), nil
 }
 
-func (s *Service) Delete(ctx context.Context, value string) (Property, error) {
+func (s *Service) Delete(ctx context.Context, value string) (DeleteResponse, error) {
 	access, err := requireTenant(ctx, tenant.PermissionContactPropertiesWrite)
 	if err != nil {
-		return Property{}, err
+		return DeleteResponse{}, err
 	}
 	id, err := parseID(value)
 	if err != nil {
-		return Property{}, err
+		return DeleteResponse{}, err
 	}
 	deleted, err := s.repository.Delete(ctx, id, access.Scope.TeamID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Property{}, apperrors.NewNotFound("Contact property not found")
+		return DeleteResponse{}, apperrors.NewNotFound("Contact property not found")
 	}
 	if err != nil {
-		return Property{}, apperrors.NewInternal("Unable to delete contact property", err)
+		return DeleteResponse{}, apperrors.NewInternal("Unable to delete contact property", err)
 	}
 	audit.Record(ctx, access, audit.Event{Action: "contact_property.deleted", ResourceType: "contact_property", ResourceID: id.String()})
-	return deleted, nil
+	return deleted.DeleteResponse(), nil
 }
 
 func validateCreate(req CreateRequest) (CreateRequest, error) {
@@ -169,11 +174,17 @@ func parseID(value string) (uuid.UUID, error) {
 	return id, nil
 }
 
-func normalizeListRequest(req *ListRequest) {
-	if req.Limit <= 0 || req.Limit > 100 {
-		req.Limit = 50
+func normalizeListRequest(req *ListRequest) error {
+	req.After = strings.TrimSpace(req.After)
+	req.Before = strings.TrimSpace(req.Before)
+	if req.After != "" && req.Before != "" {
+		return apperrors.NewBadRequest("Only one of after or before may be provided")
 	}
-	if req.Offset < 0 {
-		req.Offset = 0
+	if req.Limit == 0 {
+		req.Limit = 20
 	}
+	if req.Limit < 1 || req.Limit > 100 {
+		return apperrors.NewBadRequest("limit must be between 1 and 100")
+	}
+	return nil
 }
