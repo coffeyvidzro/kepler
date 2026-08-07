@@ -4,238 +4,211 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 )
 
 var ErrAlreadyExists = errors.New("contact property already exists")
 var ErrCursorNotFound = errors.New("contact property cursor not found")
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	queries *dbsqlc.Queries
+}
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{queries: dbsqlc.New(db)}
+}
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateRequest) (Property, error) {
-	fallbackString, fallbackNumber := splitFallback(req.Type, req.FallbackValue)
-	var value Property
-	var numberText *string
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO contact_properties (
-			team_id, key, value_type, fallback_string, fallback_number
-		) VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, team_id, key, value_type, fallback_string, fallback_number::text, created_at, updated_at
-	`, teamID, req.Key, req.Type, fallbackString, fallbackNumber).Scan(
-		&value.ID,
-		&value.TeamID,
-		&value.Key,
-		&value.Type,
-		&fallbackString,
-		&numberText,
-		&value.CreatedAt,
-		&value.UpdatedAt,
-	)
+	fallbackString, fallbackNumber, err := splitFallback(req.Type, req.FallbackValue)
+	if err != nil {
+		return Property{}, err
+	}
+	row, err := r.queries.CreateContactProperty(ctx, dbsqlc.CreateContactPropertyParams{
+		TeamID:         teamID,
+		Key:            req.Key,
+		ValueType:      req.Type,
+		FallbackString: fallbackString,
+		FallbackNumber: fallbackNumber,
+	})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Property{}, ErrAlreadyExists
 		}
 		return Property{}, fmt.Errorf("create contact property: %w", err)
 	}
-	value.FallbackValue, err = joinFallback(value.Type, fallbackString, numberText)
-	if err != nil {
-		return Property{}, err
-	}
-	return value, nil
+	return propertyFromSQLC(row)
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest) ([]Property, bool, error) {
 	limit := req.Limit + 1
-	var rows pgx.Rows
-	var err error
+	var (
+		rows []dbsqlc.ContactProperty
+		err  error
+	)
 
 	switch {
 	case req.After != "":
-		cursorID, parseErr := uuid.Parse(req.After)
+		cursorID, parseErr := parseCursor(req.After)
 		if parseErr != nil {
-			return nil, false, ErrCursorNotFound
+			return nil, false, parseErr
 		}
-		rows, err = r.db.Query(ctx, `
-			WITH cursor AS (
-				SELECT created_at, id
-				FROM contact_properties
-				WHERE id = $2 AND team_id = $1
-			)
-			SELECT property.id, property.team_id, property.key, property.value_type,
-				property.fallback_string, property.fallback_number::text,
-				property.created_at, property.updated_at
-			FROM contact_properties AS property
-			CROSS JOIN cursor
-			WHERE property.team_id = $1
-			  AND (property.created_at, property.id) < (cursor.created_at, cursor.id)
-			ORDER BY property.created_at DESC, property.id DESC
-			LIMIT $3
-		`, teamID, cursorID, limit)
+		if err := r.ensureCursor(ctx, teamID, cursorID); err != nil {
+			return nil, false, err
+		}
+		rows, err = r.queries.ListContactPropertiesAfter(ctx, dbsqlc.ListContactPropertiesAfterParams{
+			TeamID: teamID, CursorID: cursorID, PageLimit: limit,
+		})
 	case req.Before != "":
-		cursorID, parseErr := uuid.Parse(req.Before)
+		cursorID, parseErr := parseCursor(req.Before)
 		if parseErr != nil {
-			return nil, false, ErrCursorNotFound
+			return nil, false, parseErr
 		}
-		rows, err = r.db.Query(ctx, `
-			WITH cursor AS (
-				SELECT created_at, id
-				FROM contact_properties
-				WHERE id = $2 AND team_id = $1
-			), page AS (
-				SELECT property.id, property.team_id, property.key, property.value_type,
-					property.fallback_string, property.fallback_number::text,
-					property.created_at, property.updated_at
-				FROM contact_properties AS property
-				CROSS JOIN cursor
-				WHERE property.team_id = $1
-				  AND (property.created_at, property.id) > (cursor.created_at, cursor.id)
-				ORDER BY property.created_at ASC, property.id ASC
-				LIMIT $3
-			)
-			SELECT id, team_id, key, value_type, fallback_string, fallback_number,
-				created_at, updated_at
-			FROM page
-			ORDER BY created_at DESC, id DESC
-		`, teamID, cursorID, limit)
+		if err := r.ensureCursor(ctx, teamID, cursorID); err != nil {
+			return nil, false, err
+		}
+		rows, err = r.queries.ListContactPropertiesBefore(ctx, dbsqlc.ListContactPropertiesBeforeParams{
+			TeamID: teamID, CursorID: cursorID, PageLimit: limit,
+		})
 	default:
-		rows, err = r.db.Query(ctx, `
-			SELECT id, team_id, key, value_type, fallback_string,
-				fallback_number::text, created_at, updated_at
-			FROM contact_properties
-			WHERE team_id = $1
-			ORDER BY created_at DESC, id DESC
-			LIMIT $2
-		`, teamID, limit)
+		rows, err = r.queries.ListContactProperties(ctx, dbsqlc.ListContactPropertiesParams{
+			TeamID: teamID, PageLimit: limit,
+		})
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("list contact properties: %w", err)
 	}
-	defer rows.Close()
 
-	values := make([]Property, 0, limit)
-	for rows.Next() {
-		value, scanErr := scanProperty(rows)
-		if scanErr != nil {
-			return nil, false, scanErr
+	hasMore := len(rows) > int(req.Limit)
+	if hasMore {
+		rows = rows[:req.Limit]
+	}
+	if req.Before != "" {
+		slices.Reverse(rows)
+	}
+	values := make([]Property, 0, len(rows))
+	for _, row := range rows {
+		value, convertErr := propertyFromSQLC(row)
+		if convertErr != nil {
+			return nil, false, convertErr
 		}
 		values = append(values, value)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, fmt.Errorf("iterate contact properties: %w", err)
-	}
-	if (req.After != "" || req.Before != "") && len(values) == 0 {
-		var exists bool
-		cursor := req.After
-		if cursor == "" {
-			cursor = req.Before
-		}
-		cursorID, _ := uuid.Parse(cursor)
-		if err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM contact_properties WHERE id=$1 AND team_id=$2)`, cursorID, teamID).Scan(&exists); err != nil {
-			return nil, false, fmt.Errorf("validate contact property cursor: %w", err)
-		}
-		if !exists {
-			return nil, false, ErrCursorNotFound
-		}
-	}
-	hasMore := len(values) > int(req.Limit)
-	if hasMore {
-		if req.Before != "" {
-			values = values[1:]
-		} else {
-			values = values[:req.Limit]
-		}
 	}
 	return values, hasMore, nil
 }
 
 func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Property, error) {
-	return scanProperty(r.db.QueryRow(ctx, `
-		SELECT id, team_id, key, value_type, fallback_string, fallback_number::text, created_at, updated_at
-		FROM contact_properties
-		WHERE id = $1 AND team_id = $2
-	`, id, teamID))
-}
-
-func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, valueType string, fallback any) (Property, error) {
-	fallbackString, fallbackNumber := splitFallback(valueType, fallback)
-	return scanProperty(r.db.QueryRow(ctx, `
-		UPDATE contact_properties
-		SET fallback_string = $3,
-			fallback_number = $4,
-			updated_at = now()
-		WHERE id = $1 AND team_id = $2
-		RETURNING id, team_id, key, value_type, fallback_string, fallback_number::text, created_at, updated_at
-	`, id, teamID, fallbackString, fallbackNumber))
-}
-
-func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Property, error) {
-	return scanProperty(r.db.QueryRow(ctx, `
-		DELETE FROM contact_properties
-		WHERE id = $1 AND team_id = $2
-		RETURNING id, team_id, key, value_type, fallback_string, fallback_number::text, created_at, updated_at
-	`, id, teamID))
-}
-
-type rowScanner interface{ Scan(...any) error }
-
-func scanProperty(row rowScanner) (Property, error) {
-	var value Property
-	var fallbackString, numberText *string
-	if err := row.Scan(
-		&value.ID,
-		&value.TeamID,
-		&value.Key,
-		&value.Type,
-		&fallbackString,
-		&numberText,
-		&value.CreatedAt,
-		&value.UpdatedAt,
-	); err != nil {
-		return Property{}, err
-	}
-	fallback, err := joinFallback(value.Type, fallbackString, numberText)
+	row, err := r.queries.GetContactProperty(ctx, dbsqlc.GetContactPropertyParams{ID: id, TeamID: teamID})
 	if err != nil {
 		return Property{}, err
 	}
-	value.FallbackValue = fallback
-	return value, nil
+	return propertyFromSQLC(row)
 }
 
-func splitFallback(valueType string, fallback any) (*string, *float64) {
+func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, valueType string, fallback any) (Property, error) {
+	fallbackString, fallbackNumber, err := splitFallback(valueType, fallback)
+	if err != nil {
+		return Property{}, err
+	}
+	row, err := r.queries.UpdateContactPropertyFallback(ctx, dbsqlc.UpdateContactPropertyFallbackParams{
+		ID: id, TeamID: teamID, FallbackString: fallbackString, FallbackNumber: fallbackNumber,
+	})
+	if err != nil {
+		return Property{}, err
+	}
+	return propertyFromSQLC(row)
+}
+
+func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Property, error) {
+	row, err := r.queries.DeleteContactProperty(ctx, dbsqlc.DeleteContactPropertyParams{ID: id, TeamID: teamID})
+	if err != nil {
+		return Property{}, err
+	}
+	return propertyFromSQLC(row)
+}
+
+func (r *Repository) ensureCursor(ctx context.Context, teamID, cursorID uuid.UUID) error {
+	exists, err := r.queries.ContactPropertyCursorExists(ctx, dbsqlc.ContactPropertyCursorExistsParams{
+		CursorID: cursorID,
+		TeamID:   teamID,
+	})
+	if err != nil {
+		return fmt.Errorf("validate contact property cursor: %w", err)
+	}
+	if !exists {
+		return ErrCursorNotFound
+	}
+	return nil
+}
+
+func parseCursor(value string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return uuid.Nil, ErrCursorNotFound
+	}
+	return id, nil
+}
+
+func propertyFromSQLC(row dbsqlc.ContactProperty) (Property, error) {
+	fallback, err := joinFallback(row.ValueType, row.FallbackString, row.FallbackNumber)
+	if err != nil {
+		return Property{}, err
+	}
+	return Property{
+		ID:            row.ID.String(),
+		TeamID:        row.TeamID.String(),
+		Key:           row.Key,
+		Type:          row.ValueType,
+		FallbackValue: fallback,
+		CreatedAt:     row.CreatedAt.Time,
+		UpdatedAt:     row.UpdatedAt.Time,
+	}, nil
+}
+
+func splitFallback(valueType string, fallback any) (*string, pgtype.Numeric, error) {
 	if fallback == nil {
-		return nil, nil
+		return nil, pgtype.Numeric{}, nil
 	}
 	if valueType == "string" {
 		value := fallback.(string)
-		return &value, nil
+		return &value, pgtype.Numeric{}, nil
 	}
-	value, _ := numericValue(fallback)
-	return nil, &value
+	value, ok := numericValue(fallback)
+	if !ok {
+		return nil, pgtype.Numeric{}, errors.New("contact property fallback is not numeric")
+	}
+	var number pgtype.Numeric
+	if err := number.ScanFloat64(pgtype.Float8{Float64: value, Valid: true}); err != nil {
+		return nil, pgtype.Numeric{}, fmt.Errorf("encode contact property fallback: %w", err)
+	}
+	return nil, number, nil
 }
 
-func joinFallback(valueType string, stringValue, numberText *string) (any, error) {
+func joinFallback(valueType string, stringValue *string, numberValue pgtype.Numeric) (any, error) {
 	if valueType == "string" {
 		if stringValue == nil {
 			return nil, nil
 		}
 		return *stringValue, nil
 	}
-	if numberText == nil {
+	if !numberValue.Valid {
 		return nil, nil
 	}
-	value, err := strconv.ParseFloat(*numberText, 64)
+	value, err := numberValue.Float64Value()
 	if err != nil {
 		return nil, fmt.Errorf("parse contact property fallback: %w", err)
 	}
-	return value, nil
+	if !value.Valid {
+		return nil, nil
+	}
+	return value.Float64, nil
 }
 
 func numericValue(value any) (float64, bool) {
@@ -265,5 +238,3 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && strings.EqualFold(pgErr.Code, "23505")
 }
-
-var _ = pgx.ErrNoRows
