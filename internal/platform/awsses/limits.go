@@ -2,22 +2,21 @@ package awsses
 
 const (
 	// MaxRawMessageBytes is the authoritative provider limit for the fully
-	// encoded RFC 5322 message submitted through SES SendRawEmail.
-	MaxRawMessageBytes = 10 << 20
+	// encoded RFC 5322 message submitted through SES v2 SendEmail.
+	MaxRawMessageBytes = 40 << 20
 
 	// MaxBodyBytes applies independently to the HTML and text alternatives.
 	MaxBodyBytes = 1 << 20
 
-	// MaxAttachmentsDecodedBytes is the aggregate decoded attachment allowance.
-	// Base64 line wrapping expands this to roughly 9.6 MiB, leaving space for
-	// headers, MIME boundaries, and message bodies under MaxRawMessageBytes.
-	MaxAttachmentsDecodedBytes = 7 << 20
+	// MaxAttachmentsEncodedBytes matches Resend's aggregate attachment limit.
+	// The limit is measured after Base64 encoding, before MIME line wrapping.
+	MaxAttachmentsEncodedBytes = 40 << 20
 
 	// MaxBatchPayloadBytes limits the sum of body and metadata bytes accepted by
 	// one batch operation. Batch attachments are intentionally unsupported.
 	MaxBatchPayloadBytes = 10 << 20
 
-	// MaxHTTPRequestBytes accommodates the JSON and base64 representation while
-	// remaining close to the provider's final encoded-message limit.
-	MaxHTTPRequestBytes = 12 << 20
+	// MaxHTTPRequestBytes accommodates a 40 MiB Base64 attachment payload plus
+	// JSON fields and modest request overhead.
+	MaxHTTPRequestBytes = 48 << 20
 )
