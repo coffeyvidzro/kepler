@@ -17,7 +17,9 @@ type Querier interface {
 	CancelWebhookDeliveriesForEndpoint(ctx context.Context, arg CancelWebhookDeliveriesForEndpointParams) (int64, error)
 	ClaimDueEmailProviderEvents(ctx context.Context, arg ClaimDueEmailProviderEventsParams) ([]ClaimDueEmailProviderEventsRow, error)
 	ClaimEmailProviderEvent(ctx context.Context, arg ClaimEmailProviderEventParams) (ClaimEmailProviderEventRow, error)
+	ClaimNextQueuedBroadcastForMaterialization(ctx context.Context) (ClaimNextQueuedBroadcastForMaterializationRow, error)
 	ClaimWebhookDeliveries(ctx context.Context, arg ClaimWebhookDeliveriesParams) ([]ClaimWebhookDeliveriesRow, error)
+	CompleteBroadcastRecipientMaterialization(ctx context.Context, arg CompleteBroadcastRecipientMaterializationParams) (CompleteBroadcastRecipientMaterializationRow, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	ConfirmTOTPCredential(ctx context.Context, arg ConfirmTOTPCredentialParams) (int64, error)
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
@@ -152,6 +154,8 @@ type Querier interface {
 	ListWebhookEventsFiltered(ctx context.Context, arg ListWebhookEventsFilteredParams) ([]WebhookEvent, error)
 	ListWebhookEventsForObject(ctx context.Context, arg ListWebhookEventsForObjectParams) ([]WebhookEvent, error)
 	LockMessageTemplate(ctx context.Context, arg LockMessageTemplateParams) (MessageTemplate, error)
+	MarkBroadcastFailed(ctx context.Context, arg MarkBroadcastFailedParams) (Broadcast, error)
+	MarkBroadcastSent(ctx context.Context, arg MarkBroadcastSentParams) (Broadcast, error)
 	MarkEmailProviderEventProcessed(ctx context.Context, arg MarkEmailProviderEventProcessedParams) (int64, error)
 	MarkEmailTenantActive(ctx context.Context, arg MarkEmailTenantActiveParams) (EmailTenant, error)
 	MarkEmailTenantDeleting(ctx context.Context, arg MarkEmailTenantDeletingParams) (EmailTenant, error)
@@ -165,9 +169,12 @@ type Querier interface {
 	MarkUserEmailVerifiedByEmail(ctx context.Context, arg MarkUserEmailVerifiedByEmailParams) (User, error)
 	MarkWebhookDeliveryFailed(ctx context.Context, arg MarkWebhookDeliveryFailedParams) (MarkWebhookDeliveryFailedRow, error)
 	MarkWebhookDeliverySucceeded(ctx context.Context, arg MarkWebhookDeliverySucceededParams) (MarkWebhookDeliverySucceededRow, error)
+	MaterializeBroadcastRecipients(ctx context.Context, arg MaterializeBroadcastRecipientsParams) error
 	PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error)
 	PutUnverifiedTOTPCredential(ctx context.Context, arg PutUnverifiedTOTPCredentialParams) (int64, error)
 	QueueBroadcast(ctx context.Context, arg QueueBroadcastParams) (Broadcast, error)
+	QueueNextDueBroadcast(ctx context.Context) (Broadcast, error)
+	QueueScheduledBroadcast(ctx context.Context, arg QueueScheduledBroadcastParams) (Broadcast, error)
 	ReleaseWebhookDeliveryClaim(ctx context.Context, arg ReleaseWebhookDeliveryClaimParams) (int64, error)
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
 	ReplayWebhookDelivery(ctx context.Context, arg ReplayWebhookDeliveryParams) (WebhookDelivery, error)

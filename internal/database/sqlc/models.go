@@ -58,28 +58,29 @@ type BillingMarket struct {
 }
 
 type Broadcast struct {
-	ID                uuid.UUID          `db:"id" json:"id"`
-	TeamID            uuid.UUID          `db:"team_id" json:"team_id"`
-	Name              string             `db:"name" json:"name"`
-	Status            string             `db:"status" json:"status"`
-	SegmentID         uuid.UUID          `db:"segment_id" json:"segment_id"`
-	TopicID           *uuid.UUID         `db:"topic_id" json:"topic_id"`
-	TemplateID        uuid.UUID          `db:"template_id" json:"template_id"`
-	TemplateVersionID *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
-	VariableBindings  []byte             `db:"variable_bindings" json:"variable_bindings"`
-	ScheduledAt       pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	QueuedAt          pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
-	SentAt            pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
-	CanceledAt        pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
-	AudienceCount     int64              `db:"audience_count" json:"audience_count"`
-	EligibleCount     int64              `db:"eligible_count" json:"eligible_count"`
-	SuppressedCount   int64              `db:"suppressed_count" json:"suppressed_count"`
-	QueuedCount       int64              `db:"queued_count" json:"queued_count"`
-	FailedCount       int64              `db:"failed_count" json:"failed_count"`
-	Revision          int64              `db:"revision" json:"revision"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	DeletedAt         pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	TeamID                   uuid.UUID          `db:"team_id" json:"team_id"`
+	Name                     string             `db:"name" json:"name"`
+	Status                   string             `db:"status" json:"status"`
+	SegmentID                uuid.UUID          `db:"segment_id" json:"segment_id"`
+	TopicID                  *uuid.UUID         `db:"topic_id" json:"topic_id"`
+	TemplateID               uuid.UUID          `db:"template_id" json:"template_id"`
+	TemplateVersionID        *uuid.UUID         `db:"template_version_id" json:"template_version_id"`
+	VariableBindings         []byte             `db:"variable_bindings" json:"variable_bindings"`
+	ScheduledAt              pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	QueuedAt                 pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	SentAt                   pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CanceledAt               pgtype.Timestamptz `db:"canceled_at" json:"canceled_at"`
+	RecipientsMaterializedAt pgtype.Timestamptz `db:"recipients_materialized_at" json:"recipients_materialized_at"`
+	AudienceCount            int64              `db:"audience_count" json:"audience_count"`
+	EligibleCount            int64              `db:"eligible_count" json:"eligible_count"`
+	SuppressedCount          int64              `db:"suppressed_count" json:"suppressed_count"`
+	QueuedCount              int64              `db:"queued_count" json:"queued_count"`
+	FailedCount              int64              `db:"failed_count" json:"failed_count"`
+	Revision                 int64              `db:"revision" json:"revision"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt                pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
 type BroadcastRecipient struct {
