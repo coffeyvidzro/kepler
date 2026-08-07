@@ -8,8 +8,8 @@ FROM topics AS topic
 LEFT JOIN contact_topic_subscriptions AS subscription
   ON subscription.team_id = topic.team_id
  AND subscription.topic_id = topic.id
- AND subscription.contact_id = sqlc.arg(contact_id)
-WHERE topic.team_id = sqlc.arg(team_id)
+ AND subscription.contact_id = sqlc.arg(scope_contact_id)
+WHERE topic.team_id = sqlc.arg(scope_team_id)
 ORDER BY topic.created_at DESC, topic.id DESC
 LIMIT sqlc.arg(page_limit);
 
@@ -23,7 +23,7 @@ FROM topics AS topic
 LEFT JOIN contact_topic_subscriptions AS subscription
   ON subscription.team_id = topic.team_id
  AND subscription.topic_id = topic.id
- AND subscription.contact_id = sqlc.arg(contact_id)
+ AND subscription.contact_id = sqlc.arg(scope_contact_id)
 WHERE topic.team_id = sqlc.arg(scope_team_id)
   AND (topic.created_at, topic.id) < (
       SELECT cursor_topic.created_at, cursor_topic.id
@@ -44,7 +44,7 @@ FROM topics AS topic
 LEFT JOIN contact_topic_subscriptions AS subscription
   ON subscription.team_id = topic.team_id
  AND subscription.topic_id = topic.id
- AND subscription.contact_id = sqlc.arg(contact_id)
+ AND subscription.contact_id = sqlc.arg(scope_contact_id)
 WHERE topic.team_id = sqlc.arg(scope_team_id)
   AND (topic.created_at, topic.id) > (
       SELECT cursor_topic.created_at, cursor_topic.id
