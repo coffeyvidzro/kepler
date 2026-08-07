@@ -1,6 +1,7 @@
 package messagetemplate
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"regexp"
@@ -84,6 +85,11 @@ func renderVariableValue(variable Variable, value any) (string, error) {
 		return text, nil
 	case VariableTypeNumber:
 		switch number := value.(type) {
+		case json.Number:
+			if _, err := number.Float64(); err != nil {
+				return "", fmt.Errorf("template variable %s must be a number", variable.Key)
+			}
+			return number.String(), nil
 		case float64:
 			return strconv.FormatFloat(number, 'f', -1, 64), nil
 		case float32:
@@ -94,8 +100,6 @@ func renderVariableValue(variable Variable, value any) (string, error) {
 			return strconv.FormatInt(int64(number), 10), nil
 		case int64:
 			return strconv.FormatInt(number, 10), nil
-		case jsonNumber:
-			return string(number), nil
 		default:
 			return "", fmt.Errorf("template variable %s must be a number", variable.Key)
 		}
@@ -103,8 +107,6 @@ func renderVariableValue(variable Variable, value any) (string, error) {
 		return "", fmt.Errorf("unsupported template variable type %q", variable.Type)
 	}
 }
-
-type jsonNumber string
 
 func referencedVariables(inputs ...string) []string {
 	set := map[string]struct{}{}
