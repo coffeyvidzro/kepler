@@ -66,9 +66,7 @@ func (h *Handler) Delete(c *echo.Context) error {
 }
 
 func decodeJSON(c *echo.Context, dst any) error {
-	decoder := json.NewDecoder(c.Request().Body)
-	decoder.UseNumber()
-	if err := decoder.Decode(dst); err != nil {
+	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
 		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
 	}
 	return nil
