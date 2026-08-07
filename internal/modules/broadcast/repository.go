@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
 var (
@@ -15,9 +18,16 @@ var (
 	ErrConflict = errors.New("broadcast conflict")
 )
 
-type Repository struct{ db *pgxpool.Pool }
+type Repository struct {
+	db      *pgxpool.Pool
+	emitter eventEmitter
+}
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+
+func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
+	return &Repository{db: db, emitter: emitter}
+}
 
 const broadcastColumns = `id,team_id,name,status,segment_id,topic_id,template_id,template_version_id,
 variable_bindings,scheduled_at,queued_at,sent_at,canceled_at,audience_count,eligible_count,
@@ -105,28 +115,85 @@ func (r *Repository) Update(ctx context.Context, teamID, id, segmentID uuid.UUID
 }
 
 func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, scheduledAt any) (Broadcast, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("begin broadcast send: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	query := `UPDATE broadcasts SET status='queued',template_version_id=$1,scheduled_at=NULL,queued_at=now(),canceled_at=NULL,revision=revision+1,updated_at=now()
 		WHERE id=$2 AND team_id=$3 AND status='draft' AND deleted_at IS NULL RETURNING ` + broadcastColumns
 	args := []any{versionID, id, teamID}
+	eventType := platformevent.TypeBroadcastQueued
+	reason := "immediate_send"
 	if scheduledAt != nil {
 		query = `UPDATE broadcasts SET status='scheduled',template_version_id=$1,scheduled_at=$2,canceled_at=NULL,revision=revision+1,updated_at=now()
 			WHERE id=$3 AND team_id=$4 AND status='draft' AND deleted_at IS NULL RETURNING ` + broadcastColumns
 		args = []any{versionID, scheduledAt, id, teamID}
+		eventType = platformevent.TypeBroadcastScheduled
+		reason = "scheduled_send"
 	}
-	value, err := scanBroadcast(r.db.QueryRow(ctx, query, args...))
+	value, err := scanBroadcast(tx.QueryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, err
+	}
+	if err := emitBroadcastEvent(ctx, tx, r.emitter, eventType, value, StatusDraft, reason, nil); err != nil {
+		return Broadcast{}, fmt.Errorf("emit broadcast lifecycle event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Broadcast{}, fmt.Errorf("commit broadcast send: %w", err)
+	}
+	return value, nil
+}
+
+func (r *Repository) QueueScheduled(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
+	return r.transition(ctx, `UPDATE broadcasts SET status='queued',queued_at=now(),revision=revision+1,updated_at=now()
+		WHERE id=$1 AND team_id=$2 AND status='scheduled' AND deleted_at IS NULL RETURNING `+broadcastColumns,
+		[]any{id, teamID}, platformevent.TypeBroadcastQueued, StatusScheduled, "schedule_due", nil)
+}
+
+func (r *Repository) MarkSent(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
+	return r.transition(ctx, `UPDATE broadcasts SET status='sent',sent_at=now(),revision=revision+1,updated_at=now()
+		WHERE id=$1 AND team_id=$2 AND status='queued' AND deleted_at IS NULL RETURNING `+broadcastColumns,
+		[]any{id, teamID}, platformevent.TypeBroadcastSent, StatusQueued, "recipient_fanout_completed", nil)
+}
+
+func (r *Repository) MarkFailed(ctx context.Context, teamID, id uuid.UUID, phase, code, message string, retryable bool) (Broadcast, error) {
+	failure := map[string]any{"phase": phase, "code": code, "message": message, "retryable": retryable}
+	return r.transition(ctx, `UPDATE broadcasts SET status='failed',revision=revision+1,updated_at=now()
+		WHERE id=$1 AND team_id=$2 AND status='queued' AND deleted_at IS NULL RETURNING `+broadcastColumns,
+		[]any{id, teamID}, platformevent.TypeBroadcastFailed, StatusQueued, "orchestration_failed", failure)
 }
 
 func (r *Repository) Cancel(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	value, err := scanBroadcast(r.db.QueryRow(ctx, `UPDATE broadcasts SET status='draft',template_version_id=NULL,scheduled_at=NULL,canceled_at=now(),revision=revision+1,updated_at=now()
-		WHERE id=$1 AND team_id=$2 AND status='scheduled' AND deleted_at IS NULL RETURNING `+broadcastColumns, id, teamID))
+	return r.transition(ctx, `UPDATE broadcasts SET status='canceled',scheduled_at=NULL,canceled_at=now(),revision=revision+1,updated_at=now()
+		WHERE id=$1 AND team_id=$2 AND status='scheduled' AND deleted_at IS NULL RETURNING `+broadcastColumns,
+		[]any{id, teamID}, platformevent.TypeBroadcastCanceled, StatusScheduled, "user_canceled", nil)
+}
+
+func (r *Repository) transition(ctx context.Context, query string, args []any, eventType platformevent.Type, from, reason string, failure map[string]any) (Broadcast, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("begin broadcast transition: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	value, err := scanBroadcast(tx.QueryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, err
+	}
+	if err := emitBroadcastEvent(ctx, tx, r.emitter, eventType, value, from, reason, failure); err != nil {
+		return Broadcast{}, fmt.Errorf("emit broadcast lifecycle event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Broadcast{}, fmt.Errorf("commit broadcast transition: %w", err)
+	}
+	return value, nil
 }
 
 func (r *Repository) Delete(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
