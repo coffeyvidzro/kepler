@@ -17,6 +17,7 @@ func RegisterRoutes(router *echo.Echo, handler *Handler, access AccessMiddleware
 	broadcasts.DELETE("/:broadcast", handler.Delete, access(tenant.PermissionBroadcastsWrite))
 	broadcasts.POST("/:broadcast/send", handler.Send, access(tenant.PermissionBroadcastsSend))
 	broadcasts.POST("/:broadcast/cancel", handler.Cancel, access(tenant.PermissionBroadcastsSend))
+	broadcasts.POST("/:broadcast/duplicate", handler.Duplicate, access(tenant.PermissionBroadcastsWrite))
 	broadcasts.POST("/:broadcast/preview", handler.Preview, access(tenant.PermissionBroadcastsRead))
 	broadcasts.GET("/:broadcast/recipients", handler.ListRecipients, access(tenant.PermissionBroadcastsRead))
 }
