@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/coffeyvidzro/dugble/server/internal/platform/tenant"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 )
@@ -24,7 +22,7 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if name == "" {
 		return Broadcast{}, apperrors.NewBadRequest("Broadcast name is required")
 	}
-	value, err := s.repository.Duplicate(ctx, tc.Scope.TeamID, uuid.MustParse(id.String()), name)
+	value, err := s.repository.Duplicate(ctx, tc.Scope.TeamID, id, name)
 	if errors.Is(err, ErrNotFound) {
 		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
 	}
