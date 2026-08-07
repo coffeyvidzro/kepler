@@ -64,7 +64,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest
 			return nil, false, err
 		}
 		rows, err = r.queries.ListContactPropertiesAfter(ctx, dbsqlc.ListContactPropertiesAfterParams{
-			TeamID: teamID, CursorID: cursorID, PageLimit: limit,
+			ScopeTeamID: teamID, CursorID: cursorID, PageLimit: limit,
 		})
 	case req.Before != "":
 		cursorID, parseErr := parseCursor(req.Before)
@@ -75,7 +75,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest
 			return nil, false, err
 		}
 		rows, err = r.queries.ListContactPropertiesBefore(ctx, dbsqlc.ListContactPropertiesBeforeParams{
-			TeamID: teamID, CursorID: cursorID, PageLimit: limit,
+			ScopeTeamID: teamID, CursorID: cursorID, PageLimit: limit,
 		})
 	default:
 		rows, err = r.queries.ListContactProperties(ctx, dbsqlc.ListContactPropertiesParams{
