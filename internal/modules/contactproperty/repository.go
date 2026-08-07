@@ -14,6 +14,7 @@ import (
 )
 
 var ErrAlreadyExists = errors.New("contact property already exists")
+var ErrCursorNotFound = errors.New("contact property cursor not found")
 
 type Repository struct{ db *pgxpool.Pool }
 
@@ -51,31 +52,104 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, req CreateReq
 	return value, nil
 }
 
-func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Property, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, team_id, key, value_type, fallback_string, fallback_number::text, created_at, updated_at
-		FROM contact_properties
-		WHERE team_id = $1
-		ORDER BY created_at DESC, id DESC
-		LIMIT $2 OFFSET $3
-	`, teamID, limit, offset)
+func (r *Repository) List(ctx context.Context, teamID uuid.UUID, req ListRequest) ([]Property, bool, error) {
+	limit := req.Limit + 1
+	var rows pgx.Rows
+	var err error
+
+	switch {
+	case req.After != "":
+		cursorID, parseErr := uuid.Parse(req.After)
+		if parseErr != nil {
+			return nil, false, ErrCursorNotFound
+		}
+		rows, err = r.db.Query(ctx, `
+			WITH cursor AS (
+				SELECT created_at, id
+				FROM contact_properties
+				WHERE id = $2 AND team_id = $1
+			)
+			SELECT property.id, property.team_id, property.key, property.value_type,
+				property.fallback_string, property.fallback_number::text,
+				property.created_at, property.updated_at
+			FROM contact_properties AS property
+			CROSS JOIN cursor
+			WHERE property.team_id = $1
+			  AND (property.created_at, property.id) < (cursor.created_at, cursor.id)
+			ORDER BY property.created_at DESC, property.id DESC
+			LIMIT $3
+		`, teamID, cursorID, limit)
+	case req.Before != "":
+		cursorID, parseErr := uuid.Parse(req.Before)
+		if parseErr != nil {
+			return nil, false, ErrCursorNotFound
+		}
+		rows, err = r.db.Query(ctx, `
+			WITH cursor AS (
+				SELECT created_at, id
+				FROM contact_properties
+				WHERE id = $2 AND team_id = $1
+			), page AS (
+				SELECT property.id, property.team_id, property.key, property.value_type,
+					property.fallback_string, property.fallback_number::text,
+					property.created_at, property.updated_at
+				FROM contact_properties AS property
+				CROSS JOIN cursor
+				WHERE property.team_id = $1
+				  AND (property.created_at, property.id) > (cursor.created_at, cursor.id)
+				ORDER BY property.created_at ASC, property.id ASC
+				LIMIT $3
+			)
+			SELECT id, team_id, key, value_type, fallback_string, fallback_number,
+				created_at, updated_at
+			FROM page
+			ORDER BY created_at DESC, id DESC
+		`, teamID, cursorID, limit)
+	default:
+		rows, err = r.db.Query(ctx, `
+			SELECT id, team_id, key, value_type, fallback_string,
+				fallback_number::text, created_at, updated_at
+			FROM contact_properties
+			WHERE team_id = $1
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2
+		`, teamID, limit)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("list contact properties: %w", err)
+		return nil, false, fmt.Errorf("list contact properties: %w", err)
 	}
 	defer rows.Close()
 
-	values := make([]Property, 0)
+	values := make([]Property, 0, limit)
 	for rows.Next() {
 		value, scanErr := scanProperty(rows)
 		if scanErr != nil {
-			return nil, scanErr
+			return nil, false, scanErr
 		}
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate contact properties: %w", err)
+		return nil, false, fmt.Errorf("iterate contact properties: %w", err)
 	}
-	return values, nil
+	if (req.After != "" || req.Before != "") && len(values) == 0 {
+		var exists bool
+		cursor := req.After
+		if cursor == "" {
+			cursor = req.Before
+		}
+		cursorID, _ := uuid.Parse(cursor)
+		if err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM contact_properties WHERE id=$1 AND team_id=$2)`, cursorID, teamID).Scan(&exists); err != nil {
+			return nil, false, fmt.Errorf("validate contact property cursor: %w", err)
+		}
+		if !exists {
+			return nil, false, ErrCursorNotFound
+		}
+	}
+	hasMore := len(values) > int(req.Limit)
+	if hasMore {
+		values = values[:req.Limit]
+	}
+	return values, hasMore, nil
 }
 
 func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Property, error) {
