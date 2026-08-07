@@ -50,6 +50,9 @@ jobs:
       - name: Consolidate Templates and Topics modules
         run: python3 scripts/consolidate_templates_topics_modules.py
 
+      - name: Clean moved imports
+        run: sed -i '/"github.com\/google\/uuid"/d' internal/modules/topic/service.go
+
       - name: Format modules
         run: gofmt -w internal/modules/messagetemplate internal/modules/topic
 
