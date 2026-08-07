@@ -17,11 +17,14 @@ import (
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
+	contactmodule "github.com/coffeyvidzro/dugble/server/internal/modules/contact"
+	contactpropertymodule "github.com/coffeyvidzro/dugble/server/internal/modules/contactproperty"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant/provisioning"
 	mfamodule "github.com/coffeyvidzro/dugble/server/internal/modules/mfa"
+	segmentmodule "github.com/coffeyvidzro/dugble/server/internal/modules/segment"
 	senderidmodule "github.com/coffeyvidzro/dugble/server/internal/modules/senderid"
 	sessionmodule "github.com/coffeyvidzro/dugble/server/internal/modules/session"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
@@ -39,10 +42,13 @@ import (
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
 	authhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auth"
+	contacthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contact"
+	contactpropertyhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contactproperty"
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
 	emailhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/email"
 	healthhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/health"
 	mfahttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/mfa"
+	segmenthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/segment"
 	senderidhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/senderid"
 	sessionhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/session"
 	smshttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/sms"
@@ -153,6 +159,9 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		notificationEmailService,
 	).WithRecipientStore(userRepository)
 	teamTokenRepository := teamtokenmodule.NewRepository(db)
+	contactRepository := contactmodule.NewRepository(db)
+	contactPropertyRepository := contactpropertymodule.NewRepository(db)
+	segmentRepository := segmentmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
@@ -192,14 +201,17 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		teamTokenRepository: teamTokenRepository,
 	})
 	routeHandlers := serverRouteHandlers{
-		health:      healthhttp.NewHandler(db, redisClient),
-		providerSNS: snsHandler,
-		auth:        authhttp.NewHandler(authService, cfg.IsDevelopment(), cfg.CookieDomain),
-		mfa:         mfahttp.NewHandler(mfaService),
-		user:        userhttp.NewHandler(usermodule.NewService(userRepository, notificationEmailService)),
-		team:        teamhttp.NewHandler(teamService),
-		wallet:      wallethttp.NewHandler(walletmodule.NewService(walletmodule.NewRepository(db))),
-		auditEvent:  auditeventhttp.NewHandler(auditeventmodule.NewService(auditRepository)),
+		health:          healthhttp.NewHandler(db, redisClient),
+		providerSNS:     snsHandler,
+		auth:            authhttp.NewHandler(authService, cfg.IsDevelopment(), cfg.CookieDomain),
+		mfa:             mfahttp.NewHandler(mfaService),
+		user:            userhttp.NewHandler(usermodule.NewService(userRepository, notificationEmailService)),
+		team:            teamhttp.NewHandler(teamService),
+		wallet:          wallethttp.NewHandler(walletmodule.NewService(walletmodule.NewRepository(db))),
+		auditEvent:      auditeventhttp.NewHandler(auditeventmodule.NewService(auditRepository)),
+		contact:         contacthttp.NewHandler(contactmodule.NewService(contactRepository)),
+		contactProperty: contactpropertyhttp.NewHandler(contactpropertymodule.NewService(contactPropertyRepository)),
+		segment:         segmenthttp.NewHandler(segmentmodule.NewService(segmentRepository)),
 		teamToken: teamtokenhttp.NewHandler(
 			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
 		),
