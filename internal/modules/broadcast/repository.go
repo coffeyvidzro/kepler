@@ -155,6 +155,51 @@ func (r *Repository) QueueScheduled(ctx context.Context, teamID, id uuid.UUID) (
 		[]any{id, teamID}, platformevent.TypeBroadcastQueued, StatusScheduled, "schedule_due", nil)
 }
 
+// QueueNextDueScheduled atomically claims the next due scheduled Broadcast,
+// moves it to queued, and emits broadcast.queued in the same transaction.
+// FOR UPDATE SKIP LOCKED lets multiple workers poll safely without durable
+// lease state; a crashed worker rolls back and releases the row automatically.
+func (r *Repository) QueueNextDueScheduled(ctx context.Context) (Broadcast, bool, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Broadcast{}, false, fmt.Errorf("begin due broadcast claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	value, err := scanBroadcast(tx.QueryRow(ctx, `
+		WITH candidate AS (
+			SELECT id
+			FROM broadcasts
+			WHERE status = 'scheduled'
+			  AND scheduled_at <= now()
+			  AND deleted_at IS NULL
+			ORDER BY scheduled_at, id
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		UPDATE broadcasts AS broadcast
+		SET status = 'queued',
+			queued_at = now(),
+			revision = broadcast.revision + 1,
+			updated_at = now()
+		FROM candidate
+		WHERE broadcast.id = candidate.id
+		RETURNING `+broadcastColumns))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Broadcast{}, false, nil
+	}
+	if err != nil {
+		return Broadcast{}, false, fmt.Errorf("claim due broadcast: %w", err)
+	}
+	if err := emitBroadcastEvent(ctx, tx, r.emitter, platformevent.TypeBroadcastQueued, value, StatusScheduled, "schedule_due", nil); err != nil {
+		return Broadcast{}, false, fmt.Errorf("emit due broadcast queued event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Broadcast{}, false, fmt.Errorf("commit due broadcast claim: %w", err)
+	}
+	return value, true, nil
+}
+
 func (r *Repository) MarkSent(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
 	return r.transition(ctx, `UPDATE broadcasts SET status='sent',sent_at=now(),revision=revision+1,updated_at=now()
 		WHERE id=$1 AND team_id=$2 AND status='queued' AND deleted_at IS NULL RETURNING `+broadcastColumns,
