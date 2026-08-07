@@ -1,9 +1,9 @@
 package tenant
 
 const (
-	PermissionContactsRead          Permission = "contacts:read"
-	PermissionContactsWrite         Permission = "contacts:write"
-	PermissionContactPropertiesRead Permission = "contact_properties:read"
+	PermissionContactsRead           Permission = "contacts:read"
+	PermissionContactsWrite          Permission = "contacts:write"
+	PermissionContactPropertiesRead  Permission = "contact_properties:read"
 	PermissionContactPropertiesWrite Permission = "contact_properties:write"
 )
 

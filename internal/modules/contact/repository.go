@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	ErrAlreadyExists       = errors.New("contact already exists")
-	ErrUnknownProperty     = errors.New("unknown contact property")
+	ErrAlreadyExists        = errors.New("contact already exists")
+	ErrUnknownProperty      = errors.New("unknown contact property")
 	ErrPropertyTypeMismatch = errors.New("contact property type mismatch")
 )
 

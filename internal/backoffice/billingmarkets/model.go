@@ -1,10 +1,10 @@
 package billingmarkets
 
 type BillingMarket struct {
-	Code       string `json:"code"`
-	Currency   string `json:"currency"`
-	MinorUnit  int16  `json:"minor_unit"`
-	IsEnabled  bool   `json:"is_enabled"`
+	Code      string `json:"code"`
+	Currency  string `json:"currency"`
+	MinorUnit int16  `json:"minor_unit"`
+	IsEnabled bool   `json:"is_enabled"`
 }
 
 type ListInput struct {

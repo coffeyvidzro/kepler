@@ -11,7 +11,9 @@ import (
 	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
 
-type Handler struct{ service *backofficebillingmarkets.Service }
+type Handler struct {
+	service *backofficebillingmarkets.Service
+}
 
 func NewHandler(service *backofficebillingmarkets.Service) *Handler {
 	return &Handler{service: service}

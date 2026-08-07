@@ -16,33 +16,45 @@ func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 func (h *Handler) Create(c *echo.Context) error {
 	var req CreateRequest
-	if err := decodeJSON(c, &req); err != nil { return err }
+	if err := decodeJSON(c, &req); err != nil {
+		return err
+	}
 	value, err := h.service.Create(c.Request().Context(), req)
-	if err != nil { return httputil.Error(c, err) }
+	if err != nil {
+		return httputil.Error(c, err)
+	}
 	return httputil.Created(c, value)
 }
 
 func (h *Handler) List(c *echo.Context) error {
 	values, err := h.service.List(c.Request().Context(), listRequest(c))
-	if err != nil { return httputil.Error(c, err) }
+	if err != nil {
+		return httputil.Error(c, err)
+	}
 	return httputil.OK(c, values)
 }
 
 func (h *Handler) Get(c *echo.Context) error {
 	value, err := h.service.Get(c.Request().Context(), c.Param("segment_id"))
-	if err != nil { return httputil.Error(c, err) }
+	if err != nil {
+		return httputil.Error(c, err)
+	}
 	return httputil.OK(c, value)
 }
 
 func (h *Handler) ListContacts(c *echo.Context) error {
 	values, err := h.service.ListContacts(c.Request().Context(), c.Param("segment_id"), listRequest(c))
-	if err != nil { return httputil.Error(c, err) }
+	if err != nil {
+		return httputil.Error(c, err)
+	}
 	return httputil.OK(c, values)
 }
 
 func (h *Handler) Delete(c *echo.Context) error {
 	value, err := h.service.Delete(c.Request().Context(), c.Param("segment_id"))
-	if err != nil { return httputil.Error(c, err) }
+	if err != nil {
+		return httputil.Error(c, err)
+	}
 	return httputil.OK(c, value)
 }
 
@@ -59,6 +71,8 @@ func listRequest(c *echo.Context) ListRequest {
 
 func parseInt32(value string) int32 {
 	parsed, err := strconv.ParseInt(value, 10, 32)
-	if err != nil { return 0 }
+	if err != nil {
+		return 0
+	}
 	return int32(parsed)
 }
