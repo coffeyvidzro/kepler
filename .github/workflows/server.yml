@@ -1,9 +1,7 @@
 name: Server CI
 
 on:
-  push:
-    branches:
-      - fix/topics-sqlc-repository
+  pull_request:
     paths:
       - ".github/workflows/server.yml"
       - "internal/database/queries/topics.sql"
@@ -34,9 +32,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
+        
       - name: Generate sqlc
         run: go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
 
