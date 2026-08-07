@@ -280,26 +280,25 @@ func (s *Service) ListRecipients(ctx context.Context, identifier string, req Lis
 	return values, nil
 }
 
-func parseID(value, label string) (uuid.UUID, error) {
-	id, err := uuid.Parse(strings.TrimSpace(value))
+func (s *Service) Duplicate(ctx context.Context, identifier string, req DuplicateRequest) (Broadcast, error) {
+	tc, err := requireTenant(ctx, tenant.PermissionBroadcastsWrite)
 	if err != nil {
-		return uuid.Nil, apperrors.NewBadRequest(label + " must be a valid UUID")
+		return Broadcast{}, err
 	}
-	return id, nil
-}
-func parseOptionalID(value *string, label string) (*uuid.UUID, error) {
-	if value == nil || strings.TrimSpace(*value) == "" {
-		return nil, nil
-	}
-	id, err := parseID(*value, label)
+	id, err := parseID(identifier, "Broadcast id")
 	if err != nil {
-		return nil, err
+		return Broadcast{}, err
 	}
-	return &id, nil
-}
-func pointerValue(value *string) string {
-	if value == nil {
-		return ""
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return Broadcast{}, apperrors.NewBadRequest("Broadcast name is required")
 	}
-	return *value
+	value, err := s.repository.Duplicate(ctx, tc.Scope.TeamID, id, name)
+	if errors.Is(err, ErrNotFound) {
+		return Broadcast{}, apperrors.NewNotFound("Broadcast not found")
+	}
+	if err != nil {
+		return Broadcast{}, apperrors.NewInternal("Unable to duplicate broadcast", err)
+	}
+	return value, nil
 }

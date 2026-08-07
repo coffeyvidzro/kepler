@@ -21,6 +21,7 @@ import (
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	runnagesms "github.com/coffeyvidzro/dugble/server/internal/adapters/runnage/sms"
 	"github.com/coffeyvidzro/dugble/server/internal/config"
+	broadcastexecution "github.com/coffeyvidzro/dugble/server/internal/delivery/broadcast"
 	domainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"
 	emailfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/email/feedback"
 	emaildelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/email/outbound"
@@ -29,11 +30,13 @@ import (
 	smsfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/feedback"
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	webhookdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/webhook"
+	broadcastmodule "github.com/coffeyvidzro/dugble/server/internal/modules/broadcast"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
 	"github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant"
 	tenantprovision "github.com/coffeyvidzro/dugble/server/internal/modules/emailtenant/provisioning"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 	webhookmodule "github.com/coffeyvidzro/dugble/server/internal/modules/webhooks"
+	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformsms "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
@@ -83,7 +86,17 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	webhookModuleRepository := webhookmodule.NewRepository(db)
 	webhookEmitter := platformwebhook.NewEmitter(webhookModuleRepository)
 	lifecycleEmitter := webhookEmitter
-	broadcastExecutionJob := newBroadcastExecutionJob(db, webhookEmitter)
+	broadcastExecutionRepository := broadcastmodule.NewRepositoryWithEventEmitter(
+		db,
+		platformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter)),
+	)
+	broadcastExecutionConsumer := broadcastexecution.NewConsumer(
+		broadcastexecution.NewProcessor(broadcastExecutionRepository),
+		broadcastexecution.Config{
+			PollInterval: time.Second,
+			BatchSize:    100,
+		},
+	)
 
 	emailSender, err := awsses.NewSESSender(
 		startupCtx,
@@ -291,7 +304,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 		job{name: "SMS feedback reconciler", run: smsFeedbackConsumer.Run},
 		job{name: "webhook delivery consumer", run: webhookConsumer.Run},
 		job{name: "sender domain reconciliation consumer", run: domainConsumer.Run},
-		broadcastExecutionJob,
+		job{name: "broadcast execution consumer", run: broadcastExecutionConsumer.Run},
 		senderIDReconciliationJob,
 	)
 	if err != nil {
