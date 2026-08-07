@@ -129,7 +129,7 @@ func topicFromSQLC(row dbsqlc.Topic) Topic {
 		Description:         row.Description,
 		DefaultSubscription: row.DefaultSubscription,
 		Visibility:          row.Visibility,
-		CreatedAt:           row.CreatedAt,
-		UpdatedAt:           row.UpdatedAt,
+		CreatedAt:           row.CreatedAt.Time,
+		UpdatedAt:           row.UpdatedAt.Time,
 	}
 }
