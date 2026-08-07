@@ -1,9 +1,12 @@
 package email
 
 import (
+	"net/http"
+
 	"github.com/labstack/echo/v5"
 
 	emailmodule "github.com/coffeyvidzro/dugble/server/internal/modules/email"
+	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/idempotency"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
@@ -25,7 +28,7 @@ func (handler *Handler) Send(c *echo.Context) error {
 		return httputil.Error(c, apperrors.NewBadRequest("Idempotency-Key is required and must be at most 256 characters"))
 	}
 	var request emailmodule.SendRequest
-	if err := httputil.DecodeJSON(c, &request, httputil.DefaultMaxRequestBodyBytes); err != nil {
+	if err := httputil.DecodeJSON(c, &request, platformemail.MaxHTTPRequestBytes); err != nil {
 		return httputil.Error(c, err)
 	}
 	message, err := handler.service.Send(c.Request().Context(), request)
@@ -33,7 +36,7 @@ func (handler *Handler) Send(c *echo.Context) error {
 		return httputil.Error(c, err)
 	}
 	c.Response().Header().Set("Location", "/emails/"+message.ID)
-	return httputil.Accepted(c, message.Summary())
+	return c.JSON(http.StatusOK, emailmodule.SendResponse{ID: message.ID})
 }
 
 func (handler *Handler) Get(c *echo.Context) error {
@@ -76,12 +79,12 @@ func (handler *Handler) List(c *echo.Context) error {
 
 func (handler *Handler) BatchSend(c *echo.Context) error {
 	var request emailmodule.BatchSendRequest
-	if err := httputil.DecodeJSON(c, &request, httputil.DefaultMaxRequestBodyBytes); err != nil {
+	if err := httputil.DecodeJSON(c, &request, platformemail.MaxHTTPRequestBytes); err != nil {
 		return httputil.Error(c, err)
 	}
 	messages, err := handler.service.BatchSend(c.Request().Context(), request)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.Accepted(c, emailmodule.SendResponses(messages))
+	return c.JSON(http.StatusOK, emailmodule.BatchResponse(messages))
 }
