@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	maxBatchSize         = 50
-	maxBatchPayloadBytes = 10 << 20
+	maxBatchSize         = 100
+	maxBatchPayloadBytes = platformemail.MaxHTTPRequestBytes
 )
 
 type DeliveryQueue interface {
 	EnqueueEmailDeliveryTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 }
+
 type scheduledDeliveryQueue interface {
 	EnqueueEmailDeliveryAtTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, time.Time) error
 	CancelEmailDeliveryTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
@@ -135,13 +136,7 @@ type ServiceConfig struct {
 	DefaultRegion    string
 }
 
-func NewService(
-	repository *Repository,
-	delivery DeliveryQueue,
-	config ServiceConfig,
-	billing platformbilling.EmailBilling,
-	dependencies ...any,
-) *Service {
+func NewService(repository *Repository, delivery DeliveryQueue, config ServiceConfig, billing platformbilling.EmailBilling, dependencies ...any) *Service {
 	service := &Service{
 		repository: repository, delivery: delivery, config: config,
 		senderDomains: repository, routes: repository, billing: billing,
@@ -173,12 +168,16 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	if s == nil || s.repository == nil {
 		return Message{}, apperrors.NewInternal("Customer email routing is not configured", nil)
 	}
+	validated, err := s.prepareSend(ctx, tc.Scope.TeamID, req)
+	if err != nil {
+		return Message{}, err
+	}
 	tx, err := s.repository.BeginTx(ctx)
 	if err != nil {
 		return Message{}, apperrors.NewInternal("Unable to begin email transaction", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	queued, err := s.EnqueueTx(ctx, tx, tc.Scope.TeamID, req)
+	queued, err := s.enqueueValidatedTx(ctx, tx, tc.Scope.TeamID, validated)
 	if err != nil {
 		return Message{}, err
 	}
@@ -252,7 +251,6 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 	if err := s.ensureEnqueueConfigured(); err != nil {
 		return nil, err
 	}
-
 	validated := make([]validatedSend, len(req.Messages))
 	totalPayloadBytes := 0
 	for index, item := range req.Messages {
@@ -268,13 +266,11 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 			return nil, apperrors.NewPayloadTooLarge("Email batch payload is too large")
 		}
 	}
-
 	tx, err := s.repository.BeginTx(ctx)
 	if err != nil {
 		return nil, apperrors.NewInternal("Unable to begin email batch transaction", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
 	result := make([]Message, 0, len(validated))
 	queuedMessages := make([]QueuedMessage, 0, len(validated))
 	for index := range validated {
@@ -295,7 +291,11 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 }
 
 func (s *Service) prepareSend(ctx context.Context, teamID uuid.UUID, req SendRequest) (validatedSend, error) {
-	validated, err := validateSend(req, s.config)
+	resolved, err := s.resolveRequestContent(ctx, teamID, req)
+	if err != nil {
+		return validatedSend{}, err
+	}
+	validated, err := validateSend(resolved, s.config)
 	if err != nil {
 		return validatedSend{}, err
 	}
@@ -341,8 +341,7 @@ func (s *Service) enqueueValidatedTx(ctx context.Context, tx pgx.Tx, teamID uuid
 	}
 	messageID := uuid.MustParse(message.ID)
 	charge, err := s.billing.ChargeEmail(ctx, tx, platformbilling.EmailChargeInput{
-		TeamID: teamID, MessageID: messageID,
-		RecipientCount: emailRecipientCount(validated),
+		TeamID: teamID, MessageID: messageID, RecipientCount: emailRecipientCount(validated),
 	})
 	if err != nil {
 		return QueuedMessage{}, emailBillingError(err)
