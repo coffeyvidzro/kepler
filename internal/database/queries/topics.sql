@@ -22,80 +22,80 @@ RETURNING id,
           updated_at;
 
 -- name: ListTopics :many
-SELECT id,
-       team_id,
-       name,
-       description,
-       default_subscription,
-       visibility,
-       created_at,
-       updated_at
-FROM topics
-WHERE team_id = sqlc.arg(team_id)
-ORDER BY created_at DESC, id DESC
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = sqlc.arg(team_id)
+ORDER BY t.created_at DESC, t.id DESC
 LIMIT sqlc.arg(page_limit)
 OFFSET sqlc.arg(page_offset);
 
 -- name: ListTopicsAfter :many
-SELECT id,
-       team_id,
-       name,
-       description,
-       default_subscription,
-       visibility,
-       created_at,
-       updated_at
-FROM topics
-WHERE team_id = sqlc.arg(scope_team_id)
-  AND (created_at, id) < (
-      SELECT created_at, id
-      FROM topics
-      WHERE id = sqlc.arg(cursor_id)
-        AND team_id = sqlc.arg(scope_team_id)
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = sqlc.arg(scope_team_id)
+  AND (t.created_at, t.id) < (
+      SELECT cursor_topic.created_at, cursor_topic.id
+      FROM topics AS cursor_topic
+      WHERE cursor_topic.id = sqlc.arg(cursor_id)
+        AND cursor_topic.team_id = sqlc.arg(scope_team_id)
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY t.created_at DESC, t.id DESC
 LIMIT sqlc.arg(page_limit);
 
 -- name: ListTopicsBefore :many
-SELECT id,
-       team_id,
-       name,
-       description,
-       default_subscription,
-       visibility,
-       created_at,
-       updated_at
-FROM topics
-WHERE team_id = sqlc.arg(scope_team_id)
-  AND (created_at, id) > (
-      SELECT created_at, id
-      FROM topics
-      WHERE id = sqlc.arg(cursor_id)
-        AND team_id = sqlc.arg(scope_team_id)
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.team_id = sqlc.arg(scope_team_id)
+  AND (t.created_at, t.id) > (
+      SELECT cursor_topic.created_at, cursor_topic.id
+      FROM topics AS cursor_topic
+      WHERE cursor_topic.id = sqlc.arg(cursor_id)
+        AND cursor_topic.team_id = sqlc.arg(scope_team_id)
   )
-ORDER BY created_at ASC, id ASC
+ORDER BY t.created_at ASC, t.id ASC
 LIMIT sqlc.arg(page_limit);
 
 -- name: TopicCursorExists :one
 SELECT EXISTS (
     SELECT 1
-    FROM topics
-    WHERE id = sqlc.arg(cursor_id)
-      AND team_id = sqlc.arg(team_id)
+    FROM topics AS t
+    WHERE t.id = sqlc.arg(cursor_id)
+      AND t.team_id = sqlc.arg(team_id)
 );
 
 -- name: GetTopic :one
-SELECT id,
-       team_id,
-       name,
-       description,
-       default_subscription,
-       visibility,
-       created_at,
-       updated_at
-FROM topics
-WHERE id = sqlc.arg(id)
-  AND team_id = sqlc.arg(team_id);
+SELECT t.id,
+       t.team_id,
+       t.name,
+       t.description,
+       t.default_subscription,
+       t.visibility,
+       t.created_at,
+       t.updated_at
+FROM topics AS t
+WHERE t.id = sqlc.arg(id)
+  AND t.team_id = sqlc.arg(team_id);
 
 -- name: UpdateTopic :one
 UPDATE topics
