@@ -24,8 +24,8 @@ type CreateRequest struct {
 
 type UpdateRequest struct {
 	Email        *string         `json:"email,omitempty"`
-	FirstName    **string        `json:"first_name,omitempty"`
-	LastName     **string        `json:"last_name,omitempty"`
+	FirstName    *string         `json:"first_name,omitempty"`
+	LastName     *string         `json:"last_name,omitempty"`
 	Unsubscribed *bool           `json:"unsubscribed,omitempty"`
 	Properties   *map[string]any `json:"properties,omitempty"`
 }
