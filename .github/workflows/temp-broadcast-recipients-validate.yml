@@ -9,6 +9,7 @@ on:
       - ".github/workflows/temp-broadcast-recipients-validate.yml"
       - "internal/modules/broadcast/**"
       - "internal/delivery/broadcast/**"
+      - "internal/dugble/worker/**"
       - "migrations/**"
   pull_request:
     branches:
@@ -17,6 +18,7 @@ on:
       - ".github/workflows/temp-broadcast-recipients-validate.yml"
       - "internal/modules/broadcast/**"
       - "internal/delivery/broadcast/**"
+      - "internal/dugble/worker/**"
       - "migrations/**"
 
 permissions:
@@ -45,6 +47,88 @@ jobs:
       - name: Set up Atlas
         uses: ariga/setup-atlas@v0
 
+      - name: Consolidate broadcast structure
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def append_once(target_path: str, source_path: str, marker: str) -> None:
+              target = Path(target_path)
+              source = Path(source_path)
+              if not source.exists():
+                  return
+              target_text = target.read_text()
+              if marker not in target_text:
+                  source_text = source.read_text()
+                  import_end = source_text.find("\n)\n\n")
+                  if import_end < 0:
+                      raise RuntimeError(f"cannot find import block in {source_path}")
+                  body = source_text[import_end + 4:].strip()
+                  target.write_text(target_text.rstrip() + "\n\n" + body + "\n")
+              source.unlink()
+
+          append_once(
+              "internal/modules/broadcast/service.go",
+              "internal/modules/broadcast/duplicate.go",
+              "func (s *Service) Duplicate(",
+          )
+          append_once(
+              "internal/modules/broadcast/repository.go",
+              "internal/modules/broadcast/events.go",
+              "type eventEmitter interface",
+          )
+          append_once(
+              "internal/modules/broadcast/repository.go",
+              "internal/modules/broadcast/materialization.go",
+              "type MaterializationResult struct",
+          )
+
+          wire_path = Path("internal/dugble/worker/wire.go")
+          wire = wire_path.read_text()
+          delivery_import = '\tbroadcastexecution "github.com/coffeyvidzro/dugble/server/internal/delivery/broadcast"\n'
+          if delivery_import not in wire:
+              wire = wire.replace(
+                  '\tdomainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"\n',
+                  delivery_import + '\tdomainreconciliation "github.com/coffeyvidzro/dugble/server/internal/delivery/domain"\n',
+              )
+          module_import = '\tbroadcastmodule "github.com/coffeyvidzro/dugble/server/internal/modules/broadcast"\n'
+          if module_import not in wire:
+              wire = wire.replace(
+                  '\tdomainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"\n',
+                  module_import + '\tdomainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"\n',
+              )
+          event_import = '\tplatformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"\n'
+          if event_import not in wire:
+              wire = wire.replace(
+                  '\t"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"\n',
+                  event_import + '\t"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"\n',
+              )
+
+          old_factory = '\tbroadcastExecutionJob := newBroadcastExecutionJob(db, webhookEmitter)\n'
+          new_wiring = '''\tbroadcastExecutionRepository := broadcastmodule.NewRepositoryWithEventEmitter(
+          \t\tdb,
+          \t\tplatformevent.NewEmitter(platformwebhook.NewEventSink(webhookEmitter)),
+          \t)
+          \tbroadcastExecutionConsumer := broadcastexecution.NewConsumer(
+          \t\tbroadcastexecution.NewProcessor(broadcastExecutionRepository),
+          \t\tbroadcastexecution.Config{
+          \t\t\tPollInterval: time.Second,
+          \t\t\tBatchSize:    100,
+          \t\t},
+          \t)
+          '''
+          if old_factory in wire:
+              wire = wire.replace(old_factory, new_wiring)
+          wire = wire.replace(
+              '\t\tbroadcastExecutionJob,\n',
+              '\t\tjob{name: "broadcast execution consumer", run: broadcastExecutionConsumer.Run},\n',
+          )
+          wire_path.write_text(wire)
+
+          worker_helper = Path("internal/dugble/worker/broadcast_execution.go")
+          if worker_helper.exists():
+              worker_helper.unlink()
+
       - name: Hash migrations
         run: atlas migrate hash --dir file://migrations
 
@@ -52,10 +136,21 @@ jobs:
         shell: bash
         run: |
           mapfile -d '' files < <(
-            find internal/modules/broadcast internal/delivery/broadcast \
+            find internal/modules/broadcast internal/delivery/broadcast internal/dugble/worker \
               -type f -name '*.go' -print0
           )
           gofmt -w "${files[@]}"
+
+      - name: Verify broadcast module structure
+        shell: bash
+        run: |
+          mapfile -t files < <(find internal/modules/broadcast -maxdepth 1 -type f -name '*.go' -printf '%f\n' | sort)
+          expected=(model.go repository.go service.go validation.go)
+          if [[ "${files[*]}" != "${expected[*]}" ]]; then
+            printf 'Unexpected broadcast module files: %s\n' "${files[*]}"
+            exit 1
+          fi
+          test ! -e internal/dugble/worker/broadcast_execution.go
 
       - name: Test
         run: go test ./...
@@ -66,10 +161,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add internal/modules/broadcast internal/delivery/broadcast migrations/atlas.sum
+          git add -A internal/modules/broadcast internal/delivery/broadcast internal/dugble/worker migrations/atlas.sum
           if git diff --cached --quiet; then
             echo "No generated or formatted changes to commit."
             exit 0
           fi
-          git commit -m "Format and hash broadcast recipient materialization"
+          git commit -m "Align broadcast execution with package structure"
           git push origin HEAD:feat/broadcast-recipients
