@@ -1,0 +1,51 @@
+name: Format email compatibility
+
+on:
+  push:
+    branches:
+      - fix/email-attachments-metrics
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/email-attachments-metrics
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Format touched Go files
+        run: |
+          gofmt -w \
+            internal/platform/awsses/limits.go \
+            internal/modules/email/model.go \
+            internal/modules/email/validation.go \
+            internal/modules/email/service.go \
+            internal/modules/email/content.go \
+            internal/modules/email/attachments_metrics.go \
+            internal/transport/http/email/handler.go \
+            internal/transport/http/email/attachments_metrics.go \
+            internal/transport/http/email/routes.go
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add internal/platform/awsses/limits.go \
+            internal/modules/email/model.go \
+            internal/modules/email/validation.go \
+            internal/modules/email/service.go \
+            internal/modules/email/content.go \
+            internal/modules/email/attachments_metrics.go \
+            internal/transport/http/email/handler.go \
+            internal/transport/http/email/attachments_metrics.go \
+            internal/transport/http/email/routes.go
+          git commit -m "Format email compatibility changes"
+          git push origin HEAD:fix/email-attachments-metrics
