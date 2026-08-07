@@ -31,6 +31,9 @@ type broadcastSummary struct {
 
 func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, eventType platformevent.Type, value Broadcast, from, reason string, failure map[string]any) error {
 	if emitter == nil {
+		emitter = platformevent.DefaultEmitter()
+	}
+	if emitter == nil {
 		return nil
 	}
 	teamID, err := uuid.Parse(value.TeamID)
