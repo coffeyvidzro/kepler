@@ -12,6 +12,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const contactPropertyCursorExists = `-- name: ContactPropertyCursorExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM contact_properties
+    WHERE id = $1
+      AND team_id = $2
+)
+`
+
+type ContactPropertyCursorExistsParams struct {
+	CursorID uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	TeamID   uuid.UUID `db:"team_id" json:"team_id"`
+}
+
+func (q *Queries) ContactPropertyCursorExists(ctx context.Context, arg ContactPropertyCursorExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, contactPropertyCursorExists, arg.CursorID, arg.TeamID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createContactProperty = `-- name: CreateContactProperty :one
 INSERT INTO contact_properties (
     team_id,
@@ -148,18 +169,114 @@ SELECT id, team_id, key, value_type, fallback_string, fallback_number, created_a
 FROM contact_properties
 WHERE team_id = $1
 ORDER BY created_at DESC, id DESC
-LIMIT $3
-OFFSET $2
+LIMIT $2
 `
 
 type ListContactPropertiesParams struct {
-	TeamID     uuid.UUID `db:"team_id" json:"team_id"`
-	PageOffset int32     `db:"page_offset" json:"page_offset"`
-	PageLimit  int32     `db:"page_limit" json:"page_limit"`
+	TeamID    uuid.UUID `db:"team_id" json:"team_id"`
+	PageLimit int32     `db:"page_limit" json:"page_limit"`
 }
 
 func (q *Queries) ListContactProperties(ctx context.Context, arg ListContactPropertiesParams) ([]ContactProperty, error) {
-	rows, err := q.db.Query(ctx, listContactProperties, arg.TeamID, arg.PageOffset, arg.PageLimit)
+	rows, err := q.db.Query(ctx, listContactProperties, arg.TeamID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ContactProperty{}
+	for rows.Next() {
+		var i ContactProperty
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Key,
+			&i.ValueType,
+			&i.FallbackString,
+			&i.FallbackNumber,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listContactPropertiesAfter = `-- name: ListContactPropertiesAfter :many
+SELECT property.id, property.team_id, property.key, property.value_type, property.fallback_string, property.fallback_number, property.created_at, property.updated_at
+FROM contact_properties AS property
+WHERE property.team_id = $1
+  AND (property.created_at, property.id) < (
+      SELECT cursor_property.created_at, cursor_property.id
+      FROM contact_properties AS cursor_property
+      WHERE cursor_property.id = $2
+        AND cursor_property.team_id = $1
+  )
+ORDER BY property.created_at DESC, property.id DESC
+LIMIT $3
+`
+
+type ListContactPropertiesAfterParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListContactPropertiesAfter(ctx context.Context, arg ListContactPropertiesAfterParams) ([]ContactProperty, error) {
+	rows, err := q.db.Query(ctx, listContactPropertiesAfter, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ContactProperty{}
+	for rows.Next() {
+		var i ContactProperty
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Key,
+			&i.ValueType,
+			&i.FallbackString,
+			&i.FallbackNumber,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listContactPropertiesBefore = `-- name: ListContactPropertiesBefore :many
+SELECT property.id, property.team_id, property.key, property.value_type, property.fallback_string, property.fallback_number, property.created_at, property.updated_at
+FROM contact_properties AS property
+WHERE property.team_id = $1
+  AND (property.created_at, property.id) > (
+      SELECT cursor_property.created_at, cursor_property.id
+      FROM contact_properties AS cursor_property
+      WHERE cursor_property.id = $2
+        AND cursor_property.team_id = $1
+  )
+ORDER BY property.created_at ASC, property.id ASC
+LIMIT $3
+`
+
+type ListContactPropertiesBeforeParams struct {
+	ScopeTeamID uuid.UUID `db:"scope_team_id" json:"scope_team_id"`
+	CursorID    uuid.UUID `db:"cursor_id" json:"cursor_id"`
+	PageLimit   int32     `db:"page_limit" json:"page_limit"`
+}
+
+func (q *Queries) ListContactPropertiesBefore(ctx context.Context, arg ListContactPropertiesBeforeParams) ([]ContactProperty, error) {
+	rows, err := q.db.Query(ctx, listContactPropertiesBefore, arg.ScopeTeamID, arg.CursorID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
