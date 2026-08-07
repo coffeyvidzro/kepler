@@ -37,7 +37,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Contact, error
 	if err != nil {
 		return Contact{}, apperrors.NewInternal("Unable to create contact", err)
 	}
-	audit.Record(ctx, access, audit.Event{Action: "contact.created", ResourceType: "contact", ResourceID: uuid.MustParse(value.ID)})
+	audit.Record(ctx, access, audit.Event{Action: "contact.created", ResourceType: "contact", ResourceID: value.ID})
 	return value, nil
 }
 
@@ -129,7 +129,7 @@ func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (
 	if err != nil {
 		return Contact{}, apperrors.NewInternal("Unable to update contact", err)
 	}
-	audit.Record(ctx, access, audit.Event{Action: "contact.updated", ResourceType: "contact", ResourceID: id})
+	audit.Record(ctx, access, audit.Event{Action: "contact.updated", ResourceType: "contact", ResourceID: id.String()})
 	return updated, nil
 }
 
@@ -149,7 +149,7 @@ func (s *Service) Delete(ctx context.Context, value string) (Contact, error) {
 	if err != nil {
 		return Contact{}, apperrors.NewInternal("Unable to delete contact", err)
 	}
-	audit.Record(ctx, access, audit.Event{Action: "contact.deleted", ResourceType: "contact", ResourceID: id})
+	audit.Record(ctx, access, audit.Event{Action: "contact.deleted", ResourceType: "contact", ResourceID: id.String()})
 	return deleted, nil
 }
 
