@@ -17,6 +17,7 @@ import (
 	smsdelivery "github.com/coffeyvidzro/dugble/server/internal/delivery/sms/outbound"
 	auditeventmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auditevent"
 	authmodule "github.com/coffeyvidzro/dugble/server/internal/modules/auth"
+	broadcastmodule "github.com/coffeyvidzro/dugble/server/internal/modules/broadcast"
 	contactmodule "github.com/coffeyvidzro/dugble/server/internal/modules/contact"
 	contactpropertymodule "github.com/coffeyvidzro/dugble/server/internal/modules/contactproperty"
 	domainmodule "github.com/coffeyvidzro/dugble/server/internal/modules/domain"
@@ -45,6 +46,7 @@ import (
 	httptransport "github.com/coffeyvidzro/dugble/server/internal/transport/http"
 	auditeventhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auditevent"
 	authhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/auth"
+	broadcasthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/broadcast"
 	contacthttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contact"
 	contactpropertyhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/contactproperty"
 	domainhttp "github.com/coffeyvidzro/dugble/server/internal/transport/http/domain"
@@ -171,6 +173,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 	topicRepository := topicmodule.NewRepository(db)
 	suppressionRepository := suppressionmodule.NewRepository(db)
 	messageTemplateRepository := messagetemplatemodule.NewRepository(db)
+	broadcastRepository := broadcastmodule.NewRepository(db)
 	domainRepository := domainmodule.NewRepository(db)
 	emailTenantRepository := emailtenant.NewRepository(db)
 	emailTenantService := emailtenant.NewService(
@@ -200,6 +203,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		billingService,
 	)
 	messageTemplateService := messagetemplatemodule.NewService(messageTemplateRepository, emailAPIService)
+	broadcastService := broadcastmodule.NewService(broadcastRepository, messageTemplateService)
 	webhookService := webhooksmodule.NewService(webhookRepository, webhookEmitter)
 	domainService := domainmodule.NewService(domainRepository, emailClient, netdns.New(), emailTenantService)
 
@@ -225,6 +229,7 @@ func Wire(ctx context.Context) (*Application, func(), error) {
 		topic:           topichttp.NewHandler(topicmodule.NewService(topicRepository)),
 		suppression:     suppressionhttp.NewHandler(suppressionmodule.NewService(suppressionRepository)),
 		messageTemplate: messagetemplatehttp.NewHandler(messageTemplateService),
+		broadcast:       broadcasthttp.NewHandler(broadcastService),
 		teamToken: teamtokenhttp.NewHandler(
 			teamtokenmodule.NewService(teamTokenRepository).WithNotifier(notificationEmailService),
 		),

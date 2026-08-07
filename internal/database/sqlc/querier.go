@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AcceptTeamInvitation(ctx context.Context, arg AcceptTeamInvitationParams) (TeamInvitation, error)
 	AuthorizeSMSCharge(ctx context.Context, arg AuthorizeSMSChargeParams) (AuthorizeSMSChargeRow, error)
+	CancelScheduledBroadcast(ctx context.Context, arg CancelScheduledBroadcastParams) (Broadcast, error)
 	CancelWebhookDeliveriesForEndpoint(ctx context.Context, arg CancelWebhookDeliveriesForEndpointParams) (int64, error)
 	ClaimDueEmailProviderEvents(ctx context.Context, arg ClaimDueEmailProviderEventsParams) ([]ClaimDueEmailProviderEventsRow, error)
 	ClaimEmailProviderEvent(ctx context.Context, arg ClaimEmailProviderEventParams) (ClaimEmailProviderEventRow, error)
@@ -22,6 +23,8 @@ type Querier interface {
 	ConsumeMFALoginChallengeWithRecoveryCode(ctx context.Context, arg ConsumeMFALoginChallengeWithRecoveryCodeParams) (int64, error)
 	ConsumeMFALoginChallengeWithTOTP(ctx context.Context, arg ConsumeMFALoginChallengeWithTOTPParams) (int64, error)
 	CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) (AuditEvent, error)
+	CreateBroadcast(ctx context.Context, arg CreateBroadcastParams) (Broadcast, error)
+	CreateBroadcastRecipient(ctx context.Context, arg CreateBroadcastRecipientParams) (BroadcastRecipient, error)
 	CreateContact(ctx context.Context, arg CreateContactParams) (Contact, error)
 	CreateContactProperty(ctx context.Context, arg CreateContactPropertyParams) (ContactProperty, error)
 	CreateEmailMessage(ctx context.Context, arg CreateEmailMessageParams) (EmailMessage, error)
@@ -73,11 +76,13 @@ type Querier interface {
 	DisableTeam(ctx context.Context, arg DisableTeamParams) (Team, error)
 	DisableWebhookEndpoint(ctx context.Context, arg DisableWebhookEndpointParams) (WebhookEndpoint, error)
 	DowngradeSessionAfterMFADisable(ctx context.Context, arg DowngradeSessionAfterMFADisableParams) error
+	DuplicateBroadcast(ctx context.Context, arg DuplicateBroadcastParams) (Broadcast, error)
 	ElevateSessionAfterMFAEnrollment(ctx context.Context, arg ElevateSessionAfterMFAEnrollmentParams) (int64, error)
 	FindApprovedSMSSender(ctx context.Context, arg FindApprovedSMSSenderParams) (uuid.UUID, error)
 	GetActiveMFALoginChallenge(ctx context.Context, arg GetActiveMFALoginChallengeParams) (GetActiveMFALoginChallengeRow, error)
 	GetActiveProductRate(ctx context.Context, arg GetActiveProductRateParams) (ProductRate, error)
 	GetActiveTeamTokenByHash(ctx context.Context, arg GetActiveTeamTokenByHashParams) (TeamToken, error)
+	GetBroadcast(ctx context.Context, arg GetBroadcastParams) (Broadcast, error)
 	GetContact(ctx context.Context, arg GetContactParams) (Contact, error)
 	GetContactByEmail(ctx context.Context, arg GetContactByEmailParams) (Contact, error)
 	GetContactProperty(ctx context.Context, arg GetContactPropertyParams) (ContactProperty, error)
@@ -114,6 +119,8 @@ type Querier interface {
 	HasKnownSessionFingerprint(ctx context.Context, arg HasKnownSessionFingerprintParams) (bool, error)
 	IsTOTPEnabled(ctx context.Context, arg IsTOTPEnabledParams) (bool, error)
 	LinkEmailProviderEvent(ctx context.Context, arg LinkEmailProviderEventParams) (int64, error)
+	ListBroadcastRecipients(ctx context.Context, arg ListBroadcastRecipientsParams) ([]BroadcastRecipient, error)
+	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]Broadcast, error)
 	ListContactProperties(ctx context.Context, arg ListContactPropertiesParams) ([]ContactProperty, error)
 	ListContactPropertyValues(ctx context.Context, arg ListContactPropertyValuesParams) ([]ListContactPropertyValuesRow, error)
 	ListContacts(ctx context.Context, arg ListContactsParams) ([]Contact, error)
@@ -160,6 +167,7 @@ type Querier interface {
 	MarkWebhookDeliverySucceeded(ctx context.Context, arg MarkWebhookDeliverySucceededParams) (MarkWebhookDeliverySucceededRow, error)
 	PublishMessageTemplateVersion(ctx context.Context, arg PublishMessageTemplateVersionParams) (MessageTemplate, error)
 	PutUnverifiedTOTPCredential(ctx context.Context, arg PutUnverifiedTOTPCredentialParams) (int64, error)
+	QueueBroadcast(ctx context.Context, arg QueueBroadcastParams) (Broadcast, error)
 	ReleaseWebhookDeliveryClaim(ctx context.Context, arg ReleaseWebhookDeliveryClaimParams) (int64, error)
 	RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error
 	ReplayWebhookDelivery(ctx context.Context, arg ReplayWebhookDeliveryParams) (WebhookDelivery, error)
@@ -173,11 +181,15 @@ type Querier interface {
 	RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) error
 	RotateTOTPSecretCiphertext(ctx context.Context, arg RotateTOTPSecretCiphertextParams) error
 	RotateWebhookEndpointSecret(ctx context.Context, arg RotateWebhookEndpointSecretParams) (WebhookEndpoint, error)
+	ScheduleBroadcast(ctx context.Context, arg ScheduleBroadcastParams) (Broadcast, error)
 	ScheduleWebhookDeliveryRetry(ctx context.Context, arg ScheduleWebhookDeliveryRetryParams) (WebhookDelivery, error)
+	SetBroadcastRecipientQueued(ctx context.Context, arg SetBroadcastRecipientQueuedParams) (BroadcastRecipient, error)
 	SetMessageTemplateCurrentVersion(ctx context.Context, arg SetMessageTemplateCurrentVersionParams) (MessageTemplate, error)
+	SoftDeleteBroadcast(ctx context.Context, arg SoftDeleteBroadcastParams) (Broadcast, error)
 	SoftDeleteMessageTemplate(ctx context.Context, arg SoftDeleteMessageTemplateParams) (MessageTemplate, error)
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	TouchTeamToken(ctx context.Context, arg TouchTeamTokenParams) error
+	UpdateBroadcastDraft(ctx context.Context, arg UpdateBroadcastDraftParams) (Broadcast, error)
 	UpdateContact(ctx context.Context, arg UpdateContactParams) (Contact, error)
 	UpdateContactPropertyFallback(ctx context.Context, arg UpdateContactPropertyFallbackParams) (ContactProperty, error)
 	UpdateEmailRecipientState(ctx context.Context, arg UpdateEmailRecipientStateParams) (int64, error)
