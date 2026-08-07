@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -185,7 +186,7 @@ func splitFallback(valueType string, fallback any) (*string, pgtype.Numeric, err
 		return nil, pgtype.Numeric{}, errors.New("contact property fallback is not numeric")
 	}
 	var number pgtype.Numeric
-	if err := number.ScanFloat64(pgtype.Float8{Float64: value, Valid: true}); err != nil {
+	if err := number.Scan(strconv.FormatFloat(value, 'g', -1, 64)); err != nil {
 		return nil, pgtype.Numeric{}, fmt.Errorf("encode contact property fallback: %w", err)
 	}
 	return nil, number, nil
