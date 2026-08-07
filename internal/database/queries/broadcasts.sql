@@ -153,6 +153,39 @@ WHERE id = sqlc.arg(id)
   AND deleted_at IS NULL
 RETURNING *;
 
+-- name: FinalizeBroadcastFanout :one
+WITH counts AS (
+    SELECT
+        count(*) FILTER (WHERE status = 'pending') AS pending_count,
+        count(*) FILTER (WHERE status = 'queued') AS queued_count,
+        count(*) FILTER (WHERE status = 'failed') AS failed_count
+    FROM broadcast_recipients
+    WHERE team_id = sqlc.arg(team_id)
+      AND broadcast_id = sqlc.arg(broadcast_id)
+)
+UPDATE broadcasts AS broadcast
+SET status = CASE
+        WHEN counts.pending_count = 0 AND counts.failed_count = 0 THEN 'sent'
+        WHEN counts.pending_count = 0 AND counts.failed_count > 0 THEN 'failed'
+        ELSE broadcast.status
+    END,
+    sent_at = CASE
+        WHEN counts.pending_count = 0 AND counts.failed_count = 0 THEN now()
+        ELSE broadcast.sent_at
+    END,
+    queued_count = counts.queued_count,
+    failed_count = counts.failed_count,
+    revision = CASE
+        WHEN counts.pending_count = 0 THEN broadcast.revision + 1
+        ELSE broadcast.revision
+    END,
+    updated_at = now()
+FROM counts
+WHERE broadcast.id = sqlc.arg(broadcast_id)
+  AND broadcast.team_id = sqlc.arg(team_id)
+  AND broadcast.status = 'queued'
+RETURNING broadcast.*;
+
 -- name: SoftDeleteBroadcast :one
 UPDATE broadcasts
 SET deleted_at = now(), updated_at = now()
