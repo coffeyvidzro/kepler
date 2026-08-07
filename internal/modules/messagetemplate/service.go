@@ -29,7 +29,7 @@ var (
 	aliasPattern       = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 	variableKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,49}$`)
 	reservedVariables  = map[string]struct{}{
-		"FIRST_NAME": {}, "LAST_NAME": {}, "EMAIL": {}, "UNSUBSCRIBE_URL": {},
+		"FIRST_NAME": {}, "LAST_NAME": {}, "EMAIL": {}, "UNSUBSCRIBE_URL": {}, "RESEND_UNSUBSCRIBE_URL": {},
 		"CONTACT": {}, "THIS": {},
 	}
 )
@@ -205,7 +205,11 @@ func (s *Service) Duplicate(ctx context.Context, identifier string, req Duplicat
 	if err != nil {
 		return Template{}, apperrors.NewInternal("Unable to load template version", err)
 	}
-	create := CreateRequest{Name: req.Name, Alias: req.Alias, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = source.Name + " Copy"
+	}
+	create := CreateRequest{Name: name, Alias: req.Alias, FromEmail: version.FromEmail, FromName: version.FromName, ReplyTo: version.ReplyToEmail, Subject: version.Subject, HTML: version.HTML, Text: version.Text, Variables: version.Variables}
 	create, err = validateCreate(create)
 	if err != nil {
 		return Template{}, err
@@ -417,22 +421,22 @@ func (s *Service) resolveVersion(ctx context.Context, teamID uuid.UUID, template
 
 func validateCreate(req CreateRequest) (CreateRequest, error) {
 	req.Name = strings.TrimSpace(req.Name)
-	req.Alias = strings.TrimSpace(req.Alias)
+	req.Alias = normalizeOptional(req.Alias)
 	req.Subject = strings.TrimSpace(req.Subject)
 	if req.Name == "" || utf8.RuneCountInString(req.Name) > maxTemplateNameCharacters {
 		return req, apperrors.NewBadRequest("Template name is required and must be at most 100 characters")
 	}
-	if req.Alias == "" || len(req.Alias) > maxTemplateAliasCharacters || !aliasPattern.MatchString(req.Alias) {
-		return req, apperrors.NewBadRequest("Template alias must use letters, numbers, underscores, or dashes and be at most 100 characters")
+	if err := validateAlias(req.Alias); err != nil {
+		return req, err
 	}
 	if err := validateContent(req.Subject, req.HTML, req.FromEmail, req.ReplyTo, req.Variables); err != nil {
 		return req, err
 	}
 	req.FromEmail = normalizeOptional(req.FromEmail)
 	req.FromName = normalizeOptional(req.FromName)
-	req.ReplyTo = normalizeOptional(req.ReplyTo)
 	return req, nil
 }
+
 func validateUpdate(template Template, base Version, req *UpdateRequest) error {
 	name, alias := template.Name, template.Alias
 	if req.Name != nil {
@@ -440,14 +444,14 @@ func validateUpdate(template Template, base Version, req *UpdateRequest) error {
 		req.Name = &name
 	}
 	if req.Alias != nil {
-		alias = strings.TrimSpace(*req.Alias)
+		alias = normalizeOptional(*req.Alias)
 		req.Alias = &alias
 	}
 	if name == "" || utf8.RuneCountInString(name) > maxTemplateNameCharacters {
 		return apperrors.NewBadRequest("Template name is required and must be at most 100 characters")
 	}
-	if alias == "" || len(alias) > maxTemplateAliasCharacters || !aliasPattern.MatchString(alias) {
-		return apperrors.NewBadRequest("Template alias is invalid")
+	if err := validateAlias(alias); err != nil {
+		return err
 	}
 	subject, htmlBody, variables := base.Subject, base.HTML, base.Variables
 	fromEmail, replyTo := base.FromEmail, base.ReplyToEmail
@@ -469,12 +473,27 @@ func validateUpdate(template Template, base Version, req *UpdateRequest) error {
 	}
 	return validateContent(subject, htmlBody, fromEmail, replyTo, variables)
 }
+
 func validateVersion(version Version) error {
+	if strings.TrimSpace(version.Subject) == "" {
+		return apperrors.NewBadRequest("Template subject is required before publishing")
+	}
 	return validateContent(version.Subject, version.HTML, version.FromEmail, version.ReplyToEmail, version.Variables)
 }
+
+func validateAlias(alias *string) error {
+	if alias == nil {
+		return nil
+	}
+	if len(*alias) > maxTemplateAliasCharacters || !aliasPattern.MatchString(*alias) {
+		return apperrors.NewBadRequest("Template alias must use letters, numbers, underscores, or dashes and be at most 100 characters")
+	}
+	return nil
+}
+
 func validateContent(subject, htmlBody string, fromEmail, replyTo *string, variables []Variable) error {
-	if subject == "" || utf8.RuneCountInString(subject) > maxTemplateSubjectChars {
-		return apperrors.NewBadRequest("Template subject is required and must be at most 255 characters")
+	if utf8.RuneCountInString(subject) > maxTemplateSubjectChars {
+		return apperrors.NewBadRequest("Template subject must be at most 255 characters")
 	}
 	if strings.TrimSpace(htmlBody) == "" {
 		return apperrors.NewBadRequest("Template HTML is required")
@@ -483,23 +502,23 @@ func validateContent(subject, htmlBody string, fromEmail, replyTo *string, varia
 		return apperrors.NewBadRequest("Template may define at most 50 variables")
 	}
 	definitions := map[string]struct{}{}
-	for _, v := range variables {
-		if !variableKeyPattern.MatchString(v.Key) {
+	for _, variable := range variables {
+		if !variableKeyPattern.MatchString(variable.Key) {
 			return apperrors.NewBadRequest("Template variable keys must start with a letter and use only letters, numbers, and underscores")
 		}
-		upper := strings.ToUpper(v.Key)
+		upper := strings.ToUpper(variable.Key)
 		if _, reserved := reservedVariables[upper]; reserved {
-			return apperrors.NewBadRequest("Template variable key is reserved: " + v.Key)
+			return apperrors.NewBadRequest("Template variable key is reserved: " + variable.Key)
 		}
-		if _, exists := definitions[v.Key]; exists {
+		if _, exists := definitions[variable.Key]; exists {
 			return apperrors.NewBadRequest("Template variable keys must be unique")
 		}
-		definitions[v.Key] = struct{}{}
-		if v.Type != VariableTypeString && v.Type != VariableTypeNumber {
+		definitions[variable.Key] = struct{}{}
+		if variable.Type != VariableTypeString && variable.Type != VariableTypeNumber {
 			return apperrors.NewBadRequest("Template variable type must be string or number")
 		}
-		if v.FallbackValue != nil {
-			if _, err := renderVariableValue(v, v.FallbackValue); err != nil {
+		if variable.FallbackValue != nil {
+			if _, err := renderVariableValue(variable, variable.FallbackValue); err != nil {
 				return apperrors.NewBadRequest(err.Error())
 			}
 		}
@@ -509,16 +528,35 @@ func validateContent(subject, htmlBody string, fromEmail, replyTo *string, varia
 			return apperrors.NewBadRequest("Unknown template variable: " + key)
 		}
 	}
-	for _, value := range []*string{fromEmail, replyTo} {
-		if value != nil {
-			parsed, err := mail.ParseAddress(strings.TrimSpace(*value))
-			if err != nil || !strings.EqualFold(parsed.Address, strings.TrimSpace(*value)) {
-				return apperrors.NewBadRequest("Template email defaults must be valid email addresses")
+	if err := validateStoredEmail(fromEmail, "Template sender"); err != nil {
+		return err
+	}
+	if replyTo != nil {
+		values, err := decodeStoredReplyTo(replyTo)
+		if err != nil {
+			return apperrors.NewBadRequest("Template reply-to addresses are invalid")
+		}
+		for _, value := range values {
+			address, parseErr := mail.ParseAddress(strings.TrimSpace(value))
+			if parseErr != nil || address.Address == "" {
+				return apperrors.NewBadRequest("Template reply-to addresses are invalid")
 			}
 		}
 	}
 	return nil
 }
+
+func validateStoredEmail(value *string, label string) error {
+	if value == nil {
+		return nil
+	}
+	parsed, err := mail.ParseAddress(strings.TrimSpace(*value))
+	if err != nil || !strings.EqualFold(parsed.Address, strings.TrimSpace(*value)) {
+		return apperrors.NewBadRequest(label + " must be a valid email address")
+	}
+	return nil
+}
+
 func normalizeOptional(value *string) *string {
 	if value == nil {
 		return nil
@@ -529,6 +567,7 @@ func normalizeOptional(value *string) *string {
 	}
 	return &trimmed
 }
+
 func normalizeList(req *ListRequest) {
 	if req.Limit <= 0 || req.Limit > 100 {
 		req.Limit = 50
@@ -537,6 +576,7 @@ func normalizeList(req *ListRequest) {
 		req.Offset = 0
 	}
 }
+
 func requireAccess(ctx context.Context, permission tenant.Permission) (tenant.AccessContext, error) {
 	access, decision := tenant.ResolveAccess(ctx, permission)
 	if !decision.Allowed {

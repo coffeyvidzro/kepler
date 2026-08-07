@@ -212,7 +212,9 @@ func (s *Service) UpdateAPI(ctx context.Context, identifier string, request APIU
 	}
 	mapped := UpdateRequest{BaseVersionID: *current.CurrentVersionID}
 	mapped.Name = request.Name
-	mapped.Alias = request.Alias
+	if request.Alias != nil {
+		mapped.Alias = &request.Alias
+	}
 	mapped.Subject = request.Subject
 	mapped.HTML = request.HTML
 	mapped.Variables = request.Variables
@@ -302,7 +304,7 @@ func resourceFromTemplate(template Template, version Version) (Resource, error) 
 	}
 	for _, variable := range version.Variables {
 		variables = append(variables, VariableResource{
-			ID: uuid.NewSHA1(versionID, []byte(variable.Key)).String(),
+			ID:  uuid.NewSHA1(versionID, []byte(variable.Key)).String(),
 			Key: variable.Key, Type: variable.Type, FallbackValue: variable.FallbackValue,
 			CreatedAt: version.CreatedAt, UpdatedAt: version.CreatedAt,
 		})

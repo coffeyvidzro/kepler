@@ -58,13 +58,13 @@ func (r *Repository) Get(ctx context.Context, id, teamID uuid.UUID) (Topic, erro
 	return value, err
 }
 
-func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, name string, description *string) (Topic, error) {
+func (r *Repository) Update(ctx context.Context, id, teamID uuid.UUID, name string, description *string, visibility string) (Topic, error) {
 	var value Topic
 	err := r.db.QueryRow(ctx, `
-		UPDATE topics SET name = $3, description = $4, updated_at = now()
+		UPDATE topics SET name = $3, description = $4, visibility = $5, updated_at = now()
 		WHERE id = $1 AND team_id = $2
 		RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
-	`, id, teamID, name, description).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
+	`, id, teamID, name, description, visibility).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
 	return value, err
 }
 
@@ -75,4 +75,44 @@ func (r *Repository) Delete(ctx context.Context, id, teamID uuid.UUID) (Topic, e
 		RETURNING id, team_id, name, description, default_subscription, visibility, created_at, updated_at
 	`, id, teamID).Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt)
 	return value, err
+}
+
+func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM topics WHERE id=$1 AND team_id=$2)`, cursorID, teamID).Scan(&exists)
+	return exists, err
+}
+
+func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID) ([]Topic, error) {
+	query := `SELECT id,team_id,name,description,default_subscription,visibility,created_at,updated_at FROM topics WHERE team_id=$1`
+	args := []any{teamID}
+	if after != nil {
+		query += ` AND (created_at,id) < (SELECT created_at,id FROM topics WHERE id=$2 AND team_id=$1)`
+		args = append(args, *after)
+	}
+	if before != nil {
+		query += ` AND (created_at,id) > (SELECT created_at,id FROM topics WHERE id=$2 AND team_id=$1)`
+		args = append(args, *before)
+	}
+	if before != nil {
+		query += ` ORDER BY created_at ASC,id ASC`
+	} else {
+		query += ` ORDER BY created_at DESC,id DESC`
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(` LIMIT $%d`, len(args))
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list topic page: %w", err)
+	}
+	defer rows.Close()
+	values := make([]Topic, 0)
+	for rows.Next() {
+		var value Topic
+		if err := rows.Scan(&value.ID, &value.TeamID, &value.Name, &value.Description, &value.DefaultSubscription, &value.Visibility, &value.CreatedAt, &value.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan topic page: %w", err)
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
 }

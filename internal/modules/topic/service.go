@@ -84,16 +84,23 @@ func (s *Service) Update(ctx context.Context, value string, req UpdateRequest) (
 	}
 	name := current.Name
 	description := current.Description
+	visibility := current.Visibility
 	if req.Name != nil {
 		name = strings.TrimSpace(*req.Name)
 	}
 	if req.Description != nil {
 		description = normalizeOptional(*req.Description)
 	}
+	if req.Visibility != nil {
+		visibility = strings.ToLower(strings.TrimSpace(*req.Visibility))
+	}
 	if err := validateNameDescription(name, description); err != nil {
 		return Topic{}, err
 	}
-	result, err := s.repository.Update(ctx, id, access.Scope.TeamID, name, description)
+	if visibility != "public" && visibility != "private" {
+		return Topic{}, apperrors.NewBadRequest("Visibility must be public or private")
+	}
+	result, err := s.repository.Update(ctx, id, access.Scope.TeamID, name, description, visibility)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Topic{}, apperrors.NewNotFound("Topic not found")
 	}
@@ -130,7 +137,7 @@ func validateCreate(req CreateRequest) (CreateRequest, error) {
 	req.DefaultSubscription = strings.ToLower(strings.TrimSpace(req.DefaultSubscription))
 	req.Visibility = strings.ToLower(strings.TrimSpace(req.Visibility))
 	if req.Visibility == "" {
-		req.Visibility = "public"
+		req.Visibility = "private"
 	}
 	if err := validateNameDescription(req.Name, req.Description); err != nil {
 		return CreateRequest{}, err

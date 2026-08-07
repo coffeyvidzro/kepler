@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	ObjectTopic    = "topic"
-	ObjectList     = "list"
+	ObjectTopic     = "topic"
+	ObjectList      = "list"
 	maxAPITopicPage = 100
 )
 
@@ -132,13 +132,13 @@ func (s *Service) DeleteAPI(ctx context.Context, identifier string) (DeleteRespo
 
 func resourceFromTopic(value Topic) Resource {
 	return Resource{
-		Object: ObjectTopic,
-		ID: value.ID,
-		Name: value.Name,
-		Description: value.Description,
+		Object:              ObjectTopic,
+		ID:                  value.ID,
+		Name:                value.Name,
+		Description:         value.Description,
 		DefaultSubscription: value.DefaultSubscription,
-		Visibility: value.Visibility,
-		CreatedAt: value.CreatedAt,
+		Visibility:          value.Visibility,
+		CreatedAt:           value.CreatedAt,
 	}
 }
 

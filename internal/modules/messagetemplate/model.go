@@ -14,7 +14,7 @@ type Template struct {
 	ID                    string     `json:"id"`
 	TeamID                string     `json:"team_id"`
 	Name                  string     `json:"name"`
-	Alias                 string     `json:"alias"`
+	Alias                 *string    `json:"alias"`
 	CurrentVersionID      *string    `json:"current_version_id,omitempty"`
 	PublishedVersionID    *string    `json:"published_version_id,omitempty"`
 	PublishedAt           *time.Time `json:"published_at,omitempty"`
@@ -48,7 +48,7 @@ type Variable struct {
 
 type CreateRequest struct {
 	Name      string     `json:"name"`
-	Alias     string     `json:"alias"`
+	Alias     *string    `json:"alias,omitempty"`
 	FromEmail *string    `json:"from_email,omitempty"`
 	FromName  *string    `json:"from_name,omitempty"`
 	ReplyTo   *string    `json:"reply_to,omitempty"`
@@ -61,7 +61,7 @@ type CreateRequest struct {
 type UpdateRequest struct {
 	BaseVersionID string      `json:"base_version_id"`
 	Name          *string     `json:"name,omitempty"`
-	Alias         *string     `json:"alias,omitempty"`
+	Alias         **string    `json:"alias,omitempty"`
 	FromEmail     **string    `json:"from_email,omitempty"`
 	FromName      **string    `json:"from_name,omitempty"`
 	ReplyTo       **string    `json:"reply_to,omitempty"`
@@ -73,8 +73,8 @@ type UpdateRequest struct {
 }
 
 type DuplicateRequest struct {
-	Name  string `json:"name"`
-	Alias string `json:"alias"`
+	Name  string  `json:"name,omitempty"`
+	Alias *string `json:"alias,omitempty"`
 }
 
 type PublishRequest struct {

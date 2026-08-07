@@ -23,6 +23,7 @@ type CreateRequest struct {
 type UpdateRequest struct {
 	Name        *string  `json:"name,omitempty"`
 	Description **string `json:"description,omitempty"`
+	Visibility  *string  `json:"visibility,omitempty"`
 }
 
 type ListRequest struct {
