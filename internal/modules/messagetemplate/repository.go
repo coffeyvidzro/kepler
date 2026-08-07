@@ -112,6 +112,23 @@ func (r *Repository) GetVersion(ctx context.Context, teamID, templateID, version
 	return value, nil
 }
 
+func (r *Repository) GetVersionTx(ctx context.Context, tx pgx.Tx, teamID, templateID, versionID uuid.UUID) (Version, error) {
+	var value Version
+	var variables []byte
+	err := tx.QueryRow(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE id=$1 AND template_id=$2 AND team_id=$3`, versionID, templateID, teamID).
+		Scan(&value.ID, &value.TeamID, &value.TemplateID, &value.VersionNumber, &value.FromEmail, &value.FromName, &value.ReplyToEmail, &value.Subject, &value.HTML, &value.Text, &variables, &value.BasedOnVersionID, &value.ChangeNote, &value.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, ErrVersionNotFound
+	}
+	if err != nil {
+		return Version{}, err
+	}
+	if err := json.Unmarshal(variables, &value.Variables); err != nil {
+		return Version{}, err
+	}
+	return value, nil
+}
+
 func (r *Repository) ListVersions(ctx context.Context, teamID, templateID uuid.UUID, limit, offset int32) ([]Version, error) {
 	rows, err := r.db.Query(ctx, `SELECT id,team_id,template_id,version_number,from_email,from_name,reply_to_email,subject,html_body,text_body,variables,based_on_version_id,change_note,created_at FROM message_template_versions WHERE template_id=$1 AND team_id=$2 ORDER BY version_number DESC LIMIT $3 OFFSET $4`, templateID, teamID, limit, offset)
 	if err != nil {

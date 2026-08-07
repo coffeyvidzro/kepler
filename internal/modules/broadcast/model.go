@@ -1,6 +1,10 @@
 package broadcast
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 const (
 	StatusDraft     = "draft"
@@ -33,6 +37,21 @@ type Broadcast struct {
 	Revision          int64          `json:"revision"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
+}
+
+type FanoutRecipient struct {
+	ID                uuid.UUID
+	TeamID            uuid.UUID
+	BroadcastID       uuid.UUID
+	ContactID         *uuid.UUID
+	Email             string
+	FirstName         *string
+	LastName          *string
+	ContactSnapshot   map[string]any
+	TemplateID        uuid.UUID
+	TemplateVersionID uuid.UUID
+	VariableBindings  map[string]any
+	AttemptCount      int32
 }
 
 type CreateRequest struct {
