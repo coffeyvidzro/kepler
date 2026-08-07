@@ -12,11 +12,16 @@ INSERT INTO broadcasts (
     team_id, name, segment_id, topic_id, template_id, variable_bindings
 )
 SELECT
-    team_id, sqlc.arg(name), segment_id, topic_id, template_id, variable_bindings
-FROM broadcasts
-WHERE id = sqlc.arg(source_id)
-  AND team_id = sqlc.arg(team_id)
-  AND deleted_at IS NULL
+    source.team_id,
+    sqlc.arg(name),
+    source.segment_id,
+    source.topic_id,
+    source.template_id,
+    source.variable_bindings
+FROM broadcasts AS source
+WHERE source.id = sqlc.arg(source_id)
+  AND source.team_id = sqlc.arg(team_id)
+  AND source.deleted_at IS NULL
 RETURNING *;
 
 -- name: ListBroadcasts :many
