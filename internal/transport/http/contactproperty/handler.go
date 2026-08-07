@@ -1,81 +1,87 @@
 package contactproperty
 
 import (
-	"encoding/json"
-	"strconv"
+	"net/http"
 
 	"github.com/labstack/echo/v5"
 
+	contactpropertymodule "github.com/coffeyvidzro/dugble/server/internal/modules/contactproperty"
 	apperrors "github.com/coffeyvidzro/dugble/server/pkg/errors"
 	"github.com/coffeyvidzro/dugble/server/pkg/httputil"
 )
+
+type Service = contactpropertymodule.Service
+type CreateRequest = contactpropertymodule.CreateRequest
+type UpdateRequest = contactpropertymodule.UpdateRequest
+type ListRequest = contactpropertymodule.ListRequest
 
 type Handler struct{ service *Service }
 
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 func (h *Handler) Create(c *echo.Context) error {
+	if h == nil || h.service == nil {
+		return httputil.Error(c, apperrors.NewServiceUnavailable("Contact property service is not configured", nil))
+	}
 	var req CreateRequest
-	if err := decodeJSON(c, &req); err != nil {
-		return err
+	if err := httputil.DecodeJSON(c, &req, httputil.DefaultMaxRequestBodyBytes); err != nil {
+		return httputil.Error(c, err)
 	}
 	value, err := h.service.Create(c.Request().Context(), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.Created(c, value)
+	return c.JSON(http.StatusOK, value)
 }
 
 func (h *Handler) List(c *echo.Context) error {
+	if h == nil || h.service == nil {
+		return httputil.Error(c, apperrors.NewServiceUnavailable("Contact property service is not configured", nil))
+	}
 	values, err := h.service.List(c.Request().Context(), ListRequest{
-		Limit:  parseInt32(c.QueryParam("limit")),
-		Offset: parseInt32(c.QueryParam("offset")),
+		Limit:  httputil.QueryInt32(c, "limit"),
+		After:  c.QueryParam("after"),
+		Before: c.QueryParam("before"),
 	})
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, values)
+	return c.JSON(http.StatusOK, values)
 }
 
 func (h *Handler) Get(c *echo.Context) error {
+	if h == nil || h.service == nil {
+		return httputil.Error(c, apperrors.NewServiceUnavailable("Contact property service is not configured", nil))
+	}
 	value, err := h.service.Get(c.Request().Context(), c.Param("property_id"))
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, value)
+	return c.JSON(http.StatusOK, value)
 }
 
 func (h *Handler) Update(c *echo.Context) error {
+	if h == nil || h.service == nil {
+		return httputil.Error(c, apperrors.NewServiceUnavailable("Contact property service is not configured", nil))
+	}
 	var req UpdateRequest
-	if err := decodeJSON(c, &req); err != nil {
-		return err
+	if err := httputil.DecodeJSON(c, &req, httputil.DefaultMaxRequestBodyBytes); err != nil {
+		return httputil.Error(c, err)
 	}
 	value, err := h.service.Update(c.Request().Context(), c.Param("property_id"), req)
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, value)
+	return c.JSON(http.StatusOK, value)
 }
 
 func (h *Handler) Delete(c *echo.Context) error {
+	if h == nil || h.service == nil {
+		return httputil.Error(c, apperrors.NewServiceUnavailable("Contact property service is not configured", nil))
+	}
 	value, err := h.service.Delete(c.Request().Context(), c.Param("property_id"))
 	if err != nil {
 		return httputil.Error(c, err)
 	}
-	return httputil.OK(c, value)
-}
-
-func decodeJSON(c *echo.Context, dst any) error {
-	if err := json.NewDecoder(c.Request().Body).Decode(dst); err != nil {
-		return httputil.Error(c, apperrors.NewBadRequest("Invalid JSON request body"))
-	}
-	return nil
-}
-
-func parseInt32(value string) int32 {
-	parsed, err := strconv.ParseInt(value, 10, 32)
-	if err != nil {
-		return 0
-	}
-	return int32(parsed)
+	return c.JSON(http.StatusOK, value)
 }
