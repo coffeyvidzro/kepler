@@ -64,20 +64,27 @@ type Message struct {
 }
 
 type SendRequest struct {
-	Stream      string            `json:"stream,omitempty"`
-	From        *EmailAddress     `json:"from,omitempty"`
-	ReplyTo     EmailAddressList  `json:"reply_to,omitempty"`
-	To          EmailAddressList  `json:"to"`
-	CC          EmailAddressList  `json:"cc,omitempty"`
-	BCC         EmailAddressList  `json:"bcc,omitempty"`
-	Subject     string            `json:"subject"`
-	HTML        string            `json:"html,omitempty"`
-	Text        string            `json:"text,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	Attachments []Attachment      `json:"attachments,omitempty"`
-	Tags        []Tag             `json:"tags,omitempty"`
-	ScheduledAt string            `json:"scheduled_at,omitempty"`
-	Metadata    json.RawMessage   `json:"metadata,omitempty"`
+	Stream      string             `json:"stream,omitempty"`
+	From        *EmailAddress      `json:"from,omitempty"`
+	ReplyTo     EmailAddressList   `json:"reply_to,omitempty"`
+	To          EmailAddressList   `json:"to"`
+	CC          EmailAddressList   `json:"cc,omitempty"`
+	BCC         EmailAddressList   `json:"bcc,omitempty"`
+	Subject     string             `json:"subject,omitempty"`
+	HTML        string             `json:"html,omitempty"`
+	Text        string             `json:"text,omitempty"`
+	Headers     map[string]string  `json:"headers,omitempty"`
+	TopicID     string             `json:"topic_id,omitempty"`
+	Attachments []Attachment       `json:"attachments,omitempty"`
+	Tags        []Tag              `json:"tags,omitempty"`
+	Template    *TemplateReference `json:"template,omitempty"`
+	ScheduledAt string             `json:"scheduled_at,omitempty"`
+	Metadata    json.RawMessage    `json:"metadata,omitempty"`
+}
+
+type TemplateReference struct {
+	ID        string         `json:"id"`
+	Variables map[string]any `json:"variables,omitempty"`
 }
 
 type EmailAddress struct {
@@ -162,6 +169,10 @@ type SendResponse struct {
 	ID string `json:"id"`
 }
 
+type BatchSendResponse struct {
+	Data []SendResponse `json:"data"`
+}
+
 type MutationResponse struct {
 	Object string `json:"object"`
 	ID     string `json:"id"`
@@ -177,6 +188,10 @@ func SendResponses(messages []Message) []SendResponse {
 		responses[index] = SendResponse{ID: message.ID}
 	}
 	return responses
+}
+
+func BatchResponse(messages []Message) BatchSendResponse {
+	return BatchSendResponse{Data: SendResponses(messages)}
 }
 
 type RetrieveResponse struct {
