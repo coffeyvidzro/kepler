@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
@@ -18,100 +21,93 @@ var (
 	ErrConflict = errors.New("broadcast conflict")
 )
 
+type eventEmitter interface {
+	EmitTx(context.Context, pgx.Tx, platformevent.Envelope) (platformevent.Result, error)
+}
+
 type Repository struct {
 	db      *pgxpool.Pool
+	queries *dbsqlc.Queries
 	emitter eventEmitter
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
-
-func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
-	return &Repository{db: db, emitter: emitter}
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{db: db, queries: dbsqlc.New(db)}
 }
 
-const broadcastColumns = `id,team_id,name,status,segment_id,topic_id,template_id,template_version_id,
-variable_bindings,scheduled_at,queued_at,sent_at,canceled_at,audience_count,eligible_count,
-suppressed_count,queued_count,failed_count,revision,created_at,updated_at`
-
-func scanBroadcast(row pgx.Row) (Broadcast, error) {
-	var value Broadcast
-	var bindings []byte
-	err := row.Scan(&value.ID, &value.TeamID, &value.Name, &value.Status, &value.SegmentID,
-		&value.TopicID, &value.TemplateID, &value.TemplateVersionID, &bindings,
-		&value.ScheduledAt, &value.QueuedAt, &value.SentAt, &value.CanceledAt,
-		&value.AudienceCount, &value.EligibleCount, &value.SuppressedCount,
-		&value.QueuedCount, &value.FailedCount, &value.Revision, &value.CreatedAt, &value.UpdatedAt)
-	if err != nil {
-		return Broadcast{}, err
-	}
-	if err := json.Unmarshal(bindings, &value.VariableBindings); err != nil {
-		return Broadcast{}, err
-	}
-	if value.VariableBindings == nil {
-		value.VariableBindings = map[string]any{}
-	}
-	return value, nil
+func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
+	return &Repository{db: db, queries: dbsqlc.New(db), emitter: emitter}
 }
 
 func (r *Repository) Create(ctx context.Context, teamID, segmentID uuid.UUID, topicID *uuid.UUID, templateID uuid.UUID, req CreateRequest) (Broadcast, error) {
 	bindings, err := json.Marshal(req.VariableBindings)
 	if err != nil {
-		return Broadcast{}, err
+		return Broadcast{}, fmt.Errorf("encode broadcast variable bindings: %w", err)
 	}
-	return scanBroadcast(r.db.QueryRow(ctx, `INSERT INTO broadcasts (team_id,name,segment_id,topic_id,template_id,variable_bindings)
-		VALUES ($1,$2,$3,$4,$5,$6) RETURNING `+broadcastColumns,
-		teamID, req.Name, segmentID, topicID, templateID, bindings))
+	row, err := r.queries.CreateBroadcast(ctx, dbsqlc.CreateBroadcastParams{
+		TeamID: teamID, Name: req.Name, SegmentID: segmentID, TopicID: topicID,
+		TemplateID: templateID, VariableBindings: bindings,
+	})
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("create broadcast: %w", err)
+	}
+	return broadcastFromSQLC(row)
 }
 
 func (r *Repository) Duplicate(ctx context.Context, teamID, sourceID uuid.UUID, name string) (Broadcast, error) {
-	value, err := scanBroadcast(r.db.QueryRow(ctx, `INSERT INTO broadcasts (team_id,name,segment_id,topic_id,template_id,variable_bindings)
-		SELECT team_id,$1,segment_id,topic_id,template_id,variable_bindings
-		FROM broadcasts
-		WHERE id=$2 AND team_id=$3 AND deleted_at IS NULL
-		RETURNING `+broadcastColumns, name, sourceID, teamID))
+	row, err := r.queries.DuplicateBroadcast(ctx, dbsqlc.DuplicateBroadcastParams{Name: name, SourceID: sourceID, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrNotFound
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("duplicate broadcast: %w", err)
+	}
+	return broadcastFromSQLC(row)
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Broadcast, error) {
-	rows, err := r.db.Query(ctx, `SELECT `+broadcastColumns+` FROM broadcasts WHERE team_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, teamID, limit, offset)
+	rows, err := r.queries.ListBroadcasts(ctx, dbsqlc.ListBroadcastsParams{TeamID: teamID, PageLimit: limit, PageOffset: offset})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list broadcasts: %w", err)
 	}
-	defer rows.Close()
-	result := []Broadcast{}
-	for rows.Next() {
-		value, err := scanBroadcast(rows)
-		if err != nil {
-			return nil, err
+	values := make([]Broadcast, 0, len(rows))
+	for _, row := range rows {
+		value, mapErr := broadcastFromSQLC(row)
+		if mapErr != nil {
+			return nil, mapErr
 		}
-		result = append(result, value)
+		values = append(values, value)
 	}
-	return result, rows.Err()
+	return values, nil
 }
 
 func (r *Repository) Get(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	value, err := scanBroadcast(r.db.QueryRow(ctx, `SELECT `+broadcastColumns+` FROM broadcasts WHERE id=$1 AND team_id=$2 AND deleted_at IS NULL`, id, teamID))
+	row, err := r.queries.GetBroadcast(ctx, dbsqlc.GetBroadcastParams{ID: id, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrNotFound
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("get broadcast: %w", err)
+	}
+	return broadcastFromSQLC(row)
 }
 
 func (r *Repository) Update(ctx context.Context, teamID, id, segmentID uuid.UUID, topicID *uuid.UUID, templateID uuid.UUID, req UpdateRequest, current Broadcast) (Broadcast, error) {
 	bindings, err := json.Marshal(current.VariableBindings)
 	if err != nil {
-		return Broadcast{}, err
+		return Broadcast{}, fmt.Errorf("encode broadcast variable bindings: %w", err)
 	}
-	value, err := scanBroadcast(r.db.QueryRow(ctx, `UPDATE broadcasts SET name=$1,segment_id=$2,topic_id=$3,template_id=$4,variable_bindings=$5,revision=revision+1,updated_at=now()
-		WHERE id=$6 AND team_id=$7 AND status='draft' AND revision=$8 AND deleted_at IS NULL RETURNING `+broadcastColumns,
-		current.Name, segmentID, topicID, templateID, bindings, id, teamID, req.Revision))
+	row, err := r.queries.UpdateBroadcastDraft(ctx, dbsqlc.UpdateBroadcastDraftParams{
+		Name: current.Name, SegmentID: segmentID, TopicID: topicID, TemplateID: templateID,
+		VariableBindings: bindings, ID: id, TeamID: teamID, Revision: req.Revision,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("update broadcast: %w", err)
+	}
+	return broadcastFromSQLC(row)
 }
 
 func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, scheduledAt any) (Broadcast, error) {
@@ -120,23 +116,34 @@ func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, 
 		return Broadcast{}, fmt.Errorf("begin broadcast send: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	queries := r.queries.WithTx(tx)
 
-	query := `UPDATE broadcasts SET status='queued',template_version_id=$1,scheduled_at=NULL,queued_at=now(),canceled_at=NULL,revision=revision+1,updated_at=now()
-		WHERE id=$2 AND team_id=$3 AND status='draft' AND deleted_at IS NULL RETURNING ` + broadcastColumns
-	args := []any{versionID, id, teamID}
+	var row dbsqlc.Broadcast
 	eventType := platformevent.TypeBroadcastQueued
 	reason := "immediate_send"
-	if scheduledAt != nil {
-		query = `UPDATE broadcasts SET status='scheduled',template_version_id=$1,scheduled_at=$2,canceled_at=NULL,revision=revision+1,updated_at=now()
-			WHERE id=$3 AND team_id=$4 AND status='draft' AND deleted_at IS NULL RETURNING ` + broadcastColumns
-		args = []any{versionID, scheduledAt, id, teamID}
+	if scheduledAt == nil {
+		row, err = queries.QueueBroadcast(ctx, dbsqlc.QueueBroadcastParams{TemplateVersionID: &versionID, ID: id, TeamID: teamID})
+	} else {
+		scheduled, ok := scheduledTime(scheduledAt)
+		if !ok {
+			return Broadcast{}, errors.New("invalid scheduled broadcast time")
+		}
+		row, err = queries.ScheduleBroadcast(ctx, dbsqlc.ScheduleBroadcastParams{
+			TemplateVersionID: &versionID,
+			ScheduledAt:       pgtype.Timestamptz{Time: scheduled, Valid: true},
+			ID:                id,
+			TeamID:            teamID,
+		})
 		eventType = platformevent.TypeBroadcastScheduled
 		reason = "scheduled_send"
 	}
-	value, err := scanBroadcast(tx.QueryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("send broadcast: %w", err)
+	}
+	value, err := broadcastFromSQLC(row)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -150,46 +157,27 @@ func (r *Repository) Send(ctx context.Context, teamID, id, versionID uuid.UUID, 
 }
 
 func (r *Repository) QueueScheduled(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	return r.transition(ctx, `UPDATE broadcasts SET status='queued',queued_at=now(),revision=revision+1,updated_at=now()
-		WHERE id=$1 AND team_id=$2 AND status='scheduled' AND deleted_at IS NULL RETURNING `+broadcastColumns,
-		[]any{id, teamID}, platformevent.TypeBroadcastQueued, StatusScheduled, "schedule_due", nil)
+	return r.transition(ctx, platformevent.TypeBroadcastQueued, StatusScheduled, "schedule_due", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+		return q.QueueScheduledBroadcast(ctx, dbsqlc.QueueScheduledBroadcastParams{ID: id, TeamID: teamID})
+	})
 }
 
-// QueueNextDueScheduled atomically claims the next due scheduled Broadcast,
-// moves it to queued, and emits broadcast.queued in the same transaction.
-// FOR UPDATE SKIP LOCKED lets multiple workers poll safely without durable
-// lease state; a crashed worker rolls back and releases the row automatically.
 func (r *Repository) QueueNextDueScheduled(ctx context.Context) (Broadcast, bool, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Broadcast{}, false, fmt.Errorf("begin due broadcast claim: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
-	value, err := scanBroadcast(tx.QueryRow(ctx, `
-		WITH candidate AS (
-			SELECT id
-			FROM broadcasts
-			WHERE status = 'scheduled'
-			  AND scheduled_at <= now()
-			  AND deleted_at IS NULL
-			ORDER BY scheduled_at, id
-			FOR UPDATE SKIP LOCKED
-			LIMIT 1
-		)
-		UPDATE broadcasts AS broadcast
-		SET status = 'queued',
-			queued_at = now(),
-			revision = broadcast.revision + 1,
-			updated_at = now()
-		FROM candidate
-		WHERE broadcast.id = candidate.id
-		RETURNING `+broadcastColumns))
+	row, err := r.queries.WithTx(tx).QueueNextDueBroadcast(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, false, nil
 	}
 	if err != nil {
 		return Broadcast{}, false, fmt.Errorf("claim due broadcast: %w", err)
+	}
+	value, err := broadcastFromSQLC(row)
+	if err != nil {
+		return Broadcast{}, false, err
 	}
 	if err := emitBroadcastEvent(ctx, tx, r.emitter, platformevent.TypeBroadcastQueued, value, StatusScheduled, "schedule_due", nil); err != nil {
 		return Broadcast{}, false, fmt.Errorf("emit due broadcast queued event: %w", err)
@@ -201,34 +189,38 @@ func (r *Repository) QueueNextDueScheduled(ctx context.Context) (Broadcast, bool
 }
 
 func (r *Repository) MarkSent(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	return r.transition(ctx, `UPDATE broadcasts SET status='sent',sent_at=now(),revision=revision+1,updated_at=now()
-		WHERE id=$1 AND team_id=$2 AND status='queued' AND deleted_at IS NULL RETURNING `+broadcastColumns,
-		[]any{id, teamID}, platformevent.TypeBroadcastSent, StatusQueued, "recipient_fanout_completed", nil)
+	return r.transition(ctx, platformevent.TypeBroadcastSent, StatusQueued, "recipient_fanout_completed", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+		return q.MarkBroadcastSent(ctx, dbsqlc.MarkBroadcastSentParams{ID: id, TeamID: teamID})
+	})
 }
 
 func (r *Repository) MarkFailed(ctx context.Context, teamID, id uuid.UUID, phase, code, message string, retryable bool) (Broadcast, error) {
 	failure := map[string]any{"phase": phase, "code": code, "message": message, "retryable": retryable}
-	return r.transition(ctx, `UPDATE broadcasts SET status='failed',revision=revision+1,updated_at=now()
-		WHERE id=$1 AND team_id=$2 AND status='queued' AND deleted_at IS NULL RETURNING `+broadcastColumns,
-		[]any{id, teamID}, platformevent.TypeBroadcastFailed, StatusQueued, "orchestration_failed", failure)
+	return r.transition(ctx, platformevent.TypeBroadcastFailed, StatusQueued, "orchestration_failed", failure, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+		return q.MarkBroadcastFailed(ctx, dbsqlc.MarkBroadcastFailedParams{ID: id, TeamID: teamID})
+	})
 }
 
 func (r *Repository) Cancel(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	return r.transition(ctx, `UPDATE broadcasts SET status='canceled',scheduled_at=NULL,canceled_at=now(),revision=revision+1,updated_at=now()
-		WHERE id=$1 AND team_id=$2 AND status='scheduled' AND deleted_at IS NULL RETURNING `+broadcastColumns,
-		[]any{id, teamID}, platformevent.TypeBroadcastCanceled, StatusScheduled, "user_canceled", nil)
+	return r.transition(ctx, platformevent.TypeBroadcastCanceled, StatusScheduled, "user_canceled", nil, func(q *dbsqlc.Queries) (dbsqlc.Broadcast, error) {
+		return q.CancelScheduledBroadcast(ctx, dbsqlc.CancelScheduledBroadcastParams{ID: id, TeamID: teamID})
+	})
 }
 
-func (r *Repository) transition(ctx context.Context, query string, args []any, eventType platformevent.Type, from, reason string, failure map[string]any) (Broadcast, error) {
+func (r *Repository) transition(ctx context.Context, eventType platformevent.Type, from, reason string, failure map[string]any, update func(*dbsqlc.Queries) (dbsqlc.Broadcast, error)) (Broadcast, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Broadcast{}, fmt.Errorf("begin broadcast transition: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	value, err := scanBroadcast(tx.QueryRow(ctx, query, args...))
+	row, err := update(r.queries.WithTx(tx))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("update broadcast transition: %w", err)
+	}
+	value, err := broadcastFromSQLC(row)
 	if err != nil {
 		return Broadcast{}, err
 	}
@@ -242,37 +234,81 @@ func (r *Repository) transition(ctx context.Context, query string, args []any, e
 }
 
 func (r *Repository) Delete(ctx context.Context, teamID, id uuid.UUID) (Broadcast, error) {
-	value, err := scanBroadcast(r.db.QueryRow(ctx, `UPDATE broadcasts SET deleted_at=now(),updated_at=now() WHERE id=$1 AND team_id=$2 AND status IN ('draft','canceled') AND deleted_at IS NULL RETURNING `+broadcastColumns, id, teamID))
+	row, err := r.queries.SoftDeleteBroadcast(ctx, dbsqlc.SoftDeleteBroadcastParams{ID: id, TeamID: teamID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Broadcast{}, ErrConflict
 	}
-	return value, err
+	if err != nil {
+		return Broadcast{}, fmt.Errorf("delete broadcast: %w", err)
+	}
+	return broadcastFromSQLC(row)
 }
 
 func (r *Repository) ListRecipients(ctx context.Context, teamID, broadcastID uuid.UUID, limit, offset int32) ([]Recipient, error) {
-	rows, err := r.db.Query(ctx, `SELECT id,broadcast_id,contact_id,email,first_name,last_name,contact_snapshot,status,exclusion_reason,email_message_id,created_at,queued_at
-		FROM broadcast_recipients WHERE team_id=$1 AND broadcast_id=$2 ORDER BY created_at,id LIMIT $3 OFFSET $4`, teamID, broadcastID, limit, offset)
+	rows, err := r.queries.ListBroadcastRecipients(ctx, dbsqlc.ListBroadcastRecipientsParams{
+		TeamID: teamID, BroadcastID: broadcastID, PageLimit: limit, PageOffset: offset,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list broadcast recipients: %w", err)
 	}
-	defer rows.Close()
-	result := []Recipient{}
-	for rows.Next() {
-		var value Recipient
-		var snapshot []byte
-		if err := rows.Scan(&value.ID, &value.BroadcastID, &value.ContactID, &value.Email, &value.FirstName, &value.LastName, &snapshot, &value.Status, &value.ExclusionReason, &value.EmailMessageID, &value.CreatedAt, &value.QueuedAt); err != nil {
-			return nil, err
+	values := make([]Recipient, 0, len(rows))
+	for _, row := range rows {
+		value, mapErr := recipientFromSQLC(row)
+		if mapErr != nil {
+			return nil, mapErr
 		}
-		if err := json.Unmarshal(snapshot, &value.ContactSnapshot); err != nil {
-			return nil, err
-		}
-		result = append(result, value)
+		values = append(values, value)
 	}
-	return result, rows.Err()
+	return values, nil
 }
 
-type eventEmitter interface {
-	EmitTx(context.Context, pgx.Tx, platformevent.Envelope) (platformevent.Result, error)
+type MaterializationResult struct {
+	BroadcastID   uuid.UUID
+	TeamID        uuid.UUID
+	AudienceCount int64
+	EligibleCount int64
+	ExcludedCount int64
+}
+
+func (r *Repository) MaterializeNextQueuedRecipients(ctx context.Context) (MaterializationResult, bool, error) {
+	if r == nil || r.db == nil || r.queries == nil {
+		return MaterializationResult{}, false, errors.New("broadcast repository is not configured")
+	}
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return MaterializationResult{}, false, fmt.Errorf("begin recipient materialization: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := r.queries.WithTx(tx)
+
+	candidate, err := queries.ClaimNextQueuedBroadcastForMaterialization(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return MaterializationResult{}, false, nil
+	}
+	if err != nil {
+		return MaterializationResult{}, false, fmt.Errorf("claim queued broadcast: %w", err)
+	}
+	if err := queries.MaterializeBroadcastRecipients(ctx, dbsqlc.MaterializeBroadcastRecipientsParams{
+		TopicID: candidate.TopicID, TeamID: candidate.TeamID, SegmentID: candidate.SegmentID, BroadcastID: candidate.ID,
+	}); err != nil {
+		return MaterializationResult{}, false, fmt.Errorf("insert broadcast recipients: %w", err)
+	}
+	completed, err := queries.CompleteBroadcastRecipientMaterialization(ctx, dbsqlc.CompleteBroadcastRecipientMaterializationParams{
+		BroadcastID: candidate.ID, TeamID: candidate.TeamID,
+	})
+	if err != nil {
+		return MaterializationResult{}, false, fmt.Errorf("complete recipient materialization: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return MaterializationResult{}, false, fmt.Errorf("commit recipient materialization: %w", err)
+	}
+	return MaterializationResult{
+		BroadcastID: completed.BroadcastID,
+		TeamID: completed.TeamID,
+		AudienceCount: completed.AudienceCount,
+		EligibleCount: completed.EligibleCount,
+		ExcludedCount: completed.ExcludedCount,
+	}, true, nil
 }
 
 type broadcastTransition struct {
@@ -305,7 +341,7 @@ func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, ev
 		return fmt.Errorf("parse broadcast id: %w", err)
 	}
 	payload := map[string]any{
-		"broadcast":  value,
+		"broadcast": value,
 		"transition": broadcastTransition{From: from, To: value.Status, Reason: reason},
 		"summary": broadcastSummary{
 			AudienceCount: value.AudienceCount, EligibleCount: value.EligibleCount,
@@ -321,148 +357,70 @@ func emitBroadcastEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, ev
 		return fmt.Errorf("encode broadcast event: %w", err)
 	}
 	_, err = emitter.EmitTx(ctx, tx, platformevent.Envelope{
-		Type:       eventType,
-		TeamID:     teamID,
-		ObjectType: "broadcast",
-		ObjectID:   &objectID,
-		Data:       data,
+		Type: eventType, TeamID: teamID, ObjectType: "broadcast", ObjectID: &objectID, Data: data,
 	})
 	return err
 }
 
-type MaterializationResult struct {
-	BroadcastID   uuid.UUID
-	TeamID        uuid.UUID
-	AudienceCount int64
-	EligibleCount int64
-	ExcludedCount int64
+func broadcastFromSQLC(row dbsqlc.Broadcast) (Broadcast, error) {
+	bindings := map[string]any{}
+	if len(row.VariableBindings) > 0 {
+		if err := json.Unmarshal(row.VariableBindings, &bindings); err != nil {
+			return Broadcast{}, fmt.Errorf("decode broadcast variable bindings: %w", err)
+		}
+	}
+	return Broadcast{
+		ID: row.ID.String(), TeamID: row.TeamID.String(), Name: row.Name, Status: row.Status,
+		SegmentID: row.SegmentID.String(), TopicID: uuidStringPointer(row.TopicID),
+		TemplateID: row.TemplateID.String(), TemplateVersionID: uuidStringPointer(row.TemplateVersionID),
+		VariableBindings: bindings, ScheduledAt: timestampPointer(row.ScheduledAt),
+		QueuedAt: timestampPointer(row.QueuedAt), SentAt: timestampPointer(row.SentAt),
+		CanceledAt: timestampPointer(row.CanceledAt), AudienceCount: row.AudienceCount,
+		EligibleCount: row.EligibleCount, SuppressedCount: row.SuppressedCount,
+		QueuedCount: row.QueuedCount, FailedCount: row.FailedCount, Revision: row.Revision,
+		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+	}, nil
 }
 
-// MaterializeNextQueuedRecipients freezes the next queued Broadcast audience.
-// The Broadcast row is locked until recipients, counters, and the completion
-// marker are committed, making the operation safe to retry across workers.
-func (r *Repository) MaterializeNextQueuedRecipients(ctx context.Context) (MaterializationResult, bool, error) {
-	if r == nil || r.db == nil {
-		return MaterializationResult{}, false, errors.New("broadcast repository is not configured")
+func recipientFromSQLC(row dbsqlc.BroadcastRecipient) (Recipient, error) {
+	snapshot := map[string]any{}
+	if len(row.ContactSnapshot) > 0 {
+		if err := json.Unmarshal(row.ContactSnapshot, &snapshot); err != nil {
+			return Recipient{}, fmt.Errorf("decode broadcast recipient snapshot: %w", err)
+		}
 	}
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return MaterializationResult{}, false, fmt.Errorf("begin recipient materialization: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	return Recipient{
+		ID: row.ID.String(), BroadcastID: row.BroadcastID.String(), ContactID: uuidStringPointer(row.ContactID),
+		Email: row.Email, FirstName: row.FirstName, LastName: row.LastName, ContactSnapshot: snapshot,
+		Status: row.Status, ExclusionReason: row.ExclusionReason, EmailMessageID: uuidStringPointer(row.EmailMessageID),
+		CreatedAt: row.CreatedAt.Time, QueuedAt: timestampPointer(row.QueuedAt),
+	}, nil
+}
 
-	var broadcastID, teamID, segmentID uuid.UUID
-	var topicID *uuid.UUID
-	err = tx.QueryRow(ctx, `
-		SELECT id, team_id, segment_id, topic_id
-		FROM broadcasts
-		WHERE status = 'queued'
-		  AND recipients_materialized_at IS NULL
-		  AND deleted_at IS NULL
-		ORDER BY queued_at, id
-		FOR UPDATE SKIP LOCKED
-		LIMIT 1
-	`).Scan(&broadcastID, &teamID, &segmentID, &topicID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return MaterializationResult{}, false, nil
+func uuidStringPointer(value *uuid.UUID) *string {
+	if value == nil {
+		return nil
 	}
-	if err != nil {
-		return MaterializationResult{}, false, fmt.Errorf("claim queued broadcast: %w", err)
-	}
+	text := value.String()
+	return &text
+}
 
-	_, err = tx.Exec(ctx, `
-		WITH candidates AS (
-			SELECT
-				c.id AS contact_id,
-				c.email,
-				lower(btrim(c.email)) AS normalized_email,
-				c.first_name,
-				c.last_name,
-				jsonb_build_object(
-					'id', c.id,
-					'email', c.email,
-					'first_name', c.first_name,
-					'last_name', c.last_name,
-					'properties', COALESCE(properties.values, '{}'::jsonb)
-				) AS contact_snapshot,
-				CASE
-					WHEN c.email !~* '^[A-Z0-9.!#$%&''*+/=?^_{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN 'invalid_email'
-					WHEN c.unsubscribed THEN 'global_unsubscribe'
-					WHEN EXISTS (
-						SELECT 1 FROM suppressions s
-						WHERE s.team_id = c.team_id AND lower(s.email) = lower(c.email)
-					) THEN 'suppressed'
-					WHEN $4::uuid IS NOT NULL AND COALESCE(cts.subscription, t.default_subscription) = 'opt_out' THEN 'topic_unsubscribed'
-					ELSE NULL
-				END AS exclusion_reason
-			FROM contact_segments cs
-			JOIN contacts c
-			  ON c.id = cs.contact_id AND c.team_id = cs.team_id
-			LEFT JOIN topics t
-			  ON t.id = $4 AND t.team_id = c.team_id
-			LEFT JOIN contact_topic_subscriptions cts
-			  ON cts.contact_id = c.id AND cts.topic_id = $4 AND cts.team_id = c.team_id
-			LEFT JOIN LATERAL (
-				SELECT jsonb_object_agg(
-					cp.key,
-					CASE cpv.value_type
-						WHEN 'string' THEN to_jsonb(cpv.string_value)
-						WHEN 'number' THEN to_jsonb(cpv.number_value)
-					END
-				) AS values
-				FROM contact_property_values cpv
-				JOIN contact_properties cp
-				  ON cp.id = cpv.contact_property_id AND cp.team_id = cpv.team_id
-				WHERE cpv.contact_id = c.id AND cpv.team_id = c.team_id
-			) properties ON true
-			WHERE cs.team_id = $2 AND cs.segment_id = $3
-		)
-		INSERT INTO broadcast_recipients (
-			team_id, broadcast_id, contact_id, email, normalized_email,
-			first_name, last_name, contact_snapshot, status, exclusion_reason
-		)
-		SELECT
-			$2, $1, contact_id, email, normalized_email,
-			first_name, last_name, contact_snapshot,
-			CASE WHEN exclusion_reason IS NULL THEN 'pending' ELSE 'excluded' END,
-			exclusion_reason
-		FROM candidates
-		ON CONFLICT DO NOTHING
-	`, broadcastID, teamID, segmentID, topicID)
-	if err != nil {
-		return MaterializationResult{}, false, fmt.Errorf("insert broadcast recipients: %w", err)
+func timestampPointer(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
 	}
+	result := value.Time
+	return &result
+}
 
-	var result MaterializationResult
-	result.BroadcastID = broadcastID
-	result.TeamID = teamID
-	err = tx.QueryRow(ctx, `
-		WITH counts AS (
-			SELECT
-				count(*) AS audience_count,
-				count(*) FILTER (WHERE status = 'pending') AS eligible_count,
-				count(*) FILTER (WHERE status = 'excluded') AS excluded_count
-			FROM broadcast_recipients
-			WHERE broadcast_id = $1 AND team_id = $2
-		)
-		UPDATE broadcasts AS b
-		SET audience_count = counts.audience_count,
-			eligible_count = counts.eligible_count,
-			suppressed_count = counts.excluded_count,
-			failed_count = 0,
-			recipients_materialized_at = now(),
-			revision = revision + 1,
-			updated_at = now()
-		FROM counts
-		WHERE b.id = $1 AND b.team_id = $2
-		RETURNING counts.audience_count, counts.eligible_count, counts.excluded_count
-	`, broadcastID, teamID).Scan(&result.AudienceCount, &result.EligibleCount, &result.ExcludedCount)
-	if err != nil {
-		return MaterializationResult{}, false, fmt.Errorf("complete recipient materialization: %w", err)
+func scheduledTime(value any) (time.Time, bool) {
+	switch scheduled := value.(type) {
+	case time.Time:
+		return scheduled, true
+	case *time.Time:
+		if scheduled != nil {
+			return *scheduled, true
+		}
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return MaterializationResult{}, false, fmt.Errorf("commit recipient materialization: %w", err)
-	}
-	return result, true, nil
+	return time.Time{}, false
 }
