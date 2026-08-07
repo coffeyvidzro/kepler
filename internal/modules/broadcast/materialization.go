@@ -10,11 +10,11 @@ import (
 )
 
 type MaterializationResult struct {
-	BroadcastID    uuid.UUID
-	TeamID         uuid.UUID
-	AudienceCount  int64
-	EligibleCount  int64
-	ExcludedCount  int64
+	BroadcastID   uuid.UUID
+	TeamID        uuid.UUID
+	AudienceCount int64
+	EligibleCount int64
+	ExcludedCount int64
 }
 
 // MaterializeNextQueuedRecipients freezes the next queued Broadcast audience.
@@ -65,7 +65,7 @@ func (r *Repository) MaterializeNextQueuedRecipients(ctx context.Context) (Mater
 					'properties', COALESCE(properties.values, '{}'::jsonb)
 				) AS contact_snapshot,
 				CASE
-					WHEN c.email !~* '^[A-Z0-9.!#$%&''*+/=?^_` + "`" + `{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN 'invalid_email'
+					WHEN c.email !~* '^[A-Z0-9.!#$%&''*+/=?^_{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN 'invalid_email'
 					WHEN c.unsubscribed THEN 'global_unsubscribe'
 					WHEN EXISTS (
 						SELECT 1 FROM suppressions s
