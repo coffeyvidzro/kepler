@@ -94,6 +94,6 @@ func registerCSRFRoute(router *echo.Echo, csrfMiddleware echo.MiddlewareFunc) {
 		if !ok || token == "" {
 			return httputil.Error(c, apperrors.NewInternal("CSRF token is not available", nil))
 		}
-		return httputil.OK(c, map[string]string{"csrf_token": token)
+		return httputil.OK(c, map[string]string{"csrf_token": token})
 	}, csrfMiddleware)
 }
