@@ -17,6 +17,9 @@ type eventEmitter interface {
 
 func emitSuppressionEvent(ctx context.Context, tx pgx.Tx, emitter eventEmitter, eventType platformevent.Type, value Suppression) error {
 	if emitter == nil {
+		emitter = platformevent.DefaultEmitter()
+	}
+	if emitter == nil {
 		return nil
 	}
 	teamID, err := uuid.Parse(value.TeamID)
