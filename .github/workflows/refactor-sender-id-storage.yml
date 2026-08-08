@@ -32,7 +32,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
-          import textwrap
 
           source = subprocess.check_output(
               [
@@ -61,12 +60,34 @@ jobs:
               ),
               len(lines),
           )
-          script = textwrap.dedent("\n".join(lines[run_index + 1 : end_index]))
+
+          yaml_indent = "          "
+          script_lines = []
+          for line_number, line in enumerate(
+              lines[run_index + 1 : end_index],
+              start=run_index + 2,
+          ):
+              if line == "":
+                  script_lines.append("")
+                  continue
+              if not line.startswith(yaml_indent):
+                  raise SystemExit(
+                      f"unexpected indentation at source line {line_number}: {line!r}"
+                  )
+              script_lines.append(line[len(yaml_indent) :])
+
+          script = "\n".join(script_lines) + "\n"
+          if not script.startswith("python3 - <<'PY'\n"):
+              raise SystemExit("refactor script does not start with the expected heredoc")
+          if "\nPY\n" not in script:
+              raise SystemExit("refactor script is missing its heredoc terminator")
+
           Path("/tmp/refactor-sender-id-storage.sh").write_text(
-              script + "\n",
+              script,
               encoding="utf-8",
           )
           PY
+          bash -n /tmp/refactor-sender-id-storage.sh
           bash /tmp/refactor-sender-id-storage.sh
 
       - name: Regenerate sqlc
