@@ -10,6 +10,7 @@ import (
 type Product string
 
 type Channel string
+type Settlement string
 
 const (
 	ProductSMS   Product = "sms"
@@ -20,6 +21,8 @@ const (
 	ChannelSMS   Channel = "sms"
 	ChannelEmail Channel = "email"
 )
+
+const SettlementAcceptedForDelivery Settlement = "accepted_for_delivery"
 
 type SMSChargeInput struct {
 	TeamID             uuid.UUID
@@ -51,11 +54,16 @@ type EmailChargeInput struct {
 
 // CommittedCharge is emitted only after the transaction containing the
 // message, immediate billing mutation, and delivery outbox event has committed.
+// The committed transaction is the billable acceptance boundary: later
+// provider rejection, sender deactivation, cancellation, or delivery failure
+// does not implicitly reverse wallet or allowance usage. Any future credit
+// must be an explicit, separately audited billing operation.
 type CommittedCharge struct {
 	Charge
-	Channel   Channel
-	TeamID    uuid.UUID
-	MessageID uuid.UUID
+	Channel    Channel
+	Settlement Settlement
+	TeamID     uuid.UUID
+	MessageID  uuid.UUID
 }
 
 type ChargeObserver interface {

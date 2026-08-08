@@ -132,6 +132,8 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	}
 
 	messageID := uuid.MustParse(created.ID)
+	// Billing settles when the message and its durable delivery job commit, not
+	// when a provider later accepts or delivers the SMS.
 	charge, err := s.billing.ChargeSMS(ctx, tx, platformbilling.SMSChargeInput{
 		TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
 		DestinationNumber: normalized.To, Segments: segments,
@@ -147,7 +149,8 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (Message, error) {
 	}
 	s.billing.ObserveCommittedCharge(ctx, platformbilling.CommittedCharge{
 		Charge: charge, Channel: platformbilling.ChannelSMS,
-		TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
+		Settlement: platformbilling.SettlementAcceptedForDelivery,
+		TeamID:     tenantContext.Scope.TeamID, MessageID: messageID,
 	})
 
 	return created, nil
@@ -229,7 +232,8 @@ func (s *Service) BatchSend(ctx context.Context, req BatchSendRequest) ([]Messag
 		result = append(result, created)
 		committedCharges = append(committedCharges, platformbilling.CommittedCharge{
 			Charge: charge, Channel: platformbilling.ChannelSMS,
-			TeamID: tenantContext.Scope.TeamID, MessageID: messageID,
+			Settlement: platformbilling.SettlementAcceptedForDelivery,
+			TeamID:     tenantContext.Scope.TeamID, MessageID: messageID,
 		})
 	}
 	if err := tx.Commit(ctx); err != nil {
