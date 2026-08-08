@@ -1,9 +1,9 @@
 name: Domain Aggregate Bootstrap
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/create-domains-aggregate
+      - main
     paths:
       - ".github/domain-aggregate-bootstrap/**"
       - ".github/workflows/domain-aggregate-bootstrap.yml"
@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'agent/create-domains-aggregate'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
