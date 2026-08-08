@@ -127,20 +127,27 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (S
 	return getSenderID(ctx, r.db, id, teamID, false)
 }
 
-func (r *Repository) Delete(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderID, error) {
+func (r *Repository) Deactivate(ctx context.Context, id uuid.UUID, teamID uuid.UUID) (SenderID, error) {
 	if r == nil || r.db == nil {
 		return SenderID{}, errors.New("sender id repository is not configured")
 	}
-	sender, err := getSenderID(ctx, r.db, id, teamID, false)
+	sender, err := scanSenderID(r.db.QueryRow(ctx, `
+		UPDATE sender_ids AS sender_id
+		SET status = 'inactive',
+			provider_whitelisted = false,
+			disabled_at = COALESCE(sender_id.disabled_at, now()),
+			reconcile_locked_at = NULL,
+			reconcile_locked_by = NULL,
+			updated_at = now()
+		FROM teams AS team
+		WHERE sender_id.id = $1
+		  AND sender_id.team_id = $2
+		  AND team.id = sender_id.team_id
+		  AND team.status = 'active'
+		RETURNING `+senderIDProjection+`
+	`, id, teamID))
 	if err != nil {
-		return SenderID{}, fmt.Errorf("get sender id for deletion: %w", err)
-	}
-	result, err := r.db.Exec(ctx, `DELETE FROM sender_ids WHERE id = $1 AND team_id = $2`, id, teamID)
-	if err != nil {
-		return SenderID{}, fmt.Errorf("delete sender id: %w", err)
-	}
-	if result.RowsAffected() != 1 {
-		return SenderID{}, fmt.Errorf("delete sender id: %w", pgx.ErrNoRows)
+		return SenderID{}, fmt.Errorf("deactivate sender id: %w", err)
 	}
 	return sender, nil
 }
