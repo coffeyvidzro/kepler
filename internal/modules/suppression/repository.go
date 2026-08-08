@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
 	platformevent "github.com/coffeyvidzro/dugble/server/internal/platform/event"
 )
 
@@ -18,13 +19,16 @@ var ErrAlreadyExists = errors.New("suppression already exists")
 
 type Repository struct {
 	db      *pgxpool.Pool
+	queries *dbsqlc.Queries
 	emitter eventEmitter
 }
 
-func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{db: db, queries: dbsqlc.New(db)}
+}
 
 func NewRepositoryWithEventEmitter(db *pgxpool.Pool, emitter eventEmitter) *Repository {
-	return &Repository{db: db, emitter: emitter}
+	return &Repository{db: db, queries: dbsqlc.New(db), emitter: emitter}
 }
 
 func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, email string) (Suppression, error) {
@@ -34,17 +38,19 @@ func (r *Repository) Create(ctx context.Context, teamID uuid.UUID, email string)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	value, err := scanSuppression(tx.QueryRow(ctx, `
-		INSERT INTO suppressions (team_id, email, origin)
-		VALUES ($1, $2, 'manual')
-		RETURNING id, team_id, email, origin, source_id, created_at
-	`, teamID, email))
+	queries := r.queries.WithTx(tx)
+	row, err := queries.CreateSuppression(ctx, dbsqlc.CreateSuppressionParams{
+		TeamID: teamID,
+		Email:  email,
+		Origin: "manual",
+	})
 	if isUniqueViolation(err) {
 		return Suppression{}, ErrAlreadyExists
 	}
 	if err != nil {
 		return Suppression{}, fmt.Errorf("create suppression: %w", err)
 	}
+	value := suppressionFromSQLC(row)
 	if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionCreated, value); err != nil {
 		return Suppression{}, fmt.Errorf("emit suppression created event: %w", err)
 	}
@@ -61,26 +67,17 @@ func (r *Repository) CreateBatch(ctx context.Context, teamID uuid.UUID, emails [
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	rows, err := tx.Query(ctx, `
-		INSERT INTO suppressions (team_id, email, origin)
-		SELECT $1, lower(batch_email.email), 'manual'
-		FROM unnest($2::text[]) WITH ORDINALITY AS batch_email(email, position)
-		ORDER BY batch_email.position
-		RETURNING id, team_id, email, origin, source_id, created_at
-	`, teamID, emails)
+	rows, err := r.queries.WithTx(tx).CreateSuppressions(ctx, dbsqlc.CreateSuppressionsParams{
+		TeamID: teamID,
+		Emails: emails,
+	})
 	if isUniqueViolation(err) {
 		return nil, ErrAlreadyExists
 	}
 	if err != nil {
 		return nil, fmt.Errorf("create suppressions: %w", err)
 	}
-	values, err := scanSuppressions(rows)
-	if isUniqueViolation(err) {
-		return nil, ErrAlreadyExists
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan created suppressions: %w", err)
-	}
+	values := suppressionsFromSQLC(rows)
 	for _, value := range values {
 		if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionCreated, value); err != nil {
 			return nil, fmt.Errorf("emit suppression created event: %w", err)
@@ -93,103 +90,128 @@ func (r *Repository) CreateBatch(ctx context.Context, teamID uuid.UUID, emails [
 }
 
 func (r *Repository) List(ctx context.Context, teamID uuid.UUID, limit, offset int32) ([]Suppression, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, team_id, email, origin, source_id, created_at
-		FROM suppressions WHERE team_id = $1
-		ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3
-	`, teamID, limit, offset)
+	rows, err := r.queries.ListSuppressions(ctx, dbsqlc.ListSuppressionsParams{
+		TeamID:     teamID,
+		PageOffset: offset,
+		PageLimit:  limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list suppressions: %w", err)
 	}
-	values, err := scanSuppressions(rows)
-	if err != nil {
-		return nil, fmt.Errorf("scan suppressions: %w", err)
-	}
-	return values, nil
+	return suppressionsFromSQLC(rows), nil
 }
 
 func (r *Repository) ListPage(ctx context.Context, teamID uuid.UUID, limit int32, after, before *uuid.UUID, origin *string) ([]Suppression, error) {
-	query := `SELECT id, team_id, email, origin, source_id, created_at FROM suppressions WHERE team_id = $1`
-	args := []any{teamID}
-	if origin != nil {
-		args = append(args, *origin)
-		query += fmt.Sprintf(` AND origin = $%d`, len(args))
-	}
-	if after != nil {
-		args = append(args, *after)
-		query += fmt.Sprintf(` AND (created_at, id) < (SELECT created_at, id FROM suppressions WHERE id = $%d AND team_id = $1)`, len(args))
-	}
-	if before != nil {
-		args = append(args, *before)
-		query += fmt.Sprintf(` AND (created_at, id) > (SELECT created_at, id FROM suppressions WHERE id = $%d AND team_id = $1)`, len(args))
-	}
-	if before != nil {
-		query += ` ORDER BY created_at ASC, id ASC`
-	} else {
-		query += ` ORDER BY created_at DESC, id DESC`
-	}
-	args = append(args, limit)
-	query += fmt.Sprintf(` LIMIT $%d`, len(args))
+	var (
+		rows []dbsqlc.Suppression
+		err  error
+	)
 
-	rows, err := r.db.Query(ctx, query, args...)
+	switch {
+	case after != nil:
+		rows, err = r.queries.ListSuppressionsAfter(ctx, dbsqlc.ListSuppressionsAfterParams{
+			ScopeTeamID:  teamID,
+			FilterOrigin: origin,
+			CursorID:     *after,
+			PageLimit:    limit,
+		})
+	case before != nil:
+		rows, err = r.queries.ListSuppressionsBefore(ctx, dbsqlc.ListSuppressionsBeforeParams{
+			ScopeTeamID:  teamID,
+			FilterOrigin: origin,
+			CursorID:     *before,
+			PageLimit:    limit,
+		})
+	default:
+		rows, err = r.queries.ListSuppressionsFiltered(ctx, dbsqlc.ListSuppressionsFilteredParams{
+			TeamID:       teamID,
+			FilterOrigin: origin,
+			PageLimit:    limit,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list suppression page: %w", err)
 	}
-	values, err := scanSuppressions(rows)
-	if err != nil {
-		return nil, fmt.Errorf("scan suppression page: %w", err)
-	}
-	return values, nil
+	return suppressionsFromSQLC(rows), nil
 }
 
 func (r *Repository) CursorExists(ctx context.Context, teamID, cursorID uuid.UUID) (bool, error) {
-	var exists bool
-	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM suppressions WHERE id = $1 AND team_id = $2)`, cursorID, teamID).Scan(&exists)
-	return exists, err
+	return r.queries.SuppressionCursorExists(ctx, dbsqlc.SuppressionCursorExistsParams{
+		CursorID: cursorID,
+		TeamID:   teamID,
+	})
 }
 
 func (r *Repository) GetByID(ctx context.Context, id, teamID uuid.UUID) (Suppression, error) {
-	return scanSuppression(r.db.QueryRow(ctx, `SELECT id, team_id, email, origin, source_id, created_at FROM suppressions WHERE id = $1 AND team_id = $2`, id, teamID))
+	row, err := r.queries.GetSuppressionByID(ctx, dbsqlc.GetSuppressionByIDParams{
+		ID:     id,
+		TeamID: teamID,
+	})
+	if err != nil {
+		return Suppression{}, err
+	}
+	return suppressionFromSQLC(row), nil
 }
 
 func (r *Repository) GetByEmail(ctx context.Context, email string, teamID uuid.UUID) (Suppression, error) {
-	return scanSuppression(r.db.QueryRow(ctx, `SELECT id, team_id, email, origin, source_id, created_at FROM suppressions WHERE team_id = $1 AND lower(email) = lower($2)`, teamID, email))
+	row, err := r.queries.GetSuppressionByEmail(ctx, dbsqlc.GetSuppressionByEmailParams{
+		TeamID: teamID,
+		Email:  email,
+	})
+	if err != nil {
+		return Suppression{}, err
+	}
+	return suppressionFromSQLC(row), nil
 }
 
 func (r *Repository) DeleteByID(ctx context.Context, id, teamID uuid.UUID) (Suppression, error) {
-	return r.delete(ctx, `DELETE FROM suppressions WHERE id = $1 AND team_id = $2 RETURNING id, team_id, email, origin, source_id, created_at`, id, teamID)
+	return r.delete(ctx, func(queries *dbsqlc.Queries) (dbsqlc.Suppression, error) {
+		return queries.DeleteSuppressionByID(ctx, dbsqlc.DeleteSuppressionByIDParams{
+			ID:     id,
+			TeamID: teamID,
+		})
+	})
 }
 
 func (r *Repository) DeleteByEmail(ctx context.Context, email string, teamID uuid.UUID) (Suppression, error) {
-	return r.delete(ctx, `DELETE FROM suppressions WHERE team_id = $1 AND lower(email) = lower($2) RETURNING id, team_id, email, origin, source_id, created_at`, teamID, email)
+	return r.delete(ctx, func(queries *dbsqlc.Queries) (dbsqlc.Suppression, error) {
+		return queries.DeleteSuppressionByEmail(ctx, dbsqlc.DeleteSuppressionByEmailParams{
+			TeamID: teamID,
+			Email:  email,
+		})
+	})
 }
 
 func (r *Repository) DeleteBatchByIDs(ctx context.Context, teamID uuid.UUID, ids []uuid.UUID) ([]Suppression, error) {
-	return r.deleteBatch(ctx, `
-		DELETE FROM suppressions
-		WHERE team_id = $1 AND id = ANY($2::uuid[])
-		RETURNING id, team_id, email, origin, source_id, created_at
-	`, teamID, ids)
+	return r.deleteBatch(ctx, func(queries *dbsqlc.Queries) ([]dbsqlc.Suppression, error) {
+		return queries.DeleteSuppressionsByIDs(ctx, dbsqlc.DeleteSuppressionsByIDsParams{
+			TeamID: teamID,
+			Ids:    ids,
+		})
+	})
 }
 
 func (r *Repository) DeleteBatchByEmails(ctx context.Context, teamID uuid.UUID, emails []string) ([]Suppression, error) {
-	return r.deleteBatch(ctx, `
-		DELETE FROM suppressions
-		WHERE team_id = $1 AND lower(email) = ANY($2::text[])
-		RETURNING id, team_id, email, origin, source_id, created_at
-	`, teamID, emails)
+	return r.deleteBatch(ctx, func(queries *dbsqlc.Queries) ([]dbsqlc.Suppression, error) {
+		return queries.DeleteSuppressionsByEmails(ctx, dbsqlc.DeleteSuppressionsByEmailsParams{
+			TeamID: teamID,
+			Emails: emails,
+		})
+	})
 }
 
-func (r *Repository) delete(ctx context.Context, query string, args ...any) (Suppression, error) {
+func (r *Repository) delete(ctx context.Context, operation func(*dbsqlc.Queries) (dbsqlc.Suppression, error)) (Suppression, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Suppression{}, fmt.Errorf("begin suppression deletion: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	value, err := scanSuppression(tx.QueryRow(ctx, query, args...))
+
+	row, err := operation(r.queries.WithTx(tx))
 	if err != nil {
 		return Suppression{}, err
 	}
+	value := suppressionFromSQLC(row)
 	if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionDeleted, value); err != nil {
 		return Suppression{}, fmt.Errorf("emit suppression deleted event: %w", err)
 	}
@@ -199,20 +221,18 @@ func (r *Repository) delete(ctx context.Context, query string, args ...any) (Sup
 	return value, nil
 }
 
-func (r *Repository) deleteBatch(ctx context.Context, query string, args ...any) ([]Suppression, error) {
+func (r *Repository) deleteBatch(ctx context.Context, operation func(*dbsqlc.Queries) ([]dbsqlc.Suppression, error)) ([]Suppression, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("begin batch suppression deletion: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	rows, err := tx.Query(ctx, query, args...)
+
+	rows, err := operation(r.queries.WithTx(tx))
 	if err != nil {
 		return nil, fmt.Errorf("delete suppressions: %w", err)
 	}
-	values, err := scanSuppressions(rows)
-	if err != nil {
-		return nil, fmt.Errorf("scan deleted suppressions: %w", err)
-	}
+	values := suppressionsFromSQLC(rows)
 	for _, value := range values {
 		if err := emitSuppressionEvent(ctx, tx, r.emitter, platformevent.TypeSuppressionDeleted, value); err != nil {
 			return nil, fmt.Errorf("emit suppression deleted event: %w", err)
@@ -224,27 +244,23 @@ func (r *Repository) deleteBatch(ctx context.Context, query string, args ...any)
 	return values, nil
 }
 
-type suppressionScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanSuppression(row suppressionScanner) (Suppression, error) {
-	var value Suppression
-	err := row.Scan(&value.ID, &value.TeamID, &value.Email, &value.Origin, &value.SourceID, &value.CreatedAt)
-	return value, err
-}
-
-func scanSuppressions(rows pgx.Rows) ([]Suppression, error) {
-	defer rows.Close()
-	values := make([]Suppression, 0)
-	for rows.Next() {
-		value, err := scanSuppression(rows)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
+func suppressionsFromSQLC(rows []dbsqlc.Suppression) []Suppression {
+	values := make([]Suppression, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, suppressionFromSQLC(row))
 	}
-	return values, rows.Err()
+	return values
+}
+
+func suppressionFromSQLC(row dbsqlc.Suppression) Suppression {
+	return Suppression{
+		ID:        row.ID.String(),
+		TeamID:    row.TeamID.String(),
+		Email:     row.Email,
+		Origin:    row.Origin,
+		SourceID:  row.SourceID,
+		CreatedAt: row.CreatedAt.Time,
+	}
 }
 
 func isUniqueViolation(err error) bool {
