@@ -474,11 +474,11 @@ func ensureMetadata(metadata json.RawMessage) json.RawMessage {
 	return metadata
 }
 
-func (r *Repository) ResolveDeliveryRoutes(
+func (r *Repository) ResolveDeliveryRoute(
 	ctx context.Context,
 	id uuid.UUID,
 	teamID uuid.UUID,
-) ([]DeliveryRoute, error) {
+) (DeliveryRoute, error) {
 	var status, country string
 	var senderID uuid.NullUUID
 	err := r.dbtx.QueryRow(ctx, `
@@ -486,34 +486,38 @@ func (r *Repository) ResolveDeliveryRoutes(
 		FROM sms_messages AS message
 		WHERE message.id = $1 AND message.team_id = $2
 	`, id, teamID).Scan(&status, &country, &senderID)
-	if errors.Is(err, pgx.ErrNoRows) || status != StatusProcessing {
-		return nil, ErrMessageNotFound
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DeliveryRoute{}, ErrMessageNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("load SMS route request: %w", err)
+		return DeliveryRoute{}, fmt.Errorf("load SMS route request: %w", err)
+	}
+	if status != StatusProcessing {
+		return DeliveryRoute{}, ErrMessageNotFound
 	}
 	if !senderID.Valid {
-		return nil, ErrNoEligibleRoute
+		return DeliveryRoute{}, ErrNoEligibleRoute
 	}
 	var route DeliveryRoute
 	err = r.dbtx.QueryRow(ctx, `
-		SELECT sender_id.id, sender_id.provider, 'default'
+		SELECT sender_id.id, sender_id.provider
 		FROM sender_ids AS sender_id
 		WHERE sender_id.id = $1
 		  AND sender_id.team_id = $2
 		  AND sender_id.country_code = $3
 		  AND sender_id.status = 'approved'
 		  AND sender_id.provider_whitelisted
+		  AND sender_id.provider IS NOT NULL
 		  AND sender_id.disabled_at IS NULL
 		  AND sender_id.health_status <> 'degraded'
-	`, senderID.UUID, teamID, country).Scan(&route.SenderID, &route.Provider, &route.ProviderAccount)
+	`, senderID.UUID, teamID, country).Scan(&route.SenderID, &route.Provider)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNoEligibleRoute
+		return DeliveryRoute{}, ErrNoEligibleRoute
 	}
 	if err != nil {
-		return nil, fmt.Errorf("resolve SMS delivery route: %w", err)
+		return DeliveryRoute{}, fmt.Errorf("resolve SMS delivery route: %w", err)
 	}
-	return []DeliveryRoute{route}, nil
+	return route, nil
 }
 
 func (r *Repository) CreateDeliveryAttempt(
@@ -574,9 +578,9 @@ func (r *Repository) CreateDeliveryAttempt(
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO message_delivery_attempts (
 			id, team_id, channel, sms_message_id, attempt_number, status,
-			provider, provider_account, sender_id
-		) VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6, $7)
-	`, attemptID, teamID, id, attemptNumber, route.Provider, route.ProviderAccount, route.SenderID); err != nil {
+			provider, sender_id
+		) VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6)
+	`, attemptID, teamID, id, attemptNumber, route.Provider, route.SenderID); err != nil {
 		return uuid.Nil, fmt.Errorf("create SMS delivery attempt: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

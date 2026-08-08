@@ -1,29 +1,19 @@
 package smsdelivery
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/google/uuid"
-
-	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-)
-
-func TestSupportedDeliveryRoutesFiltersAccountsProvidersAndDuplicates(t *testing.T) {
+func TestProviderAvailable(t *testing.T) {
 	t.Parallel()
 
-	routes := []smsmodule.DeliveryRoute{
-		{SenderID: uuid.New(), Provider: "mnotify", ProviderAccount: "default"},
-		{SenderID: uuid.New(), Provider: "MNOTIFY", ProviderAccount: "default"},
-		{SenderID: uuid.New(), Provider: "moolre", ProviderAccount: "secondary"},
-		{SenderID: uuid.New(), Provider: "unknown", ProviderAccount: "default"},
-		{SenderID: uuid.New(), Provider: "moolre", ProviderAccount: "default"},
+	providers := []string{"mnotify", " moolre "}
+	for _, provider := range []string{"MNOTIFY", "moolre"} {
+		if !providerAvailable(provider, providers) {
+			t.Fatalf("providerAvailable(%q) = false, want true", provider)
+		}
 	}
-
-	filtered := supportedDeliveryRoutes(routes, []string{"mnotify", "moolre"})
-	if len(filtered) != 2 {
-		t.Fatalf("supportedDeliveryRoutes() length = %d, want 2", len(filtered))
-	}
-	if filtered[0].Provider != "mnotify" || filtered[1].Provider != "moolre" {
-		t.Fatalf("supportedDeliveryRoutes() = %#v", filtered)
+	for _, provider := range []string{"", "unknown"} {
+		if providerAvailable(provider, providers) {
+			t.Fatalf("providerAvailable(%q) = true, want false", provider)
+		}
 	}
 }
