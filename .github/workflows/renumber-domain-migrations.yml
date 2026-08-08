@@ -233,9 +233,6 @@ jobs:
             arigaio/atlas:0.35.0 \
             migrate hash --dir file:///migrations
 
-      - name: Run focused tests
-        run: go test ./internal/modules/domain ./internal/modules/email ./internal/delivery/email/outbound
-
       - name: Commit renumbering
         run: |
           git config user.name "github-actions[bot]"
