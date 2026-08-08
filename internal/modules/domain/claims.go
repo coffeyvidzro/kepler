@@ -438,20 +438,7 @@ func (s *Service) ReconcileClaim(
 }
 
 func domainClaimFromPendingRow(row dbsqlc.ClaimPendingDomainClaimsRow) DomainClaim {
-	return domainClaimFromSQLC(dbsqlc.DomainClaim{
-		ID: row.ID, TargetDomainID: row.TargetDomainID, SourceDomainID: row.SourceDomainID,
-		NormalizedName: row.NormalizedName, SourceTeamID: row.SourceTeamID, TargetTeamID: row.TargetTeamID,
-		ProviderRegion: row.ProviderRegion, CustomReturnPath: row.CustomReturnPath,
-		OpenTracking: row.OpenTracking, ClickTracking: row.ClickTracking,
-		TrackingSubdomain: row.TrackingSubdomain, TlsMode: row.TlsMode,
-		SendingEnabled: row.SendingEnabled, ReceivingEnabled: row.ReceivingEnabled,
-		Status: row.Status, BlockedReason: row.BlockedReason, FailureReason: row.FailureReason,
-		RecordName: row.RecordName, RecordValue: row.RecordValue, RecordTtl: row.RecordTtl,
-		VerificationRequestedAt: row.VerificationRequestedAt, VerifiedAt: row.VerifiedAt,
-		CompletedAt: row.CompletedAt, ExpiresAt: row.ExpiresAt,
-		ReconcileLockedAt: row.ReconcileLockedAt, ReconcileLockedBy: row.ReconcileLockedBy,
-		CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-	})
+	return domainClaimFromSQLC(dbsqlc.DomainClaim(row))
 }
 
 func domainClaimFromSQLC(row dbsqlc.DomainClaim) DomainClaim {

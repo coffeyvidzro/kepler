@@ -438,22 +438,7 @@ func replaceDomainDNSRecords(
 }
 
 func domainFromReconciliationRow(row dbsqlc.ClaimPendingDomainReconciliationsRow) dbsqlc.Domain {
-	return dbsqlc.Domain{
-		ID: row.ID, TeamID: row.TeamID, Name: row.Name, NormalizedName: row.NormalizedName,
-		Provider: row.Provider, ProviderAccount: row.ProviderAccount, ProviderRegion: row.ProviderRegion,
-		ProviderExternalID: row.ProviderExternalID, Status: row.Status, ProviderStatus: row.ProviderStatus,
-		OpenTracking: row.OpenTracking, ClickTracking: row.ClickTracking,
-		TrackingSubdomain: row.TrackingSubdomain, ActiveTrackingSubdomain: row.ActiveTrackingSubdomain,
-		TlsMode: row.TlsMode, SendingEnabled: row.SendingEnabled, ReceivingEnabled: row.ReceivingEnabled,
-		CustomReturnPath: row.CustomReturnPath, HealthStatus: row.HealthStatus,
-		ConsecutiveHealthFailures: row.ConsecutiveHealthFailures, FailureReason: row.FailureReason,
-		LastError: row.LastError, SubmittedAt: row.SubmittedAt, VerifiedAt: row.VerifiedAt,
-		DisabledAt: row.DisabledAt, LastCheckedAt: row.LastCheckedAt, NextCheckAt: row.NextCheckAt,
-		LastHealthCheckedAt: row.LastHealthCheckedAt, LastHealthFailureAt: row.LastHealthFailureAt,
-		ReconciliationAttempts: row.ReconciliationAttempts, ReconcileLockedAt: row.ReconcileLockedAt,
-		ReconcileLockedBy: row.ReconcileLockedBy, CreatedBy: row.CreatedBy,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-	}
+	return dbsqlc.Domain(row)
 }
 
 func domainFromSQLC(row dbsqlc.Domain, records []dbsqlc.DomainDnsRecord) SenderDomain {
