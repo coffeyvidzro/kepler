@@ -1,7 +1,7 @@
 -- name: CreateSMSMessage :one
 INSERT INTO sms_messages (
     team_id,
-    sender_provider_binding_id,
+    sender_id,
     to_number,
     from_name,
     body,
@@ -13,7 +13,7 @@ INSERT INTO sms_messages (
     destination_country
 ) VALUES (
     sqlc.arg(team_id),
-    sqlc.narg(sender_provider_binding_id),
+    sqlc.narg(sender_id),
     sqlc.arg(to_number),
     sqlc.arg(from_name),
     sqlc.arg(body),
@@ -93,21 +93,13 @@ WHERE id = sqlc.arg(id)
 RETURNING *;
 
 -- name: FindApprovedSMSSender :one
-SELECT binding.id
-FROM sender_provider_bindings AS binding
-JOIN sender_assets AS asset
-  ON asset.id = binding.sender_asset_id
-JOIN sender_asset_grants AS grant_record
-  ON grant_record.sender_asset_id = asset.id
- AND grant_record.team_id = sqlc.arg(team_id)
- AND grant_record.channel = 'sms'
- AND grant_record.status = 'active'
-WHERE asset.channel = 'sms'
-  AND asset.normalized_identity = lower(trim(sqlc.arg(name)))
-  AND asset.status = 'active'
-  AND binding.status = 'active'
-  AND binding.verified
-ORDER BY binding.created_at DESC
+SELECT sender_id.id
+FROM sender_ids AS sender_id
+WHERE sender_id.team_id = sqlc.arg(team_id)
+  AND sender_id.normalized_name = lower(trim(sqlc.arg(name)))
+  AND sender_id.status = 'approved'
+  AND sender_id.provider_whitelisted
+ORDER BY sender_id.created_at DESC
 LIMIT 1;
 
 -- name: MarkSMSMessageProcessing :one

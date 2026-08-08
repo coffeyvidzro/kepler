@@ -487,10 +487,8 @@ func (r *Repository) ResolveDeliveryRoutes(
 	var country string
 	var assetID uuid.NullUUID
 	err := r.dbtx.QueryRow(ctx, `
-		SELECT message.status, message.destination_country, binding.sender_asset_id
+		SELECT message.status, message.destination_country, message.sender_id
 		FROM sms_messages AS message
-		LEFT JOIN sender_provider_bindings AS binding
-		  ON binding.id = message.sender_provider_binding_id
 		WHERE message.id = $1 AND message.team_id = $2
 	`, id, teamID).Scan(&status, &country, &assetID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -536,10 +534,8 @@ func (r *Repository) CreateDeliveryAttempt(
 	var country string
 	var currentAssetID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		SELECT message.destination_country, binding.sender_asset_id
+		SELECT message.destination_country, message.sender_id
 		FROM sms_messages AS message
-		JOIN sender_provider_bindings AS binding
-		  ON binding.id = message.sender_provider_binding_id
 		WHERE message.id = $1 AND message.team_id = $2 AND message.status = 'processing'
 		FOR UPDATE OF message
 	`, id, teamID).Scan(&country, &currentAssetID); errors.Is(err, pgx.ErrNoRows) {
@@ -555,28 +551,18 @@ func (r *Repository) CreateDeliveryAttempt(
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM sender_provider_bindings AS binding
-			JOIN sender_assets AS asset ON asset.id = binding.sender_asset_id
-			JOIN sender_asset_grants AS grant_record
-			  ON grant_record.sender_asset_id = asset.id
-			 AND grant_record.team_id = $1
-			 AND grant_record.channel = 'sms'
-			 AND grant_record.status = 'active'
-			 AND grant_record.revoked_at IS NULL
-			WHERE binding.id = $2
-			  AND asset.id = $3
-			  AND asset.channel = 'sms'
-			  AND asset.status = 'active'
-			  AND asset.health_status <> 'degraded'
-			  AND binding.status = 'active'
-			  AND binding.verified
-			  AND binding.disabled_at IS NULL
-			  AND binding.health_status <> 'degraded'
-			  AND lower(binding.provider) = lower($4)
-			  AND binding.provider_account = $5
-			  AND COALESCE(binding.region, '') = $6
-			  AND COALESCE(binding.country_code::text, '') = $7
-			  AND (binding.country_code IS NULL OR binding.country_code = $8)
+			FROM sender_ids AS sender_id
+			WHERE sender_id.id = $2 AND sender_id.id = $3
+			  AND sender_id.team_id = $1
+			  AND sender_id.status = 'approved'
+			  AND sender_id.provider_whitelisted
+			  AND sender_id.disabled_at IS NULL
+			  AND sender_id.health_status <> 'degraded'
+			  AND lower(sender_id.provider) = lower($4)
+			  AND lower(sender_id.provider) = lower($5)
+			  AND $6 = ''
+			  AND sender_id.country_code::text = $7
+			  AND sender_id.country_code = $8
 		)
 	`, teamID, route.SenderProviderBindingID, route.SenderAssetID, route.Provider,
 		route.ProviderAccount, route.Region, route.CountryCode, country).Scan(&eligible); err != nil {
@@ -598,16 +584,16 @@ func (r *Repository) CreateDeliveryAttempt(
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO message_delivery_attempts (
 			id, team_id, channel, sms_message_id, attempt_number, status,
-			provider, provider_account, sender_asset_id, sender_provider_binding_id
+			provider, provider_account, sender_id
 		)
-		VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6, $7, $8)
+		VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6, $7)
 	`, attemptID, teamID, id, attemptNumber, route.Provider, route.ProviderAccount,
-		route.SenderAssetID, route.SenderProviderBindingID); err != nil {
+		route.SenderAssetID); err != nil {
 		return uuid.Nil, fmt.Errorf("create SMS delivery attempt: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sms_messages
-		SET sender_provider_binding_id = $3, updated_at = now()
+		SET sender_id = $3, updated_at = now()
 		WHERE id = $1 AND team_id = $2 AND status = 'processing'
 	`, id, teamID, route.SenderProviderBindingID); err != nil {
 		return uuid.Nil, fmt.Errorf("persist SMS delivery route: %w", err)

@@ -49,29 +49,23 @@ func (repository *Repository) ListCandidates(
 		return nil, fmt.Errorf("messaging routing repository is not configured")
 	}
 	rows, err := repository.db.Query(ctx, `
-		SELECT asset.id, asset.channel, asset.identity, asset.normalized_identity,
-			asset.status, asset.health_status,
-			grant_record.id, grant_record.team_id, grant_record.sender_asset_id,
-			grant_record.channel, grant_record.status, grant_record.is_default,
-			(grant_record.revoked_at IS NOT NULL),
-			binding.id, binding.sender_asset_id, COALESCE(binding.provider, ''),
-			binding.provider_account, COALESCE(binding.region, ''),
-			COALESCE(binding.country_code::text, ''), binding.status,
-			binding.verified, binding.health_status
-		FROM sender_asset_grants AS grant_record
-		JOIN sender_assets AS asset
-		  ON asset.id = grant_record.sender_asset_id
-		 AND asset.channel = grant_record.channel
-		JOIN sender_provider_bindings AS binding
-		  ON binding.sender_asset_id = asset.id
-		WHERE grant_record.team_id = $1
-		  AND grant_record.channel = $2
-		  AND grant_record.revoked_at IS NULL
-		  AND binding.provider IS NOT NULL
-		  AND binding.disabled_at IS NULL
-		ORDER BY grant_record.is_default DESC, binding.provider, binding.provider_account,
-			binding.region, binding.country_code, binding.id
-		FOR SHARE OF grant_record, asset, binding
+		SELECT sender_id.id, 'sms', sender_id.name, sender_id.normalized_name,
+			CASE sender_id.status WHEN 'approved' THEN 'active' ELSE sender_id.status END,
+			sender_id.health_status,
+			sender_id.id, sender_id.team_id, sender_id.id, 'sms',
+			CASE WHEN sender_id.disabled_at IS NULL THEN 'active' ELSE 'revoked' END,
+			false, (sender_id.disabled_at IS NOT NULL),
+			sender_id.id, sender_id.id, COALESCE(sender_id.provider, ''),
+			COALESCE(sender_id.provider, ''), '', sender_id.country_code::text,
+			CASE sender_id.status WHEN 'approved' THEN 'active' ELSE sender_id.status END,
+			sender_id.provider_whitelisted, sender_id.health_status
+		FROM sender_ids AS sender_id
+		WHERE sender_id.team_id = $1
+		  AND $2 = 'sms'
+		  AND sender_id.provider IS NOT NULL
+		  AND sender_id.disabled_at IS NULL
+		ORDER BY sender_id.provider, sender_id.country_code, sender_id.id
+		FOR SHARE OF sender_id
 	`, request.TeamID, string(request.Channel))
 	if err != nil {
 		return nil, fmt.Errorf("query messaging route candidates: %w", err)
