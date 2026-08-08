@@ -1,6 +1,6 @@
--- Create the channel-neutral provider-attempt ledger. Domains and sender ID
--- infrastructure are created earlier so attempts can reference the correct
--- channel-specific sender identity.
+-- Create the channel-neutral provider-attempt ledger. Domains and Sender IDs
+-- are created earlier so attempts can reference the correct channel-specific
+-- sender identity.
 
 CREATE TABLE IF NOT EXISTS message_delivery_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
     provider_message_id TEXT,
     provider_status TEXT,
     sender_domain_id UUID REFERENCES domains(id) ON DELETE SET NULL,
-    sender_asset_id UUID REFERENCES sender_assets(id) ON DELETE SET NULL,
-    sender_provider_binding_id UUID,
+    sender_id UUID REFERENCES sender_ids(id) ON DELETE SET NULL,
     error_code TEXT,
     error_message TEXT,
     claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -41,11 +40,6 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
         REFERENCES sms_messages (id, team_id)
         ON DELETE CASCADE,
 
-    CONSTRAINT fk_message_delivery_attempts_sender_binding
-        FOREIGN KEY (sender_provider_binding_id, sender_asset_id)
-        REFERENCES sender_provider_bindings (id, sender_asset_id)
-        ON DELETE RESTRICT,
-
     CONSTRAINT uq_message_delivery_attempts_email_reference
         UNIQUE (id, email_message_id, team_id),
 
@@ -64,6 +58,12 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
                 AND sms_message_id IS NOT NULL
                 AND email_message_id IS NULL
             )
+        ),
+
+    CONSTRAINT chk_message_delivery_attempts_sender_reference
+        CHECK (
+            (channel = 'email' AND sender_id IS NULL)
+            OR (channel = 'sms' AND sender_domain_id IS NULL)
         ),
 
     CONSTRAINT chk_message_delivery_attempts_number
@@ -91,12 +91,6 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
 
     CONSTRAINT chk_message_delivery_attempts_provider_account
         CHECK (length(trim(provider_account)) > 0),
-
-    CONSTRAINT chk_message_delivery_attempts_sender_reference
-        CHECK (
-            sender_provider_binding_id IS NULL
-            OR sender_asset_id IS NOT NULL
-        ),
 
     CONSTRAINT chk_message_delivery_attempts_reconcile_attempts
         CHECK (reconcile_attempts >= 0),
@@ -150,6 +144,10 @@ CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_reconciliation
 CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_sender_domain
     ON message_delivery_attempts (sender_domain_id)
     WHERE sender_domain_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_sender_id
+    ON message_delivery_attempts (sender_id)
+    WHERE sender_id IS NOT NULL;
 
 ALTER TABLE email_messages
     ADD CONSTRAINT fk_email_messages_current_delivery_attempt

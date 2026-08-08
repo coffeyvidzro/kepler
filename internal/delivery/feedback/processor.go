@@ -8,14 +8,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 )
 
 // Result summarizes one normalized provider-event application.
 type Result struct {
 	AttemptID      uuid.UUID
-	PreviousStatus delivery.AttemptStatus
-	Status         delivery.AttemptStatus
+	PreviousStatus attempt.AttemptStatus
+	Status         attempt.AttemptStatus
 	Applied        bool
 	Duplicate      bool
 	Transitioned   bool

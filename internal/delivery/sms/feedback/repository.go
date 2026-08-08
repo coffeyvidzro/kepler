@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
 	"strings"
 	"time"
 
@@ -11,10 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	messagingfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/feedback"
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
-	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -102,28 +101,28 @@ func (repository *Repository) ListPending(ctx context.Context, limit int32) ([]P
 
 func (repository *Repository) Apply(
 	ctx context.Context,
-	event platformfeedback.Event,
-) (platformfeedback.Result, error) {
+	event feedback.Event,
+) (feedback.Result, error) {
 	if repository == nil || repository.db == nil || repository.messages == nil {
-		return platformfeedback.Result{}, ErrRepositoryNotConfigured
+		return feedback.Result{}, ErrRepositoryNotConfigured
 	}
 	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return platformfeedback.Result{}, fmt.Errorf("begin SMS feedback transaction: %w", err)
+		return feedback.Result{}, fmt.Errorf("begin SMS feedback transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	processor, err := platformfeedback.NewProcessor(messagingfeedback.NewRepository(tx))
+	processor, err := feedback.NewProcessor(feedback.NewSQLRepository(tx))
 	if err != nil {
-		return platformfeedback.Result{}, err
+		return feedback.Result{}, err
 	}
 	result, err := processor.Process(ctx, event)
 	if err != nil {
-		return platformfeedback.Result{}, err
+		return feedback.Result{}, err
 	}
 	if result.Duplicate || !result.Transitioned {
 		if err := tx.Commit(ctx); err != nil {
-			return platformfeedback.Result{}, fmt.Errorf("commit SMS feedback observation: %w", err)
+			return feedback.Result{}, fmt.Errorf("commit SMS feedback observation: %w", err)
 		}
 		return result, nil
 	}
@@ -136,9 +135,9 @@ func (repository *Repository) Apply(
 		WHERE id = $1 AND channel = 'sms'
 	`, result.AttemptID).Scan(&messageID, &teamID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return platformfeedback.Result{}, platformfeedback.ErrAttemptNotFound
+			return feedback.Result{}, feedback.ErrAttemptNotFound
 		}
-		return platformfeedback.Result{}, fmt.Errorf("load SMS message for feedback: %w", err)
+		return feedback.Result{}, fmt.Errorf("load SMS message for feedback: %w", err)
 	}
 	messageStatus, ok := smsMessageStatus(event)
 	if ok {
@@ -150,33 +149,33 @@ func (repository *Repository) Apply(
 			event.ErrorMessage,
 			event.OccurredAt,
 		); err != nil {
-			return platformfeedback.Result{}, err
+			return feedback.Result{}, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return platformfeedback.Result{}, fmt.Errorf("commit SMS feedback transaction: %w", err)
+		return feedback.Result{}, fmt.Errorf("commit SMS feedback transaction: %w", err)
 	}
 	return result, nil
 }
 
-func smsMessageStatus(event platformfeedback.Event) (string, bool) {
+func smsMessageStatus(event feedback.Event) (string, bool) {
 	switch event.Status {
-	case platformdelivery.StatusSubmitted, platformdelivery.StatusAccepted:
+	case attempt.StatusSubmitted, attempt.StatusAccepted:
 		return smsmodule.StatusSubmitted, true
-	case platformdelivery.StatusSent:
+	case attempt.StatusSent:
 		return smsmodule.StatusSent, true
-	case platformdelivery.StatusDelivered:
+	case attempt.StatusDelivered:
 		return smsmodule.StatusDelivered, true
-	case platformdelivery.StatusPermanentFailure:
+	case attempt.StatusPermanentFailure:
 		if strings.HasSuffix(event.EventType, "."+smsapi.StatusUndelivered) {
 			return smsmodule.StatusUndelivered, true
 		}
 		return smsmodule.StatusFailed, true
-	case platformdelivery.StatusRejected:
+	case attempt.StatusRejected:
 		return smsmodule.StatusRejected, true
-	case platformdelivery.StatusExpired:
+	case attempt.StatusExpired:
 		return smsmodule.StatusExpired, true
-	case platformdelivery.StatusUnknown:
+	case attempt.StatusUnknown:
 		return smsmodule.StatusUnknown, true
 	default:
 		return "", false

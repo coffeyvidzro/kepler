@@ -16,6 +16,7 @@ var (
 func (s *Service) ObserveCommittedCharge(ctx context.Context, committed CommittedCharge) {
 	slog.InfoContext(ctx, "billing charge committed",
 		"billing_channel", committed.Channel,
+		"billing_settlement", committed.Settlement,
 		"team_id", committed.TeamID,
 		"message_id", committed.MessageID,
 		"billing_outcome", committed.Outcome,

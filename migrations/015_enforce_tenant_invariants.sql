@@ -32,35 +32,25 @@ BEFORE DELETE OR UPDATE OF team_id, role, status ON team_members
 FOR EACH ROW
 EXECUTE FUNCTION protect_last_active_team_owner();
 
-CREATE OR REPLACE FUNCTION enforce_sms_sender_binding()
+CREATE OR REPLACE FUNCTION enforce_sms_sender_id()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.sender_provider_binding_id IS NULL THEN
+    IF NEW.sender_id IS NULL THEN
         RETURN NEW;
     END IF;
 
     IF NOT EXISTS (
         SELECT 1
-        FROM sender_provider_bindings AS binding
-        JOIN sender_assets AS asset
-          ON asset.id = binding.sender_asset_id
-        JOIN sender_asset_grants AS grant_record
-          ON grant_record.sender_asset_id = asset.id
-         AND grant_record.team_id = NEW.team_id
-         AND grant_record.channel = 'sms'
-         AND grant_record.status = 'active'
-        WHERE binding.id = NEW.sender_provider_binding_id
-          AND asset.channel = 'sms'
-          AND binding.status = 'active'
-          AND binding.verified
-          AND (
-              binding.country_code IS NULL
-              OR binding.country_code = NEW.destination_country
-          )
+        FROM sender_ids AS sender_id
+        WHERE sender_id.id = NEW.sender_id
+          AND sender_id.team_id = NEW.team_id
+          AND sender_id.status = 'approved'
+          AND sender_id.provider_whitelisted
+          AND sender_id.country_code = NEW.destination_country
     ) THEN
-        RAISE EXCEPTION 'SMS sender binding is not active for this team and destination'
+        RAISE EXCEPTION 'SMS sender ID is not approved for this team and destination'
             USING ERRCODE = '23514';
     END IF;
 
@@ -68,11 +58,11 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_enforce_sms_sender_binding ON sms_messages;
-CREATE TRIGGER trg_enforce_sms_sender_binding
-BEFORE INSERT OR UPDATE OF team_id, sender_provider_binding_id, destination_country ON sms_messages
+DROP TRIGGER IF EXISTS trg_enforce_sms_sender_id ON sms_messages;
+CREATE TRIGGER trg_enforce_sms_sender_id
+BEFORE INSERT OR UPDATE OF team_id, sender_id, destination_country ON sms_messages
 FOR EACH ROW
-EXECUTE FUNCTION enforce_sms_sender_binding();
+EXECUTE FUNCTION enforce_sms_sender_id();
 
 CREATE OR REPLACE FUNCTION enforce_email_sender_domain()
 RETURNS TRIGGER

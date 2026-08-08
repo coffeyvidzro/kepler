@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
 	"strings"
 	"time"
 
@@ -15,10 +17,6 @@ import (
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
 	awssns "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/sns"
-	messagingfeedback "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/feedback"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
-	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
 	"github.com/coffeyvidzro/dugble/server/internal/platform/outbox"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 )
@@ -128,7 +126,7 @@ func (r *Repository) Ingest(ctx context.Context, envelope awssns.Envelope) error
 	return nil
 }
 
-// Process claims one event for the initial JetStream delivery. Once claimed,
+// Process claims one event for the initial JetStream attempt. Once claimed,
 // PostgreSQL owns all retries; successfully persisting a reschedule is treated
 // as successful handling so JetStream can acknowledge the wake-up message.
 func (r *Repository) Process(ctx context.Context, eventID uuid.UUID) error {
@@ -241,7 +239,7 @@ func (r *Repository) processClaimed(ctx context.Context, claim ReconcileClaim) e
 	if err != nil {
 		return err
 	}
-	processor, err := platformfeedback.NewProcessor(messagingfeedback.NewRepository(tx))
+	processor, err := feedback.NewProcessor(feedback.NewSQLRepository(tx))
 	if err != nil {
 		return err
 	}
@@ -437,10 +435,10 @@ func normalizeSESFeedbackEvent(
 	receivedAt time.Time,
 	metadata json.RawMessage,
 	messageStatus string,
-) (platformfeedback.Event, error) {
+) (feedback.Event, error) {
 	status, err := sesAttemptStatus(messageStatus, event.EventType)
 	if err != nil {
-		return platformfeedback.Event{}, err
+		return feedback.Event{}, err
 	}
 	if len(metadata) == 0 {
 		metadata = json.RawMessage(`{}`)
@@ -452,13 +450,13 @@ func normalizeSESFeedbackEvent(
 	if receivedAt.Before(occurredAt) {
 		receivedAt = occurredAt
 	}
-	normalized := platformfeedback.Event{
+	normalized := feedback.Event{
 		AttemptID:         attemptID,
 		Provider:          ProviderSES,
 		ProviderEventID:   strings.TrimSpace(providerNotificationID),
 		ProviderMessageID: strings.TrimSpace(event.ProviderMessageID),
 		EventType:         strings.TrimSpace(event.EventType),
-		Channel:           messaging.ChannelEmail,
+		Channel:           attempt.ChannelEmail,
 		Status:            status,
 		ProviderStatus:    strings.TrimSpace(event.EventType),
 		ErrorCode:         errorCode,
@@ -468,25 +466,25 @@ func normalizeSESFeedbackEvent(
 		Metadata:          append(json.RawMessage(nil), metadata...),
 	}
 	if err := normalized.Validate(); err != nil {
-		return platformfeedback.Event{}, fmt.Errorf("normalize SES feedback: %w", err)
+		return feedback.Event{}, fmt.Errorf("normalize SES feedback: %w", err)
 	}
 	return normalized, nil
 }
 
-func sesAttemptStatus(messageStatus, eventType string) (platformdelivery.AttemptStatus, error) {
+func sesAttemptStatus(messageStatus, eventType string) (attempt.AttemptStatus, error) {
 	switch strings.TrimSpace(messageStatus) {
 	case "submitted":
-		return platformdelivery.StatusSubmitted, nil
+		return attempt.StatusSubmitted, nil
 	case "delayed", "partially_delivered", "partially_failed":
-		return platformdelivery.StatusSent, nil
+		return attempt.StatusSent, nil
 	case "delivered", "complained":
-		return platformdelivery.StatusDelivered, nil
+		return attempt.StatusDelivered, nil
 	case "bounced", "failed":
-		return platformdelivery.StatusPermanentFailure, nil
+		return attempt.StatusPermanentFailure, nil
 	case "rejected":
-		return platformdelivery.StatusRejected, nil
+		return attempt.StatusRejected, nil
 	case "canceled":
-		return platformdelivery.StatusCanceled, nil
+		return attempt.StatusCanceled, nil
 	default:
 		return "", fmt.Errorf("cannot map SES event %q from email status %q", eventType, messageStatus)
 	}

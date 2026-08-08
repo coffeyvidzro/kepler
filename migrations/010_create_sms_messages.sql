@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS sms_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    sender_provider_binding_id UUID REFERENCES sender_provider_bindings(id) ON DELETE SET NULL,
+    sender_id UUID REFERENCES sender_ids(id) ON DELETE SET NULL,
     to_number TEXT NOT NULL,
     from_name VARCHAR(11) NOT NULL,
     body TEXT NOT NULL,
@@ -40,9 +40,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_id_team
 CREATE INDEX IF NOT EXISTS idx_sms_messages_team_created
     ON sms_messages (team_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_sms_messages_sender_provider_binding
-    ON sms_messages (sender_provider_binding_id)
-    WHERE sender_provider_binding_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sms_messages_sender_id
+    ON sms_messages (sender_id)
+    WHERE sender_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sms_messages_provider_message
     ON sms_messages (provider_id, provider_message_id)
