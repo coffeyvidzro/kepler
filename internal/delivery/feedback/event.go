@@ -10,25 +10,24 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 )
 
 // Event is a normalized provider delivery-status or engagement event.
 type Event struct {
-	AttemptID         uuid.UUID              `json:"attempt_id,omitempty"`
-	Provider          string                 `json:"provider"`
-	ProviderEventID   string                 `json:"provider_event_id"`
-	ProviderMessageID string                 `json:"provider_message_id"`
-	EventType         string                 `json:"event_type"`
-	Channel           messaging.Channel      `json:"channel"`
-	Status            delivery.AttemptStatus `json:"status"`
-	ProviderStatus    string                 `json:"provider_status,omitempty"`
-	ErrorCode         string                 `json:"error_code,omitempty"`
-	ErrorMessage      string                 `json:"error_message,omitempty"`
-	OccurredAt        time.Time              `json:"occurred_at"`
-	ReceivedAt        time.Time              `json:"received_at"`
-	Metadata          json.RawMessage        `json:"metadata,omitempty"`
+	AttemptID         uuid.UUID             `json:"attempt_id,omitempty"`
+	Provider          string                `json:"provider"`
+	ProviderEventID   string                `json:"provider_event_id"`
+	ProviderMessageID string                `json:"provider_message_id"`
+	EventType         string                `json:"event_type"`
+	Channel           attempt.Channel       `json:"channel"`
+	Status            attempt.AttemptStatus `json:"status"`
+	ProviderStatus    string                `json:"provider_status,omitempty"`
+	ErrorCode         string                `json:"error_code,omitempty"`
+	ErrorMessage      string                `json:"error_message,omitempty"`
+	OccurredAt        time.Time             `json:"occurred_at"`
+	ReceivedAt        time.Time             `json:"received_at"`
+	Metadata          json.RawMessage       `json:"metadata,omitempty"`
 }
 
 // DedupeKey is stable across retries of the same provider event.
@@ -59,7 +58,7 @@ func (event Event) Validate() error {
 	if !event.Status.Valid() {
 		return errors.New("feedback delivery status is invalid")
 	}
-	if event.Status == delivery.StatusClaimed || event.Status == delivery.StatusRequestStarted {
+	if event.Status == attempt.StatusClaimed || event.Status == attempt.StatusRequestStarted {
 		return fmt.Errorf("feedback cannot report internal delivery status %q", event.Status)
 	}
 	if event.OccurredAt.IsZero() || event.ReceivedAt.IsZero() {

@@ -2,12 +2,11 @@ package feedback
 
 import (
 	"context"
-
-	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
+	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
 )
 
 type eventRepository interface {
-	Apply(context.Context, platformfeedback.Event) (platformfeedback.Result, error)
+	Apply(context.Context, feedback.Event) (feedback.Result, error)
 }
 
 type Processor struct {
@@ -20,13 +19,13 @@ func NewProcessor(repository eventRepository) *Processor {
 
 func (processor *Processor) Handle(
 	ctx context.Context,
-	event platformfeedback.Event,
-) (platformfeedback.Result, error) {
+	event feedback.Event,
+) (feedback.Result, error) {
 	if processor == nil || processor.repository == nil {
-		return platformfeedback.Result{}, ErrProcessorNotConfigured
+		return feedback.Result{}, ErrProcessorNotConfigured
 	}
 	if err := event.Validate(); err != nil {
-		return platformfeedback.Result{}, err
+		return feedback.Result{}, err
 	}
 	return processor.repository.Apply(ctx, event)
 }

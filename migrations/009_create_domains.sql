@@ -1,8 +1,7 @@
 -- Create the first-class email domain aggregate.
 --
--- Domains are intentionally independent from the channel-neutral sender trust
--- plane. sender_assets, sender_provider_bindings, and sender_asset_grants remain
--- available for SMS sender identities and other generic messaging routes.
+-- Domains are intentionally independent from SMS Sender IDs and own their
+-- channel-specific provider and trust state directly.
 
 CREATE TABLE IF NOT EXISTS domains (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

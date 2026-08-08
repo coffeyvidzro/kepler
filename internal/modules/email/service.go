@@ -340,6 +340,8 @@ func (s *Service) enqueueValidatedTx(ctx context.Context, tx pgx.Tx, teamID uuid
 		return QueuedMessage{}, apperrors.NewInternal("Unable to create email message", err)
 	}
 	messageID := uuid.MustParse(message.ID)
+	// Billing settles when the message and its durable delivery job commit, not
+	// when the provider later accepts or delivers the email.
 	charge, err := s.billing.ChargeEmail(ctx, tx, platformbilling.EmailChargeInput{
 		TeamID: teamID, MessageID: messageID,
 		RecipientCount: emailRecipientCount(validated),
@@ -354,7 +356,8 @@ func (s *Service) enqueueValidatedTx(ctx context.Context, tx pgx.Tx, teamID uuid
 		Message: message,
 		Charge: platformbilling.CommittedCharge{
 			Charge: charge, Channel: platformbilling.ChannelEmail,
-			TeamID: teamID, MessageID: messageID,
+			Settlement: platformbilling.SettlementAcceptedForDelivery,
+			TeamID:     teamID, MessageID: messageID,
 		},
 	}, nil
 }

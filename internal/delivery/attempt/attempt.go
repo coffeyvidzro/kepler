@@ -1,45 +1,44 @@
-package delivery
+package attempt
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
 )
 
 // Attempt records one provider interaction for one email or SMS message.
 // Message intent remains channel-specific; provider execution history does not.
 type Attempt struct {
-	ID                      uuid.UUID
-	TeamID                  uuid.UUID
-	Channel                 messaging.Channel
-	EmailMessageID          *uuid.UUID
-	SMSMessageID            *uuid.UUID
-	AttemptNumber           int32
-	Status                  AttemptStatus
-	Provider                string
-	ProviderAccount         string
-	ProviderMessageID       string
-	ProviderStatus          string
-	SenderAssetID           *uuid.UUID
-	SenderProviderBindingID *uuid.UUID
-	ErrorCode               string
-	ErrorMessage            string
-	ClaimedAt               time.Time
-	RequestStartedAt        *time.Time
-	RequestCompletedAt      *time.Time
-	SubmittedAt             *time.Time
-	TerminalAt              *time.Time
-	NextReconcileAt         *time.Time
-	LastReconciledAt        *time.Time
-	ReconcileAttempts       int32
-	Metadata                json.RawMessage
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	ID                 uuid.UUID
+	TeamID             uuid.UUID
+	Channel            Channel
+	EmailMessageID     *uuid.UUID
+	SMSMessageID       *uuid.UUID
+	AttemptNumber      int32
+	Status             AttemptStatus
+	Provider           string
+	ProviderAccount    string
+	ProviderMessageID  string
+	ProviderStatus     string
+	SenderDomainID     *uuid.UUID
+	SenderID           *uuid.UUID
+	ErrorCode          string
+	ErrorMessage       string
+	ClaimedAt          time.Time
+	RequestStartedAt   *time.Time
+	RequestCompletedAt *time.Time
+	SubmittedAt        *time.Time
+	TerminalAt         *time.Time
+	NextReconcileAt    *time.Time
+	LastReconciledAt   *time.Time
+	ReconcileAttempts  int32
+	Metadata           json.RawMessage
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 func (attempt Attempt) MessageReference() MessageReference {
@@ -47,15 +46,6 @@ func (attempt Attempt) MessageReference() MessageReference {
 		Channel:        attempt.Channel,
 		EmailMessageID: attempt.EmailMessageID,
 		SMSMessageID:   attempt.SMSMessageID,
-	}
-}
-
-func (attempt Attempt) ProviderRoute() ProviderRoute {
-	return ProviderRoute{
-		Provider:                attempt.Provider,
-		ProviderAccount:         attempt.ProviderAccount,
-		SenderAssetID:           attempt.SenderAssetID,
-		SenderProviderBindingID: attempt.SenderProviderBindingID,
 	}
 }
 
@@ -72,7 +62,7 @@ func (attempt Attempt) Validate() error {
 	if !attempt.Status.Valid() {
 		return errors.New("delivery attempt status is invalid")
 	}
-	if err := attempt.ProviderRoute().Validate(attempt.Status.RequiresProvider()); err != nil {
+	if err := attempt.validateProviderReference(); err != nil {
 		return err
 	}
 	if attempt.ReconcileAttempts < 0 {
@@ -99,6 +89,32 @@ func (attempt Attempt) Validate() error {
 	}
 	if attempt.Status.Terminal() && attempt.TerminalAt == nil {
 		return errors.New("terminal delivery attempt status requires a terminal time")
+	}
+	return nil
+}
+
+func (attempt Attempt) validateProviderReference() error {
+	if strings.TrimSpace(attempt.ProviderAccount) == "" {
+		return errors.New("delivery attempt provider account is required")
+	}
+	if attempt.Status.RequiresProvider() && strings.TrimSpace(attempt.Provider) == "" {
+		return errors.New("delivery attempt provider is required for the current status")
+	}
+	if attempt.SenderDomainID != nil && *attempt.SenderDomainID == uuid.Nil {
+		return errors.New("delivery attempt sender domain ID is invalid")
+	}
+	if attempt.SenderID != nil && *attempt.SenderID == uuid.Nil {
+		return errors.New("delivery attempt Sender ID is invalid")
+	}
+	switch attempt.Channel {
+	case ChannelEmail:
+		if attempt.SenderID != nil {
+			return errors.New("email delivery attempt cannot reference a Sender ID")
+		}
+	case ChannelSMS:
+		if attempt.SenderDomainID != nil {
+			return errors.New("SMS delivery attempt cannot reference a sender domain")
+		}
 	}
 	return nil
 }

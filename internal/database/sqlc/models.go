@@ -359,33 +359,32 @@ type IdempotencyKey struct {
 }
 
 type MessageDeliveryAttempt struct {
-	ID                      uuid.UUID          `db:"id" json:"id"`
-	TeamID                  uuid.UUID          `db:"team_id" json:"team_id"`
-	Channel                 string             `db:"channel" json:"channel"`
-	EmailMessageID          *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
-	SmsMessageID            *uuid.UUID         `db:"sms_message_id" json:"sms_message_id"`
-	AttemptNumber           int32              `db:"attempt_number" json:"attempt_number"`
-	Status                  string             `db:"status" json:"status"`
-	Provider                *string            `db:"provider" json:"provider"`
-	ProviderAccount         string             `db:"provider_account" json:"provider_account"`
-	ProviderMessageID       *string            `db:"provider_message_id" json:"provider_message_id"`
-	ProviderStatus          *string            `db:"provider_status" json:"provider_status"`
-	SenderDomainID          *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
-	SenderAssetID           *uuid.UUID         `db:"sender_asset_id" json:"sender_asset_id"`
-	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
-	ErrorCode               *string            `db:"error_code" json:"error_code"`
-	ErrorMessage            *string            `db:"error_message" json:"error_message"`
-	ClaimedAt               pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
-	RequestStartedAt        pgtype.Timestamptz `db:"request_started_at" json:"request_started_at"`
-	RequestCompletedAt      pgtype.Timestamptz `db:"request_completed_at" json:"request_completed_at"`
-	SubmittedAt             pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
-	TerminalAt              pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
-	NextReconcileAt         pgtype.Timestamptz `db:"next_reconcile_at" json:"next_reconcile_at"`
-	LastReconciledAt        pgtype.Timestamptz `db:"last_reconciled_at" json:"last_reconciled_at"`
-	ReconcileAttempts       int32              `db:"reconcile_attempts" json:"reconcile_attempts"`
-	Metadata                []byte             `db:"metadata" json:"metadata"`
-	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	Channel            string             `db:"channel" json:"channel"`
+	EmailMessageID     *uuid.UUID         `db:"email_message_id" json:"email_message_id"`
+	SmsMessageID       *uuid.UUID         `db:"sms_message_id" json:"sms_message_id"`
+	AttemptNumber      int32              `db:"attempt_number" json:"attempt_number"`
+	Status             string             `db:"status" json:"status"`
+	Provider           *string            `db:"provider" json:"provider"`
+	ProviderAccount    string             `db:"provider_account" json:"provider_account"`
+	ProviderMessageID  *string            `db:"provider_message_id" json:"provider_message_id"`
+	ProviderStatus     *string            `db:"provider_status" json:"provider_status"`
+	SenderDomainID     *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
+	SenderID           *uuid.UUID         `db:"sender_id" json:"sender_id"`
+	ErrorCode          *string            `db:"error_code" json:"error_code"`
+	ErrorMessage       *string            `db:"error_message" json:"error_message"`
+	ClaimedAt          pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
+	RequestStartedAt   pgtype.Timestamptz `db:"request_started_at" json:"request_started_at"`
+	RequestCompletedAt pgtype.Timestamptz `db:"request_completed_at" json:"request_completed_at"`
+	SubmittedAt        pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	TerminalAt         pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
+	NextReconcileAt    pgtype.Timestamptz `db:"next_reconcile_at" json:"next_reconcile_at"`
+	LastReconciledAt   pgtype.Timestamptz `db:"last_reconciled_at" json:"last_reconciled_at"`
+	ReconcileAttempts  int32              `db:"reconcile_attempts" json:"reconcile_attempts"`
+	Metadata           []byte             `db:"metadata" json:"metadata"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type MessageTemplate struct {
@@ -487,59 +486,26 @@ type Segment struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-type SenderAsset struct {
-	ID                 uuid.UUID          `db:"id" json:"id"`
-	OwnerType          string             `db:"owner_type" json:"owner_type"`
-	TeamID             *uuid.UUID         `db:"team_id" json:"team_id"`
-	Channel            string             `db:"channel" json:"channel"`
-	Identity           string             `db:"identity" json:"identity"`
-	NormalizedIdentity string             `db:"normalized_identity" json:"normalized_identity"`
-	Purpose            *string            `db:"purpose" json:"purpose"`
-	Status             string             `db:"status" json:"status"`
-	HealthStatus       string             `db:"health_status" json:"health_status"`
-	CreatedBy          *uuid.UUID         `db:"created_by" json:"created_by"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type SenderAssetGrant struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	TeamID        uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderAssetID uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
-	Channel       string             `db:"channel" json:"channel"`
-	Status        string             `db:"status" json:"status"`
-	IsDefault     bool               `db:"is_default" json:"is_default"`
-	Scope         []byte             `db:"scope" json:"scope"`
-	GrantedBy     *uuid.UUID         `db:"granted_by" json:"granted_by"`
-	GrantedAt     pgtype.Timestamptz `db:"granted_at" json:"granted_at"`
-	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type SenderProviderBinding struct {
+type SenderID struct {
 	ID                        uuid.UUID          `db:"id" json:"id"`
-	SenderAssetID             uuid.UUID          `db:"sender_asset_id" json:"sender_asset_id"`
+	TeamID                    uuid.UUID          `db:"team_id" json:"team_id"`
+	Name                      string             `db:"name" json:"name"`
+	NormalizedName            string             `db:"normalized_name" json:"normalized_name"`
+	CountryCode               string             `db:"country_code" json:"country_code"`
+	Purpose                   *string            `db:"purpose" json:"purpose"`
 	Provider                  *string            `db:"provider" json:"provider"`
-	ProviderAccount           string             `db:"provider_account" json:"provider_account"`
-	Region                    *string            `db:"region" json:"region"`
-	CountryCode               *string            `db:"country_code" json:"country_code"`
-	ExternalID                *string            `db:"external_id" json:"external_id"`
-	Status                    string             `db:"status" json:"status"`
 	ProviderStatus            *string            `db:"provider_status" json:"provider_status"`
-	Verified                  bool               `db:"verified" json:"verified"`
 	ProviderWhitelisted       bool               `db:"provider_whitelisted" json:"provider_whitelisted"`
+	Status                    string             `db:"status" json:"status"`
 	HealthStatus              string             `db:"health_status" json:"health_status"`
-	VerificationData          []byte             `db:"verification_data" json:"verification_data"`
 	SubmittedAt               pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
-	VerifiedAt                pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	ApprovedAt                pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
 	RejectedAt                pgtype.Timestamptz `db:"rejected_at" json:"rejected_at"`
 	SuspendedAt               pgtype.Timestamptz `db:"suspended_at" json:"suspended_at"`
 	DisabledAt                pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
-	ExpiresAt                 pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
 	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
-	Attempts                  int32              `db:"attempts" json:"attempts"`
+	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
+	ReconciliationAttempts    int32              `db:"reconciliation_attempts" json:"reconciliation_attempts"`
 	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
 	LastHealthCheckedAt       pgtype.Timestamptz `db:"last_health_checked_at" json:"last_health_checked_at"`
 	LastHealthFailureAt       pgtype.Timestamptz `db:"last_health_failure_at" json:"last_health_failure_at"`
@@ -547,6 +513,7 @@ type SenderProviderBinding struct {
 	LastError                 *string            `db:"last_error" json:"last_error"`
 	ReconcileLockedAt         pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
 	ReconcileLockedBy         *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
+	CreatedBy                 *uuid.UUID         `db:"created_by" json:"created_by"`
 	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
@@ -569,25 +536,25 @@ type Session struct {
 }
 
 type SmsMessage struct {
-	ID                      uuid.UUID          `db:"id" json:"id"`
-	TeamID                  uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
-	ToNumber                string             `db:"to_number" json:"to_number"`
-	FromName                string             `db:"from_name" json:"from_name"`
-	Body                    string             `db:"body" json:"body"`
-	Status                  string             `db:"status" json:"status"`
-	ProviderID              *string            `db:"provider_id" json:"provider_id"`
-	ProviderMessageID       *string            `db:"provider_message_id" json:"provider_message_id"`
-	Segments                int32              `db:"segments" json:"segments"`
-	ErrorMessage            *string            `db:"error_message" json:"error_message"`
-	Metadata                []byte             `db:"metadata" json:"metadata"`
-	Tags                    []byte             `db:"tags" json:"tags"`
-	ScheduledAt             pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
-	SubmittedAt             pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
-	DeliveredAt             pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
-	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	DestinationCountry      string             `db:"destination_country" json:"destination_country"`
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	TeamID             uuid.UUID          `db:"team_id" json:"team_id"`
+	SenderID           *uuid.UUID         `db:"sender_id" json:"sender_id"`
+	ToNumber           string             `db:"to_number" json:"to_number"`
+	FromName           string             `db:"from_name" json:"from_name"`
+	Body               string             `db:"body" json:"body"`
+	Status             string             `db:"status" json:"status"`
+	ProviderID         *string            `db:"provider_id" json:"provider_id"`
+	ProviderMessageID  *string            `db:"provider_message_id" json:"provider_message_id"`
+	Segments           int32              `db:"segments" json:"segments"`
+	ErrorMessage       *string            `db:"error_message" json:"error_message"`
+	Metadata           []byte             `db:"metadata" json:"metadata"`
+	Tags               []byte             `db:"tags" json:"tags"`
+	ScheduledAt        pgtype.Timestamptz `db:"scheduled_at" json:"scheduled_at"`
+	SubmittedAt        pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	DeliveredAt        pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DestinationCountry string             `db:"destination_country" json:"destination_country"`
 }
 
 type SmsRate struct {

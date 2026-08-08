@@ -90,7 +90,7 @@ func (s *Service) Delete(ctx context.Context, senderID string) (SenderID, error)
 	if err != nil {
 		return SenderID{}, apperrors.NewBadRequest("Sender ID id must be a valid UUID")
 	}
-	value, err := s.repository.Delete(ctx, parsedSenderID, tenantContext.Scope.TeamID)
+	value, err := s.repository.Deactivate(ctx, parsedSenderID, tenantContext.Scope.TeamID)
 	if err != nil {
 		return SenderID{}, apperrors.NewNotFound("Sender ID not found")
 	}

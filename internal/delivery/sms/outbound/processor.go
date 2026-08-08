@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -24,11 +23,11 @@ type Processor struct {
 
 type Handler = Processor
 
-func NewProcessor(repository *smsmodule.Repository, sender providerSender) *Processor {
+func NewProcessor(repository messageRepository, sender providerSender) *Processor {
 	return &Processor{repository: repository, sender: sender, staleProcessingAfter: defaultStaleProcessingAfter}
 }
 
-func NewHandler(repository *smsmodule.Repository, sender providerSender) *Processor {
+func NewHandler(repository messageRepository, sender providerSender) *Processor {
 	return NewProcessor(repository, sender)
 }
 
@@ -96,7 +95,7 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 		return processor.handleAlreadyClaimed(ctx, command)
 	}
 
-	routes, err := processor.repository.ResolveDeliveryRoutes(ctx, command.MessageID, command.TeamID)
+	route, err := processor.repository.ResolveDeliveryRoute(ctx, command.MessageID, command.TeamID)
 	if err != nil {
 		_, updateErr := processor.repository.MarkFailed(
 			ctx,
@@ -106,13 +105,12 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 		)
 		return updateErr
 	}
-	routes = supportedDeliveryRoutes(routes, processor.sender.ProviderIDs())
-	if len(routes) == 0 {
+	if !providerAvailable(route.Provider, processor.sender.ProviderIDs()) {
 		_, updateErr := processor.repository.MarkFailed(
 			ctx,
 			command.MessageID,
 			command.TeamID,
-			"no configured provider supports an eligible canonical SMS route",
+			"no configured provider supports the canonical SMS route",
 		)
 		return updateErr
 	}
@@ -124,74 +122,32 @@ func (processor *Processor) Handle(ctx context.Context, command DeliverCommand) 
 		Message:            message.Body,
 		DestinationCountry: message.DestinationCountry,
 	}
-	for index, route := range routes {
-		attemptID, attemptErr := processor.repository.CreateDeliveryAttempt(
-			ctx,
-			command.MessageID,
-			command.TeamID,
-			route,
-		)
-		if attemptErr != nil {
-			return attemptErr
-		}
-		if attemptErr := processor.repository.MarkDeliveryAttemptStarted(
-			ctx,
-			command.MessageID,
-			command.TeamID,
-			attemptID,
-		); attemptErr != nil {
-			return attemptErr
-		}
-
-		response, sendErr := processor.sender.SendWithProvider(ctx, route.Provider, request)
-		if sendErr == nil {
-			return processor.repository.MarkDeliveryAttemptSubmitted(
-				ctx,
-				command.MessageID,
-				command.TeamID,
-				attemptID,
-				response,
-			)
-		}
-
-		hasFallback := index+1 < len(routes) && processor.sender.ShouldFallback(ctx, route.Provider, sendErr)
-		if hasFallback {
-			if recordErr := processor.repository.MarkDeliveryAttemptRetryable(
-				ctx,
-				command.MessageID,
-				command.TeamID,
-				attemptID,
-				sendErr,
-			); recordErr != nil {
-				return errors.Join(sendErr, recordErr)
-			}
-			continue
-		}
-		if shouldFinalizeAfterSendError(sendErr) {
-			return processor.repository.MarkDeliveryAttemptFailed(
-				ctx,
-				command.MessageID,
-				command.TeamID,
-				attemptID,
-				sendErr,
-			)
-		}
-		return processor.repository.MarkDeliveryAttemptUnknown(
-			ctx,
-			command.MessageID,
-			command.TeamID,
-			attemptID,
-			sendErr,
-		)
+	attemptID, err := processor.repository.CreateDeliveryAttempt(
+		ctx, command.MessageID, command.TeamID, route,
+	)
+	if err != nil {
+		return err
+	}
+	if err := processor.repository.MarkDeliveryAttemptStarted(
+		ctx, command.MessageID, command.TeamID, attemptID,
+	); err != nil {
+		return err
 	}
 
-	_, err = processor.repository.MarkFailed(
-		ctx,
-		command.MessageID,
-		command.TeamID,
-		"no eligible canonical SMS route is available",
+	response, sendErr := processor.sender.SendWithProvider(ctx, route.Provider, request)
+	if sendErr == nil {
+		return processor.repository.MarkDeliveryAttemptSubmitted(
+			ctx, command.MessageID, command.TeamID, attemptID, response,
+		)
+	}
+	if shouldFinalizeAfterSendError(sendErr) {
+		return processor.repository.MarkDeliveryAttemptFailed(
+			ctx, command.MessageID, command.TeamID, attemptID, sendErr,
+		)
+	}
+	return processor.repository.MarkDeliveryAttemptUnknown(
+		ctx, command.MessageID, command.TeamID, attemptID, sendErr,
 	)
-	return err
 }
 
 func (processor *Processor) handleAlreadyClaimed(ctx context.Context, command DeliverCommand) error {
@@ -217,34 +173,13 @@ func (processor *Processor) handleAlreadyClaimed(ctx context.Context, command De
 	)
 }
 
-func supportedDeliveryRoutes(
-	routes []platformrouting.Route,
-	providerIDs []string,
-) []platformrouting.Route {
-	available := make(map[string]struct{}, len(providerIDs))
+func providerAvailable(provider string, providerIDs []string) bool {
 	for _, providerID := range providerIDs {
-		providerID = strings.ToLower(strings.TrimSpace(providerID))
-		if providerID != "" {
-			available[providerID] = struct{}{}
+		if strings.EqualFold(strings.TrimSpace(providerID), strings.TrimSpace(provider)) {
+			return true
 		}
 	}
-	seen := make(map[string]struct{}, len(routes))
-	result := make([]platformrouting.Route, 0, len(routes))
-	for _, route := range routes {
-		providerID := strings.ToLower(strings.TrimSpace(route.Provider))
-		if providerID == "" || !strings.EqualFold(strings.TrimSpace(route.ProviderAccount), "default") {
-			continue
-		}
-		if _, ok := available[providerID]; !ok {
-			continue
-		}
-		if _, duplicate := seen[providerID]; duplicate {
-			continue
-		}
-		seen[providerID] = struct{}{}
-		result = append(result, route)
-	}
-	return result
+	return false
 }
 
 func (processor *Processor) processingIsStale(message smsmodule.Message) bool {

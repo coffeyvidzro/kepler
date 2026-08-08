@@ -1,4 +1,4 @@
-package messaging
+package attempt
 
 import "testing"
 

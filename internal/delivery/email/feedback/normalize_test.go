@@ -2,11 +2,11 @@ package feedback
 
 import (
 	"encoding/json"
+	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 	"testing"
 	"time"
 
 	awsses "github.com/coffeyvidzro/dugble/server/internal/adapters/amazon/ses"
-	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
 )
 
 func TestNormalizeSESFeedbackEventUsesAggregateState(t *testing.T) {
@@ -16,17 +16,17 @@ func TestNormalizeSESFeedbackEventUsesAggregateState(t *testing.T) {
 	tests := []struct {
 		eventType     string
 		messageStatus string
-		want          platformdelivery.AttemptStatus
+		want          attempt.AttemptStatus
 	}{
-		{eventType: "send", messageStatus: "submitted", want: platformdelivery.StatusSubmitted},
-		{eventType: "delivery_delay", messageStatus: "delayed", want: platformdelivery.StatusSent},
-		{eventType: "delivery", messageStatus: "partially_delivered", want: platformdelivery.StatusSent},
-		{eventType: "delivery", messageStatus: "delivered", want: platformdelivery.StatusDelivered},
-		{eventType: "bounce", messageStatus: "partially_failed", want: platformdelivery.StatusSent},
-		{eventType: "bounce", messageStatus: "bounced", want: platformdelivery.StatusPermanentFailure},
-		{eventType: "complaint", messageStatus: "complained", want: platformdelivery.StatusDelivered},
-		{eventType: "reject", messageStatus: "rejected", want: platformdelivery.StatusRejected},
-		{eventType: "rendering_failure", messageStatus: "failed", want: platformdelivery.StatusPermanentFailure},
+		{eventType: "send", messageStatus: "submitted", want: attempt.StatusSubmitted},
+		{eventType: "delivery_delay", messageStatus: "delayed", want: attempt.StatusSent},
+		{eventType: "delivery", messageStatus: "partially_delivered", want: attempt.StatusSent},
+		{eventType: "delivery", messageStatus: "delivered", want: attempt.StatusDelivered},
+		{eventType: "bounce", messageStatus: "partially_failed", want: attempt.StatusSent},
+		{eventType: "bounce", messageStatus: "bounced", want: attempt.StatusPermanentFailure},
+		{eventType: "complaint", messageStatus: "complained", want: attempt.StatusDelivered},
+		{eventType: "reject", messageStatus: "rejected", want: attempt.StatusRejected},
+		{eventType: "rendering_failure", messageStatus: "failed", want: attempt.StatusPermanentFailure},
 	}
 	for _, test := range tests {
 		test := test
