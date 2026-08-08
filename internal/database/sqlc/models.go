@@ -370,6 +370,7 @@ type MessageDeliveryAttempt struct {
 	ProviderAccount         string             `db:"provider_account" json:"provider_account"`
 	ProviderMessageID       *string            `db:"provider_message_id" json:"provider_message_id"`
 	ProviderStatus          *string            `db:"provider_status" json:"provider_status"`
+	SenderDomainID          *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
 	SenderAssetID           *uuid.UUID         `db:"sender_asset_id" json:"sender_asset_id"`
 	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
 	ErrorCode               *string            `db:"error_code" json:"error_code"`
@@ -385,7 +386,6 @@ type MessageDeliveryAttempt struct {
 	Metadata                []byte             `db:"metadata" json:"metadata"`
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	SenderDomainID          *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
 }
 
 type MessageTemplate struct {

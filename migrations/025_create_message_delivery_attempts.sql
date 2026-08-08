@@ -1,6 +1,6 @@
--- Create the channel-neutral provider-attempt ledger. Sender trust-plane tables
--- are created earlier so message records and attempts can reference canonical
--- sender assets and provider bindings from the beginning.
+-- Create the channel-neutral provider-attempt ledger. Domains and sender ID
+-- infrastructure are created earlier so attempts can reference the correct
+-- channel-specific sender identity.
 
 CREATE TABLE IF NOT EXISTS message_delivery_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS message_delivery_attempts (
     provider_account TEXT NOT NULL DEFAULT 'default',
     provider_message_id TEXT,
     provider_status TEXT,
+    sender_domain_id UUID REFERENCES domains(id) ON DELETE SET NULL,
     sender_asset_id UUID REFERENCES sender_assets(id) ON DELETE SET NULL,
     sender_provider_binding_id UUID,
     error_code TEXT,
@@ -145,6 +146,10 @@ CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_reconciliation
         'unknown'
     )
       AND next_reconcile_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_message_delivery_attempts_sender_domain
+    ON message_delivery_attempts (sender_domain_id)
+    WHERE sender_domain_id IS NOT NULL;
 
 ALTER TABLE email_messages
     ADD CONSTRAINT fk_email_messages_current_delivery_attempt

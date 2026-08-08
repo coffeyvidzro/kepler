@@ -1,4 +1,4 @@
--- Establish the canonical sender trust plane before message tables are created.
+-- Create the canonical sender ID trust infrastructure before message tables.
 --
 -- sender_assets owns the channel-neutral identity. Provider-, account-, region-,
 -- and country-specific trust state lives in sender_provider_bindings. Grants

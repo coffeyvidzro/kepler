@@ -74,34 +74,24 @@ BEFORE INSERT OR UPDATE OF team_id, sender_provider_binding_id, destination_coun
 FOR EACH ROW
 EXECUTE FUNCTION enforce_sms_sender_binding();
 
-CREATE OR REPLACE FUNCTION enforce_email_sender_binding()
+CREATE OR REPLACE FUNCTION enforce_email_sender_domain()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF NEW.sender_provider_binding_id IS NULL THEN
+    IF NEW.sender_domain_id IS NULL THEN
         RETURN NEW;
     END IF;
 
     IF NOT EXISTS (
         SELECT 1
-        FROM sender_provider_bindings AS binding
-        JOIN sender_assets AS asset
-          ON asset.id = binding.sender_asset_id
-        JOIN sender_asset_grants AS grant_record
-          ON grant_record.sender_asset_id = asset.id
-         AND grant_record.team_id = NEW.team_id
-         AND grant_record.channel = 'email'
-         AND grant_record.status = 'active'
-        WHERE binding.id = NEW.sender_provider_binding_id
-          AND asset.channel = 'email'
-          AND binding.provider = CASE lower(trim(NEW.delivery_provider))
-              WHEN 'aws_ses' THEN 'ses'
-              ELSE lower(trim(NEW.delivery_provider))
-          END
-          AND binding.region = lower(trim(NEW.provider_region))
+        FROM domains AS domain_record
+        WHERE domain_record.id = NEW.sender_domain_id
+          AND domain_record.team_id = NEW.team_id
+          AND domain_record.provider = lower(trim(NEW.delivery_provider))
+          AND domain_record.provider_region = lower(trim(NEW.provider_region))
     ) THEN
-        RAISE EXCEPTION 'email sender binding does not belong to this team and route'
+        RAISE EXCEPTION 'email sender domain does not belong to this team and route'
             USING ERRCODE = '23514';
     END IF;
 
@@ -109,11 +99,11 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_enforce_email_sender_binding ON email_messages;
-CREATE TRIGGER trg_enforce_email_sender_binding
-BEFORE INSERT OR UPDATE OF team_id, sender_provider_binding_id, delivery_provider, provider_region ON email_messages
+DROP TRIGGER IF EXISTS trg_enforce_email_sender_domain ON email_messages;
+CREATE TRIGGER trg_enforce_email_sender_domain
+BEFORE INSERT OR UPDATE OF team_id, sender_domain_id, delivery_provider, provider_region ON email_messages
 FOR EACH ROW
-EXECUTE FUNCTION enforce_email_sender_binding();
+EXECUTE FUNCTION enforce_email_sender_domain();
 
 CREATE OR REPLACE FUNCTION enforce_webhook_delivery_team()
 RETURNS TRIGGER
