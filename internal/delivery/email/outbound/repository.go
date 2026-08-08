@@ -12,11 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	messagingrouting "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/routing"
 	platformemail "github.com/coffeyvidzro/dugble/server/internal/platform/awsses"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/sender"
 )
 
 var ErrMessageNotDeliverable = errors.New("email message is not deliverable")
@@ -62,15 +58,22 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 	var fromName *string
 	var htmlBody, textBody *string
 	var recipientsJSON, headersJSON, attachmentsJSON []byte
-	var senderAssetID uuid.NullUUID
+	var senderDomainID *uuid.UUID
 	err = tx.QueryRow(ctx, `
 		SELECT message.id, message.team_id, message.delivery_provider, message.provider_region,
 			message.from_email, message.from_name, message.subject, message.html_body, message.text_body,
 			message.recipients, message.headers, message.attachments,
-			existing_binding.sender_asset_id
+			domain_record.id
 		FROM email_messages AS message
-		LEFT JOIN sender_provider_bindings AS existing_binding
-		  ON existing_binding.id = message.sender_provider_binding_id
+		LEFT JOIN domains AS domain_record
+		  ON domain_record.id = message.sender_domain_id
+		 AND domain_record.team_id = message.team_id
+		 AND domain_record.provider = lower(trim(message.delivery_provider))
+		 AND domain_record.provider_region = lower(trim(message.provider_region))
+		 AND domain_record.status = 'verified'
+		 AND domain_record.sending_enabled
+		 AND domain_record.disabled_at IS NULL
+		 AND domain_record.health_status <> 'degraded'
 		WHERE message.id = $1
 		  AND message.team_id = $2
 		  AND message.status = 'queued'
@@ -78,7 +81,7 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 	`, messageID, teamID).Scan(
 		&message.ID, &message.TeamID, &message.Provider, &message.Region, &message.FromEmail, &fromName,
 		&message.Subject, &htmlBody, &textBody, &recipientsJSON, &headersJSON, &attachmentsJSON,
-		&senderAssetID,
+		&senderDomainID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DeliveryMessage{}, ErrMessageNotDeliverable
@@ -113,26 +116,14 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 		return DeliveryMessage{}, fmt.Errorf("decode email attachments: %w", err)
 	}
 
-	routeRequest := platformrouting.Request{
-		TeamID:               teamID,
-		Channel:              messaging.ChannelEmail,
-		Provider:             emailBindingProvider(message.Provider),
-		ProviderAccount:      "default",
-		DestinationRegion:    message.Region,
-		RequiredCapabilities: []sender.Capability{sender.CapabilityDomainVerification},
-	}
-	if senderAssetID.Valid {
-		assetID := senderAssetID.UUID
-		routeRequest.SenderAssetID = &assetID
-	}
-	route, routeErr := messagingrouting.Resolve(ctx, tx, routeRequest)
-	if routeErr != nil {
+	if senderDomainID == nil {
 		if _, err := tx.Exec(ctx, `
 			UPDATE email_messages
 			SET status = 'failed', error_code = 'sender_route_unavailable',
-				error_message = $3, failed_at = now(), updated_at = now()
+				error_message = 'sender domain is no longer verified, enabled, and healthy',
+				failed_at = now(), updated_at = now()
 			WHERE id = $1 AND team_id = $2 AND status = 'queued'
-		`, messageID, teamID, truncateError(routeErr)); err != nil {
+		`, messageID, teamID); err != nil {
 			return DeliveryMessage{}, fmt.Errorf("fail unavailable email route: %w", err)
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -141,10 +132,7 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 		return DeliveryMessage{}, ErrSenderDomainUnavailable
 	}
 
-	message.Provider = emailRuntimeProvider(route.Provider)
-	if strings.TrimSpace(route.Region) != "" {
-		message.Region = route.Region
-	}
+	message.Provider = emailRuntimeProvider(message.Provider)
 	message.AttemptID = uuid.New()
 	var attemptNumber int
 	if err := tx.QueryRow(ctx, `
@@ -157,20 +145,19 @@ func (r *Repository) Claim(ctx context.Context, messageID, teamID uuid.UUID) (De
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO message_delivery_attempts (
 			id, team_id, channel, email_message_id, attempt_number, status,
-			provider, provider_account, sender_asset_id, sender_provider_binding_id
+			provider, provider_account, sender_domain_id
 		)
-		VALUES ($1, $2, 'email', $3, $4, 'claimed', $5, $6, $7, $8)
-	`, message.AttemptID, teamID, messageID, attemptNumber, message.Provider,
-		route.ProviderAccount, route.SenderAssetID, route.SenderProviderBindingID); err != nil {
+		VALUES ($1, $2, 'email', $3, $4, 'claimed', $5, 'default', $6)
+	`, message.AttemptID, teamID, messageID, attemptNumber, message.Provider, *senderDomainID); err != nil {
 		return DeliveryMessage{}, fmt.Errorf("create email delivery attempt: %w", err)
 	}
 	commandTag, err := tx.Exec(ctx, `
 		UPDATE email_messages
 		SET status = 'processing', current_delivery_attempt_id = $3,
-			sender_provider_binding_id = $4, delivery_provider = $5, provider_region = $6,
+			sender_domain_id = $4, delivery_provider = $5, provider_region = $6,
 			processing_at = now(), error_code = NULL, error_message = NULL, updated_at = now()
 		WHERE id = $1 AND team_id = $2 AND status = 'queued'
-	`, messageID, teamID, message.AttemptID, route.SenderProviderBindingID, message.Provider, message.Region)
+	`, messageID, teamID, message.AttemptID, *senderDomainID, message.Provider, message.Region)
 	if err != nil {
 		return DeliveryMessage{}, fmt.Errorf("claim email message: %w", err)
 	}
@@ -187,14 +174,6 @@ func emailRuntimeProvider(provider string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "ses" {
 		return "aws_ses"
-	}
-	return provider
-}
-
-func emailBindingProvider(provider string) string {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	if provider == "aws_ses" {
-		return "ses"
 	}
 	return provider
 }
