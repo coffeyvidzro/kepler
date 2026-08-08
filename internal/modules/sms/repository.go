@@ -81,17 +81,17 @@ func (r *Repository) Create(ctx context.Context, params createMessageParams) (Me
 		return Message{}, fmt.Errorf("encode SMS tags: %w", err)
 	}
 	row, err := r.queries.CreateSMSMessage(ctx, dbsqlc.CreateSMSMessageParams{
-		TeamID:                  params.TeamID,
-		SenderProviderBindingID: params.SenderID,
-		ToNumber:                params.To,
-		FromName:                params.From,
-		Body:                    params.Body,
-		Status:                  params.Status,
-		Segments:                params.Segments,
-		Metadata:                ensureMetadata(params.Metadata),
-		Tags:                    tags,
-		ScheduledAt:             pgconv.NullableTimestamptz(params.ScheduledAt),
-		DestinationCountry:      params.DestinationCountry,
+		TeamID:             params.TeamID,
+		SenderID:           params.SenderID,
+		ToNumber:           params.To,
+		FromName:           params.From,
+		Body:               params.Body,
+		Status:             params.Status,
+		Segments:           params.Segments,
+		Metadata:           ensureMetadata(params.Metadata),
+		Tags:               tags,
+		ScheduledAt:        pgconv.NullableTimestamptz(params.ScheduledAt),
+		DestinationCountry: params.DestinationCountry,
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("create sms message: %w", err)
@@ -452,8 +452,8 @@ func messageFromSQLC(row dbsqlc.SmsMessage) Message {
 		UpdatedAt:          row.UpdatedAt.Time,
 		DestinationCountry: row.DestinationCountry,
 	}
-	if row.SenderProviderBindingID != nil {
-		value := row.SenderProviderBindingID.String()
+	if row.SenderID != nil {
+		value := row.SenderID.String()
 		message.SenderID = &value
 	}
 	if row.SubmittedAt.Valid {
@@ -559,7 +559,7 @@ func (r *Repository) CreateDeliveryAttempt(
 			  AND sender_id.disabled_at IS NULL
 			  AND sender_id.health_status <> 'degraded'
 			  AND lower(sender_id.provider) = lower($4)
-			  AND lower(sender_id.provider) = lower($5)
+			  AND $5 = 'default'
 			  AND $6 = ''
 			  AND sender_id.country_code::text = $7
 			  AND sender_id.country_code = $8
