@@ -234,7 +234,7 @@ func Wire(ctx context.Context) (*Worker, func(), error) {
 	smsConsumer := smsdelivery.NewConsumer(
 		messagingClient,
 		processedEvents,
-		smsdelivery.NewProcessor(smsRepository, smsSender),
+		smsdelivery.NewProcessor(smsdelivery.NewRepository(db, smsRepository), smsSender),
 		smsdelivery.ConsumerConfig{
 			Concurrency:    10,
 			AckWait:        2 * time.Minute,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,15 +49,6 @@ func (attempt Attempt) MessageReference() MessageReference {
 	}
 }
 
-func (attempt Attempt) ProviderRoute() ProviderRoute {
-	return ProviderRoute{
-		Provider:        attempt.Provider,
-		ProviderAccount: attempt.ProviderAccount,
-		SenderDomainID:  attempt.SenderDomainID,
-		SenderID:        attempt.SenderID,
-	}
-}
-
 func (attempt Attempt) Validate() error {
 	if attempt.ID == uuid.Nil || attempt.TeamID == uuid.Nil {
 		return errors.New("delivery attempt and team IDs are required")
@@ -70,7 +62,7 @@ func (attempt Attempt) Validate() error {
 	if !attempt.Status.Valid() {
 		return errors.New("delivery attempt status is invalid")
 	}
-	if err := attempt.ProviderRoute().Validate(attempt.Status.RequiresProvider()); err != nil {
+	if err := attempt.validateProviderReference(); err != nil {
 		return err
 	}
 	if attempt.ReconcileAttempts < 0 {
@@ -97,6 +89,32 @@ func (attempt Attempt) Validate() error {
 	}
 	if attempt.Status.Terminal() && attempt.TerminalAt == nil {
 		return errors.New("terminal delivery attempt status requires a terminal time")
+	}
+	return nil
+}
+
+func (attempt Attempt) validateProviderReference() error {
+	if strings.TrimSpace(attempt.ProviderAccount) == "" {
+		return errors.New("delivery attempt provider account is required")
+	}
+	if attempt.Status.RequiresProvider() && strings.TrimSpace(attempt.Provider) == "" {
+		return errors.New("delivery attempt provider is required for the current status")
+	}
+	if attempt.SenderDomainID != nil && *attempt.SenderDomainID == uuid.Nil {
+		return errors.New("delivery attempt sender domain ID is invalid")
+	}
+	if attempt.SenderID != nil && *attempt.SenderID == uuid.Nil {
+		return errors.New("delivery attempt Sender ID is invalid")
+	}
+	switch attempt.Channel {
+	case ChannelEmail:
+		if attempt.SenderID != nil {
+			return errors.New("email delivery attempt cannot reference a Sender ID")
+		}
+	case ChannelSMS:
+		if attempt.SenderDomainID != nil {
+			return errors.New("SMS delivery attempt cannot reference a sender domain")
+		}
 	}
 	return nil
 }

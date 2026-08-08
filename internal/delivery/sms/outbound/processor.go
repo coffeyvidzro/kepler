@@ -23,11 +23,11 @@ type Processor struct {
 
 type Handler = Processor
 
-func NewProcessor(repository *smsmodule.Repository, sender providerSender) *Processor {
+func NewProcessor(repository messageRepository, sender providerSender) *Processor {
 	return &Processor{repository: repository, sender: sender, staleProcessingAfter: defaultStaleProcessingAfter}
 }
 
-func NewHandler(repository *smsmodule.Repository, sender providerSender) *Processor {
+func NewHandler(repository messageRepository, sender providerSender) *Processor {
 	return NewProcessor(repository, sender)
 }
 

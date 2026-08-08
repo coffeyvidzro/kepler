@@ -66,6 +66,32 @@ func TestAttemptTerminalRequiresTimestamp(t *testing.T) {
 	}
 }
 
+func TestAttemptValidateRejectsWrongChannelSender(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	messageID := uuid.New()
+	senderID := uuid.New()
+	value := Attempt{
+		ID: uuid.New(), TeamID: uuid.New(), Channel: ChannelEmail,
+		EmailMessageID: &messageID, SenderID: &senderID, AttemptNumber: 1,
+		Status: StatusClaimed, ProviderAccount: "default", ClaimedAt: now,
+		Metadata: json.RawMessage(`{}`), CreatedAt: now, UpdatedAt: now,
+	}
+	if err := value.Validate(); err == nil {
+		t.Fatal("Attempt.Validate() error = nil for email attempt with Sender ID")
+	}
+
+	value.Channel = ChannelSMS
+	value.EmailMessageID = nil
+	value.SMSMessageID = &messageID
+	value.SenderID = nil
+	value.SenderDomainID = &senderID
+	if err := value.Validate(); err == nil {
+		t.Fatal("Attempt.Validate() error = nil for SMS attempt with sender domain")
+	}
+}
+
 func TestAttemptStatusTransitions(t *testing.T) {
 	t.Parallel()
 
