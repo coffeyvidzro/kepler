@@ -15,10 +15,6 @@ import (
 
 	"github.com/coffeyvidzro/dugble/server/internal/adapters/postgres"
 	dbsqlc "github.com/coffeyvidzro/dugble/server/internal/database/sqlc"
-	messagingrouting "github.com/coffeyvidzro/dugble/server/internal/delivery/messaging/routing"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/sender"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 	platformwebhook "github.com/coffeyvidzro/dugble/server/internal/platform/webhook"
 	"github.com/coffeyvidzro/dugble/server/pkg/pgconv"
@@ -482,48 +478,49 @@ func (r *Repository) ResolveDeliveryRoutes(
 	ctx context.Context,
 	id uuid.UUID,
 	teamID uuid.UUID,
-) ([]platformrouting.Route, error) {
-	var status string
-	var country string
-	var assetID uuid.NullUUID
+) ([]DeliveryRoute, error) {
+	var status, country string
+	var senderID uuid.NullUUID
 	err := r.dbtx.QueryRow(ctx, `
 		SELECT message.status, message.destination_country, message.sender_id
 		FROM sms_messages AS message
 		WHERE message.id = $1 AND message.team_id = $2
-	`, id, teamID).Scan(&status, &country, &assetID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	`, id, teamID).Scan(&status, &country, &senderID)
+	if errors.Is(err, pgx.ErrNoRows) || status != StatusProcessing {
 		return nil, ErrMessageNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("load SMS route request: %w", err)
 	}
-	if status != StatusProcessing {
-		return nil, ErrMessageNotFound
+	if !senderID.Valid {
+		return nil, ErrNoEligibleRoute
 	}
-	request := platformrouting.Request{
-		TeamID:             teamID,
-		Channel:            messaging.ChannelSMS,
-		DestinationCountry: country,
-		RequiredCapabilities: []sender.Capability{
-			sender.CapabilitySenderIDRegistration,
-		},
+	var route DeliveryRoute
+	err = r.dbtx.QueryRow(ctx, `
+		SELECT sender_id.id, sender_id.provider, 'default'
+		FROM sender_ids AS sender_id
+		WHERE sender_id.id = $1
+		  AND sender_id.team_id = $2
+		  AND sender_id.country_code = $3
+		  AND sender_id.status = 'approved'
+		  AND sender_id.provider_whitelisted
+		  AND sender_id.disabled_at IS NULL
+		  AND sender_id.health_status <> 'degraded'
+	`, senderID.UUID, teamID, country).Scan(&route.SenderID, &route.Provider, &route.ProviderAccount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNoEligibleRoute
 	}
-	if assetID.Valid {
-		value := assetID.UUID
-		request.SenderAssetID = &value
-	}
-	routes, err := messagingrouting.ResolveAll(ctx, r.dbtx, request)
 	if err != nil {
-		return nil, fmt.Errorf("resolve SMS delivery routes: %w", err)
+		return nil, fmt.Errorf("resolve SMS delivery route: %w", err)
 	}
-	return routes, nil
+	return []DeliveryRoute{route}, nil
 }
 
 func (r *Repository) CreateDeliveryAttempt(
 	ctx context.Context,
 	id uuid.UUID,
 	teamID uuid.UUID,
-	route platformrouting.Route,
+	route DeliveryRoute,
 ) (uuid.UUID, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -532,51 +529,44 @@ func (r *Repository) CreateDeliveryAttempt(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var country string
-	var currentAssetID uuid.UUID
+	var currentSenderID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		SELECT message.destination_country, message.sender_id
 		FROM sms_messages AS message
 		WHERE message.id = $1 AND message.team_id = $2 AND message.status = 'processing'
 		FOR UPDATE OF message
-	`, id, teamID).Scan(&country, &currentAssetID); errors.Is(err, pgx.ErrNoRows) {
+	`, id, teamID).Scan(&country, &currentSenderID); errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, ErrMessageNotFound
 	} else if err != nil {
 		return uuid.Nil, fmt.Errorf("lock SMS message for attempt: %w", err)
 	}
-	if currentAssetID != route.SenderAssetID {
-		return uuid.Nil, platformrouting.ErrNoEligibleRoute
+	if currentSenderID != route.SenderID {
+		return uuid.Nil, ErrNoEligibleRoute
 	}
 
 	var eligible bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1
-			FROM sender_ids AS sender_id
-			WHERE sender_id.id = $2 AND sender_id.id = $3
-			  AND sender_id.team_id = $1
+			SELECT 1 FROM sender_ids AS sender_id
+			WHERE sender_id.id = $1 AND sender_id.team_id = $2
+			  AND sender_id.country_code = $3
 			  AND sender_id.status = 'approved'
 			  AND sender_id.provider_whitelisted
 			  AND sender_id.disabled_at IS NULL
 			  AND sender_id.health_status <> 'degraded'
 			  AND lower(sender_id.provider) = lower($4)
-			  AND $5 = 'default'
-			  AND $6 = ''
-			  AND sender_id.country_code::text = $7
-			  AND sender_id.country_code = $8
 		)
-	`, teamID, route.SenderProviderBindingID, route.SenderAssetID, route.Provider,
-		route.ProviderAccount, route.Region, route.CountryCode, country).Scan(&eligible); err != nil {
+	`, route.SenderID, teamID, country, route.Provider).Scan(&eligible); err != nil {
 		return uuid.Nil, fmt.Errorf("verify SMS delivery route: %w", err)
 	}
 	if !eligible {
-		return uuid.Nil, platformrouting.ErrNoEligibleRoute
+		return uuid.Nil, ErrNoEligibleRoute
 	}
 
 	var attemptNumber int
 	if err := tx.QueryRow(ctx, `
 		SELECT COALESCE(MAX(attempt_number), 0) + 1
-		FROM message_delivery_attempts
-		WHERE sms_message_id = $1
+		FROM message_delivery_attempts WHERE sms_message_id = $1
 	`, id).Scan(&attemptNumber); err != nil {
 		return uuid.Nil, fmt.Errorf("calculate SMS delivery attempt number: %w", err)
 	}
@@ -585,18 +575,9 @@ func (r *Repository) CreateDeliveryAttempt(
 		INSERT INTO message_delivery_attempts (
 			id, team_id, channel, sms_message_id, attempt_number, status,
 			provider, provider_account, sender_id
-		)
-		VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6, $7)
-	`, attemptID, teamID, id, attemptNumber, route.Provider, route.ProviderAccount,
-		route.SenderAssetID); err != nil {
+		) VALUES ($1, $2, 'sms', $3, $4, 'claimed', $5, $6, $7)
+	`, attemptID, teamID, id, attemptNumber, route.Provider, route.ProviderAccount, route.SenderID); err != nil {
 		return uuid.Nil, fmt.Errorf("create SMS delivery attempt: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE sms_messages
-		SET sender_id = $3, updated_at = now()
-		WHERE id = $1 AND team_id = $2 AND status = 'processing'
-	`, id, teamID, route.SenderProviderBindingID); err != nil {
-		return uuid.Nil, fmt.Errorf("persist SMS delivery route: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, fmt.Errorf("commit SMS delivery attempt: %w", err)

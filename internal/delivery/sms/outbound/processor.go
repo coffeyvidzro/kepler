@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -218,9 +217,9 @@ func (processor *Processor) handleAlreadyClaimed(ctx context.Context, command De
 }
 
 func supportedDeliveryRoutes(
-	routes []platformrouting.Route,
+	routes []smsmodule.DeliveryRoute,
 	providerIDs []string,
-) []platformrouting.Route {
+) []smsmodule.DeliveryRoute {
 	available := make(map[string]struct{}, len(providerIDs))
 	for _, providerID := range providerIDs {
 		providerID = strings.ToLower(strings.TrimSpace(providerID))
@@ -229,7 +228,7 @@ func supportedDeliveryRoutes(
 		}
 	}
 	seen := make(map[string]struct{}, len(routes))
-	result := make([]platformrouting.Route, 0, len(routes))
+	result := make([]smsmodule.DeliveryRoute, 0, len(routes))
 	for _, route := range routes {
 		providerID := strings.ToLower(strings.TrimSpace(route.Provider))
 		if providerID == "" || !strings.EqualFold(strings.TrimSpace(route.ProviderAccount), "default") {

@@ -1,12 +1,12 @@
 package feedback
 
 import (
+	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
-	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -22,16 +22,16 @@ func TestStatusEventMapsProviderStates(t *testing.T) {
 	}
 	tests := []struct {
 		status string
-		want   platformdelivery.AttemptStatus
+		want   attempt.AttemptStatus
 	}{
-		{status: smsapi.StatusQueued, want: platformdelivery.StatusAccepted},
-		{status: smsapi.StatusSubmitted, want: platformdelivery.StatusSubmitted},
-		{status: smsapi.StatusSent, want: platformdelivery.StatusSent},
-		{status: smsapi.StatusDelivered, want: platformdelivery.StatusDelivered},
-		{status: smsapi.StatusUndelivered, want: platformdelivery.StatusPermanentFailure},
-		{status: smsapi.StatusRejected, want: platformdelivery.StatusRejected},
-		{status: smsapi.StatusExpired, want: platformdelivery.StatusExpired},
-		{status: smsapi.StatusUnknown, want: platformdelivery.StatusUnknown},
+		{status: smsapi.StatusQueued, want: attempt.StatusAccepted},
+		{status: smsapi.StatusSubmitted, want: attempt.StatusSubmitted},
+		{status: smsapi.StatusSent, want: attempt.StatusSent},
+		{status: smsapi.StatusDelivered, want: attempt.StatusDelivered},
+		{status: smsapi.StatusUndelivered, want: attempt.StatusPermanentFailure},
+		{status: smsapi.StatusRejected, want: attempt.StatusRejected},
+		{status: smsapi.StatusExpired, want: attempt.StatusExpired},
+		{status: smsapi.StatusUnknown, want: attempt.StatusUnknown},
 	}
 	for _, test := range tests {
 		test := test

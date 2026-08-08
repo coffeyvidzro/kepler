@@ -1,4 +1,4 @@
-package messagingfeedback
+package feedback
 
 import (
 	"context"
@@ -12,9 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
-	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
+	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 )
 
 const processedConsumerName = "messaging-feedback-v1"
@@ -22,17 +20,17 @@ const processedConsumerName = "messaging-feedback-v1"
 var processedEventNamespace = uuid.MustParse("35b15a58-9f5a-5da7-b061-83ba967bd4c9")
 
 // Repository applies normalized feedback inside a caller-owned transaction.
-type Repository struct {
+type SQLRepository struct {
 	tx pgx.Tx
 }
 
-func NewRepository(tx pgx.Tx) *Repository {
-	return &Repository{tx: tx}
+func NewSQLRepository(tx pgx.Tx) *SQLRepository {
+	return &SQLRepository{tx: tx}
 }
 
-func (repository *Repository) FindAttempt(ctx context.Context, lookup platformfeedback.Lookup) (delivery.Attempt, error) {
+func (repository *SQLRepository) FindAttempt(ctx context.Context, lookup Lookup) (attempt.Attempt, error) {
 	if repository == nil || repository.tx == nil {
-		return delivery.Attempt{}, errors.New("messaging feedback repository is not configured")
+		return attempt.Attempt{}, errors.New("messaging feedback repository is not configured")
 	}
 	provider := strings.ToLower(strings.TrimSpace(lookup.Provider))
 	providerMessageID := strings.TrimSpace(lookup.ProviderMessageID)
@@ -73,15 +71,15 @@ func (repository *Repository) FindAttempt(ctx context.Context, lookup platformfe
 	`, string(lookup.Channel), provider, providerMessageID))
 }
 
-func scanAttempt(row pgx.Row) (delivery.Attempt, error) {
-	var attempt delivery.Attempt
+func scanAttempt(row pgx.Row) (attempt.Attempt, error) {
+	var record attempt.Attempt
 	var channel string
 	var status string
 	var metadata []byte
 	var emailMessageID pgtype.UUID
 	var smsMessageID pgtype.UUID
-	var senderAssetID pgtype.UUID
-	var senderBindingID pgtype.UUID
+	var senderDomainID pgtype.UUID
+	var senderID pgtype.UUID
 	var requestStartedAt pgtype.Timestamptz
 	var requestCompletedAt pgtype.Timestamptz
 	var submittedAt pgtype.Timestamptz
@@ -89,52 +87,52 @@ func scanAttempt(row pgx.Row) (delivery.Attempt, error) {
 	var nextReconcileAt pgtype.Timestamptz
 	var lastReconciledAt pgtype.Timestamptz
 	if err := row.Scan(
-		&attempt.ID,
-		&attempt.TeamID,
+		&record.ID,
+		&record.TeamID,
 		&channel,
 		&emailMessageID,
 		&smsMessageID,
-		&attempt.AttemptNumber,
+		&record.AttemptNumber,
 		&status,
-		&attempt.Provider,
-		&attempt.ProviderAccount,
-		&attempt.ProviderMessageID,
-		&attempt.ProviderStatus,
-		&senderAssetID,
-		&senderBindingID,
-		&attempt.ErrorCode,
-		&attempt.ErrorMessage,
-		&attempt.ClaimedAt,
+		&record.Provider,
+		&record.ProviderAccount,
+		&record.ProviderMessageID,
+		&record.ProviderStatus,
+		&senderDomainID,
+		&senderID,
+		&record.ErrorCode,
+		&record.ErrorMessage,
+		&record.ClaimedAt,
 		&requestStartedAt,
 		&requestCompletedAt,
 		&submittedAt,
 		&terminalAt,
 		&nextReconcileAt,
 		&lastReconciledAt,
-		&attempt.ReconcileAttempts,
+		&record.ReconcileAttempts,
 		&metadata,
-		&attempt.CreatedAt,
-		&attempt.UpdatedAt,
+		&record.CreatedAt,
+		&record.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return delivery.Attempt{}, platformfeedback.ErrAttemptNotFound
+			return attempt.Attempt{}, ErrAttemptNotFound
 		}
-		return delivery.Attempt{}, fmt.Errorf("scan delivery attempt for feedback: %w", err)
+		return attempt.Attempt{}, fmt.Errorf("scan delivery attempt for feedback: %w", err)
 	}
-	attempt.Channel = messaging.Channel(channel)
-	attempt.Status = delivery.AttemptStatus(status)
-	attempt.EmailMessageID = uuidPointer(emailMessageID)
-	attempt.SMSMessageID = uuidPointer(smsMessageID)
-	attempt.SenderAssetID = uuidPointer(senderAssetID)
-	attempt.SenderProviderBindingID = uuidPointer(senderBindingID)
-	attempt.RequestStartedAt = timePointer(requestStartedAt)
-	attempt.RequestCompletedAt = timePointer(requestCompletedAt)
-	attempt.SubmittedAt = timePointer(submittedAt)
-	attempt.TerminalAt = timePointer(terminalAt)
-	attempt.NextReconcileAt = timePointer(nextReconcileAt)
-	attempt.LastReconciledAt = timePointer(lastReconciledAt)
-	attempt.Metadata = append(json.RawMessage(nil), metadata...)
-	return attempt, nil
+	record.Channel = attempt.Channel(channel)
+	record.Status = attempt.AttemptStatus(status)
+	record.EmailMessageID = uuidPointer(emailMessageID)
+	record.SMSMessageID = uuidPointer(smsMessageID)
+	record.SenderDomainID = uuidPointer(senderDomainID)
+	record.SenderID = uuidPointer(senderID)
+	record.RequestStartedAt = timePointer(requestStartedAt)
+	record.RequestCompletedAt = timePointer(requestCompletedAt)
+	record.SubmittedAt = timePointer(submittedAt)
+	record.TerminalAt = timePointer(terminalAt)
+	record.NextReconcileAt = timePointer(nextReconcileAt)
+	record.LastReconciledAt = timePointer(lastReconciledAt)
+	record.Metadata = append(json.RawMessage(nil), metadata...)
+	return record, nil
 }
 
 func uuidPointer(value pgtype.UUID) *uuid.UUID {
@@ -153,17 +151,17 @@ func timePointer(value pgtype.Timestamptz) *time.Time {
 	return &result
 }
 
-func (repository *Repository) ApplyEvent(
+func (repository *SQLRepository) ApplyEvent(
 	ctx context.Context,
-	event platformfeedback.Event,
-	update platformfeedback.AttemptUpdate,
-) (platformfeedback.ApplyResult, error) {
+	event Event,
+	update AttemptUpdate,
+) (ApplyResult, error) {
 	if repository == nil || repository.tx == nil {
-		return platformfeedback.ApplyResult{}, errors.New("messaging feedback repository is not configured")
+		return ApplyResult{}, errors.New("messaging feedback repository is not configured")
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return platformfeedback.ApplyResult{}, fmt.Errorf("encode normalized feedback event: %w", err)
+		return ApplyResult{}, fmt.Errorf("encode normalized feedback event: %w", err)
 	}
 	tag, err := repository.tx.Exec(ctx, `
 		INSERT INTO processed_events (consumer_name, event_id, metadata)
@@ -171,10 +169,10 @@ func (repository *Repository) ApplyEvent(
 		ON CONFLICT (consumer_name, event_id) DO NOTHING
 	`, processedConsumerName, processedEventID(event), payload)
 	if err != nil {
-		return platformfeedback.ApplyResult{}, fmt.Errorf("deduplicate normalized feedback event: %w", err)
+		return ApplyResult{}, fmt.Errorf("deduplicate normalized feedback event: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return platformfeedback.ApplyResult{Duplicate: true}, nil
+		return ApplyResult{Duplicate: true}, nil
 	}
 
 	if update.Status == nil {
@@ -220,15 +218,15 @@ func (repository *Repository) ApplyEvent(
 		)
 	}
 	if err != nil {
-		return platformfeedback.ApplyResult{}, fmt.Errorf("update delivery attempt from feedback: %w", err)
+		return ApplyResult{}, fmt.Errorf("update delivery attempt from feedback: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return platformfeedback.ApplyResult{}, platformfeedback.ErrConcurrentUpdate
+		return ApplyResult{}, ErrConcurrentUpdate
 	}
 	transitioned := update.Status != nil && *update.Status != update.ExpectedStatus
-	return platformfeedback.ApplyResult{Applied: true, Transitioned: transitioned}, nil
+	return ApplyResult{Applied: true, Transitioned: transitioned}, nil
 }
 
-func processedEventID(event platformfeedback.Event) uuid.UUID {
+func processedEventID(event Event) uuid.UUID {
 	return uuid.NewSHA1(processedEventNamespace, []byte(event.DedupeKey()))
 }

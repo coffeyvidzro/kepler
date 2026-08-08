@@ -1,4 +1,4 @@
-package delivery
+package attempt
 
 // AttemptStatus is the channel-neutral lifecycle state of one provider attempt.
 type AttemptStatus string

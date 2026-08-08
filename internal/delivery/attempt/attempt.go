@@ -1,4 +1,4 @@
-package delivery
+package attempt
 
 import (
 	"bytes"
@@ -7,39 +7,37 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
 )
 
 // Attempt records one provider interaction for one email or SMS message.
 // Message intent remains channel-specific; provider execution history does not.
 type Attempt struct {
-	ID                      uuid.UUID
-	TeamID                  uuid.UUID
-	Channel                 messaging.Channel
-	EmailMessageID          *uuid.UUID
-	SMSMessageID            *uuid.UUID
-	AttemptNumber           int32
-	Status                  AttemptStatus
-	Provider                string
-	ProviderAccount         string
-	ProviderMessageID       string
-	ProviderStatus          string
-	SenderAssetID           *uuid.UUID
-	SenderProviderBindingID *uuid.UUID
-	ErrorCode               string
-	ErrorMessage            string
-	ClaimedAt               time.Time
-	RequestStartedAt        *time.Time
-	RequestCompletedAt      *time.Time
-	SubmittedAt             *time.Time
-	TerminalAt              *time.Time
-	NextReconcileAt         *time.Time
-	LastReconciledAt        *time.Time
-	ReconcileAttempts       int32
-	Metadata                json.RawMessage
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	ID                 uuid.UUID
+	TeamID             uuid.UUID
+	Channel            Channel
+	EmailMessageID     *uuid.UUID
+	SMSMessageID       *uuid.UUID
+	AttemptNumber      int32
+	Status             AttemptStatus
+	Provider           string
+	ProviderAccount    string
+	ProviderMessageID  string
+	ProviderStatus     string
+	SenderDomainID     *uuid.UUID
+	SenderID           *uuid.UUID
+	ErrorCode          string
+	ErrorMessage       string
+	ClaimedAt          time.Time
+	RequestStartedAt   *time.Time
+	RequestCompletedAt *time.Time
+	SubmittedAt        *time.Time
+	TerminalAt         *time.Time
+	NextReconcileAt    *time.Time
+	LastReconciledAt   *time.Time
+	ReconcileAttempts  int32
+	Metadata           json.RawMessage
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 func (attempt Attempt) MessageReference() MessageReference {
@@ -52,10 +50,10 @@ func (attempt Attempt) MessageReference() MessageReference {
 
 func (attempt Attempt) ProviderRoute() ProviderRoute {
 	return ProviderRoute{
-		Provider:                attempt.Provider,
-		ProviderAccount:         attempt.ProviderAccount,
-		SenderAssetID:           attempt.SenderAssetID,
-		SenderProviderBindingID: attempt.SenderProviderBindingID,
+		Provider:        attempt.Provider,
+		ProviderAccount: attempt.ProviderAccount,
+		SenderDomainID:  attempt.SenderDomainID,
+		SenderID:        attempt.SenderID,
 	}
 }
 

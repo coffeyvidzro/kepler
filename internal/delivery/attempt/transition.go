@@ -1,4 +1,4 @@
-package delivery
+package attempt
 
 // CanTransitionTo defines monotonic provider-attempt lifecycle transitions.
 // A retryable failure starts a new attempt rather than reopening this attempt.

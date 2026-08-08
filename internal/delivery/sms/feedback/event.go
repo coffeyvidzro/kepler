@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	attempt "github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
+	feedback "github.com/coffeyvidzro/dugble/server/internal/delivery/feedback"
 	"strings"
 	"time"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	platformdelivery "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
-	platformfeedback "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/feedback"
 	smsapi "github.com/coffeyvidzro/dugble/server/internal/platform/sms"
 )
 
@@ -19,26 +18,26 @@ func statusEvent(
 	pending PendingMessage,
 	response *smsapi.StatusResponse,
 	observedAt time.Time,
-) (platformfeedback.Event, error) {
+) (feedback.Event, error) {
 	if response == nil {
-		return platformfeedback.Event{}, errors.New("SMS provider returned an empty status response")
+		return feedback.Event{}, errors.New("SMS provider returned an empty status response")
 	}
 	providerID := strings.ToLower(strings.TrimSpace(response.ProviderID))
 	providerMessageID := strings.TrimSpace(response.ProviderMsgID)
 	status := strings.ToLower(strings.TrimSpace(response.Status))
 	if providerID == "" {
-		return platformfeedback.Event{}, ErrProviderRequired
+		return feedback.Event{}, ErrProviderRequired
 	}
 	if providerMessageID == "" {
-		return platformfeedback.Event{}, ErrProviderMessageRequired
+		return feedback.Event{}, ErrProviderMessageRequired
 	}
 	if providerID != strings.ToLower(strings.TrimSpace(pending.ProviderID)) ||
 		providerMessageID != strings.TrimSpace(pending.ProviderMessageID) {
-		return platformfeedback.Event{}, errors.New("SMS provider status response does not match the pending attempt")
+		return feedback.Event{}, errors.New("SMS provider status response does not match the pending attempt")
 	}
 	attemptStatus, err := deliveryAttemptStatus(status)
 	if err != nil {
-		return platformfeedback.Event{}, err
+		return feedback.Event{}, err
 	}
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
@@ -55,16 +54,16 @@ func statusEvent(
 		"provider_status":   providerStatus,
 	})
 	if err != nil {
-		return platformfeedback.Event{}, fmt.Errorf("encode SMS feedback metadata: %w", err)
+		return feedback.Event{}, fmt.Errorf("encode SMS feedback metadata: %w", err)
 	}
 	errorCode, errorMessage := smsFeedbackError(status, providerStatus)
-	event := platformfeedback.Event{
+	event := feedback.Event{
 		AttemptID:         pending.AttemptID,
 		Provider:          providerID,
 		ProviderEventID:   fmt.Sprintf("poll:%s:%d:%s", pending.AttemptID, pending.ReconcileAttempts+1, status),
 		ProviderMessageID: providerMessageID,
 		EventType:         providerStatusEventType + "." + status,
-		Channel:           messaging.ChannelSMS,
+		Channel:           attempt.ChannelSMS,
 		Status:            attemptStatus,
 		ProviderStatus:    providerStatus,
 		ErrorCode:         errorCode,
@@ -74,29 +73,29 @@ func statusEvent(
 		Metadata:          metadata,
 	}
 	if err := event.Validate(); err != nil {
-		return platformfeedback.Event{}, err
+		return feedback.Event{}, err
 	}
 	return event, nil
 }
 
-func deliveryAttemptStatus(status string) (platformdelivery.AttemptStatus, error) {
+func deliveryAttemptStatus(status string) (attempt.AttemptStatus, error) {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case smsapi.StatusQueued:
-		return platformdelivery.StatusAccepted, nil
+		return attempt.StatusAccepted, nil
 	case smsapi.StatusSubmitted:
-		return platformdelivery.StatusSubmitted, nil
+		return attempt.StatusSubmitted, nil
 	case smsapi.StatusSent:
-		return platformdelivery.StatusSent, nil
+		return attempt.StatusSent, nil
 	case smsapi.StatusDelivered:
-		return platformdelivery.StatusDelivered, nil
+		return attempt.StatusDelivered, nil
 	case smsapi.StatusUndelivered, smsapi.StatusFailed:
-		return platformdelivery.StatusPermanentFailure, nil
+		return attempt.StatusPermanentFailure, nil
 	case smsapi.StatusRejected:
-		return platformdelivery.StatusRejected, nil
+		return attempt.StatusRejected, nil
 	case smsapi.StatusExpired:
-		return platformdelivery.StatusExpired, nil
+		return attempt.StatusExpired, nil
 	case smsapi.StatusUnknown:
-		return platformdelivery.StatusUnknown, nil
+		return attempt.StatusUnknown, nil
 	default:
 		return "", ErrUnsupportedStatus
 	}

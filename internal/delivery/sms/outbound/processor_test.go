@@ -5,18 +5,18 @@ import (
 
 	"github.com/google/uuid"
 
-	platformrouting "github.com/coffeyvidzro/dugble/server/internal/platform/messaging/routing"
+	smsmodule "github.com/coffeyvidzro/dugble/server/internal/modules/sms"
 )
 
 func TestSupportedDeliveryRoutesFiltersAccountsProvidersAndDuplicates(t *testing.T) {
 	t.Parallel()
 
-	routes := []platformrouting.Route{
-		{SenderProviderBindingID: uuid.New(), Provider: "mnotify", ProviderAccount: "default"},
-		{SenderProviderBindingID: uuid.New(), Provider: "MNOTIFY", ProviderAccount: "default"},
-		{SenderProviderBindingID: uuid.New(), Provider: "moolre", ProviderAccount: "secondary"},
-		{SenderProviderBindingID: uuid.New(), Provider: "unknown", ProviderAccount: "default"},
-		{SenderProviderBindingID: uuid.New(), Provider: "moolre", ProviderAccount: "default"},
+	routes := []smsmodule.DeliveryRoute{
+		{SenderID: uuid.New(), Provider: "mnotify", ProviderAccount: "default"},
+		{SenderID: uuid.New(), Provider: "MNOTIFY", ProviderAccount: "default"},
+		{SenderID: uuid.New(), Provider: "moolre", ProviderAccount: "secondary"},
+		{SenderID: uuid.New(), Provider: "unknown", ProviderAccount: "default"},
+		{SenderID: uuid.New(), Provider: "moolre", ProviderAccount: "default"},
 	}
 
 	filtered := supportedDeliveryRoutes(routes, []string{"mnotify", "moolre"})

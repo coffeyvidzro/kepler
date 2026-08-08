@@ -7,8 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging/delivery"
+	"github.com/coffeyvidzro/dugble/server/internal/delivery/attempt"
 )
 
 var (
@@ -21,14 +20,14 @@ type Lookup struct {
 	AttemptID         uuid.UUID
 	Provider          string
 	ProviderMessageID string
-	Channel           messaging.Channel
+	Channel           attempt.Channel
 }
 
 // AttemptUpdate is the conditional state change persisted with an event.
 type AttemptUpdate struct {
 	AttemptID      uuid.UUID
-	ExpectedStatus delivery.AttemptStatus
-	Status         *delivery.AttemptStatus
+	ExpectedStatus attempt.AttemptStatus
+	Status         *attempt.AttemptStatus
 	ProviderStatus string
 	ErrorCode      string
 	ErrorMessage   string
@@ -48,6 +47,6 @@ type ApplyResult struct {
 // ApplyEvent must deduplicate by Event.DedupeKey and conditionally update the
 // attempt from ExpectedStatus in the same transaction.
 type Repository interface {
-	FindAttempt(context.Context, Lookup) (delivery.Attempt, error)
+	FindAttempt(context.Context, Lookup) (attempt.Attempt, error)
 	ApplyEvent(context.Context, Event, AttemptUpdate) (ApplyResult, error)
 }

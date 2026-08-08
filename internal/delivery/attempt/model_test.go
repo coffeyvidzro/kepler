@@ -1,4 +1,4 @@
-package delivery
+package attempt
 
 import (
 	"encoding/json"
@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
 )
 
 func TestAttemptValidate(t *testing.T) {
@@ -18,7 +16,7 @@ func TestAttemptValidate(t *testing.T) {
 	attempt := Attempt{
 		ID:              uuid.New(),
 		TeamID:          uuid.New(),
-		Channel:         messaging.ChannelSMS,
+		Channel:         ChannelSMS,
 		SMSMessageID:    &messageID,
 		AttemptNumber:   1,
 		Status:          StatusClaimed,
@@ -32,7 +30,7 @@ func TestAttemptValidate(t *testing.T) {
 		t.Fatalf("Attempt.Validate() error = %v", err)
 	}
 
-	attempt.Channel = messaging.ChannelEmail
+	attempt.Channel = ChannelEmail
 	if err := attempt.Validate(); err == nil {
 		t.Fatal("Attempt.Validate() error = nil for mismatched channel and message")
 	}
@@ -46,7 +44,7 @@ func TestAttemptTerminalRequiresTimestamp(t *testing.T) {
 	attempt := Attempt{
 		ID:              uuid.New(),
 		TeamID:          uuid.New(),
-		Channel:         messaging.ChannelEmail,
+		Channel:         ChannelEmail,
 		EmailMessageID:  &messageID,
 		AttemptNumber:   1,
 		Status:          StatusDelivered,

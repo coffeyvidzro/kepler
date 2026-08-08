@@ -1,17 +1,15 @@
-package delivery
+package attempt
 
 import (
 	"errors"
 	"strings"
 
 	"github.com/google/uuid"
-
-	"github.com/coffeyvidzro/dugble/server/internal/platform/messaging"
 )
 
 // MessageReference identifies exactly one channel-specific message.
 type MessageReference struct {
-	Channel        messaging.Channel
+	Channel        Channel
 	EmailMessageID *uuid.UUID
 	SMSMessageID   *uuid.UUID
 }
@@ -25,10 +23,10 @@ func (reference MessageReference) Validate() error {
 	if emailSet == smsSet {
 		return errors.New("delivery attempt must reference exactly one message")
 	}
-	if reference.Channel == messaging.ChannelEmail && !emailSet {
+	if reference.Channel == ChannelEmail && !emailSet {
 		return errors.New("email delivery attempt requires an email message")
 	}
-	if reference.Channel == messaging.ChannelSMS && !smsSet {
+	if reference.Channel == ChannelSMS && !smsSet {
 		return errors.New("SMS delivery attempt requires an SMS message")
 	}
 	return nil
@@ -39,7 +37,7 @@ func (reference MessageReference) ID() (uuid.UUID, bool) {
 	if err := reference.Validate(); err != nil {
 		return uuid.Nil, false
 	}
-	if reference.Channel == messaging.ChannelEmail {
+	if reference.Channel == ChannelEmail {
 		return *reference.EmailMessageID, true
 	}
 	return *reference.SMSMessageID, true
@@ -47,10 +45,10 @@ func (reference MessageReference) ID() (uuid.UUID, bool) {
 
 // ProviderRoute is the immutable provider and sender snapshot used for an attempt.
 type ProviderRoute struct {
-	Provider                string
-	ProviderAccount         string
-	SenderAssetID           *uuid.UUID
-	SenderProviderBindingID *uuid.UUID
+	Provider        string
+	ProviderAccount string
+	SenderDomainID  *uuid.UUID
+	SenderID        *uuid.UUID
 }
 
 func (route ProviderRoute) Validate(requireProvider bool) error {
@@ -60,14 +58,14 @@ func (route ProviderRoute) Validate(requireProvider bool) error {
 	if requireProvider && strings.TrimSpace(route.Provider) == "" {
 		return errors.New("delivery attempt provider is required for the current status")
 	}
-	if route.SenderProviderBindingID != nil && route.SenderAssetID == nil {
-		return errors.New("delivery attempt sender binding requires a sender asset")
+	if route.SenderDomainID != nil && *route.SenderDomainID == uuid.Nil {
+		return errors.New("delivery attempt sender domain ID is invalid")
 	}
-	if route.SenderAssetID != nil && *route.SenderAssetID == uuid.Nil {
-		return errors.New("delivery attempt sender asset ID is invalid")
+	if route.SenderID != nil && *route.SenderID == uuid.Nil {
+		return errors.New("delivery attempt Sender ID is invalid")
 	}
-	if route.SenderProviderBindingID != nil && *route.SenderProviderBindingID == uuid.Nil {
-		return errors.New("delivery attempt sender binding ID is invalid")
+	if route.SenderDomainID != nil && route.SenderID != nil {
+		return errors.New("delivery attempt cannot reference both a sender domain and Sender ID")
 	}
 	return nil
 }
