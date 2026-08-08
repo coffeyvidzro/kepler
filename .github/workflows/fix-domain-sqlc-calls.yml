@@ -1,0 +1,242 @@
+name: Fix Domain SQLC Calls
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fix-domain-sqlc-calls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-domain-sqlc-calls
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/create-domains-aggregate
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Align repository calls with generated sqlc
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          repository = Path("internal/modules/domain/repository.go")
+          text = repository.read_text()
+          replacements = [
+              (
+                  "\t\tCreatedBy:         input.CreatedBy,",
+                  "\t\tCreatedBy:         &input.CreatedBy,",
+                  "create domain created_by",
+              ),
+              (
+                  "\trows, err := r.queries.ListDomains(ctx, teamID)",
+                  "\trows, err := r.queries.ListDomains(ctx, dbsqlc.ListDomainsParams{TeamID: teamID})",
+                  "list domains params",
+              ),
+              (
+                  "\trow, err := r.queries.GetDomainByID(ctx, id)",
+                  "\trow, err := r.queries.GetDomainByID(ctx, dbsqlc.GetDomainByIDParams{ID: id})",
+                  "get domain by ID params",
+              ),
+              (
+                  "\t\tvalue, err := r.domainWithRecords(ctx, row)",
+                  "\t\tvalue, err := r.domainWithRecords(ctx, domainFromReconciliationRow(row))",
+                  "reconciliation row conversion",
+              ),
+              (
+                  "\t\tLastError:   reason,",
+                  "\t\tLastError:   &reason,",
+                  "reconciliation error pointer",
+              ),
+              (
+                  "\t\tLastError:        reason,",
+                  "\t\tLastError:        &reason,",
+                  "health error pointer",
+              ),
+              (
+                  "\trecords, err := r.queries.ListDomainDNSRecords(ctx, row.ID)",
+                  "\trecords, err := r.queries.ListDomainDNSRecords(ctx, dbsqlc.ListDomainDNSRecordsParams{DomainID: row.ID})",
+                  "list DNS records params",
+              ),
+              (
+                  "\tif err := queries.DeleteCurrentDomainDNSRecords(ctx, domainID); err != nil {",
+                  "\tif err := queries.DeleteCurrentDomainDNSRecords(ctx, dbsqlc.DeleteCurrentDomainDNSRecordsParams{DomainID: domainID}); err != nil {",
+                  "delete DNS records params",
+              ),
+          ]
+          for old, new, label in replacements:
+              text = replace_once(text, old, new, label)
+
+          marker = "func domainFromSQLC(row dbsqlc.Domain, records []dbsqlc.DomainDnsRecord) SenderDomain {"
+          if marker not in text:
+              raise SystemExit("domain conversion marker not found")
+          adapter = '''func domainFromReconciliationRow(row dbsqlc.ClaimPendingDomainReconciliationsRow) dbsqlc.Domain {
+              return dbsqlc.Domain{
+                  ID: row.ID,
+                  TeamID: row.TeamID,
+                  Name: row.Name,
+                  NormalizedName: row.NormalizedName,
+                  Provider: row.Provider,
+                  ProviderAccount: row.ProviderAccount,
+                  ProviderRegion: row.ProviderRegion,
+                  ProviderExternalID: row.ProviderExternalID,
+                  Status: row.Status,
+                  ProviderStatus: row.ProviderStatus,
+                  OpenTracking: row.OpenTracking,
+                  ClickTracking: row.ClickTracking,
+                  TrackingSubdomain: row.TrackingSubdomain,
+                  ActiveTrackingSubdomain: row.ActiveTrackingSubdomain,
+                  TlsMode: row.TlsMode,
+                  SendingEnabled: row.SendingEnabled,
+                  ReceivingEnabled: row.ReceivingEnabled,
+                  CustomReturnPath: row.CustomReturnPath,
+                  HealthStatus: row.HealthStatus,
+                  ConsecutiveHealthFailures: row.ConsecutiveHealthFailures,
+                  FailureReason: row.FailureReason,
+                  LastError: row.LastError,
+                  SubmittedAt: row.SubmittedAt,
+                  VerifiedAt: row.VerifiedAt,
+                  DisabledAt: row.DisabledAt,
+                  LastCheckedAt: row.LastCheckedAt,
+                  NextCheckAt: row.NextCheckAt,
+                  LastHealthCheckedAt: row.LastHealthCheckedAt,
+                  LastHealthFailureAt: row.LastHealthFailureAt,
+                  ReconciliationAttempts: row.ReconciliationAttempts,
+                  ReconcileLockedAt: row.ReconcileLockedAt,
+                  ReconcileLockedBy: row.ReconcileLockedBy,
+                  CreatedBy: row.CreatedBy,
+                  CreatedAt: row.CreatedAt,
+                  UpdatedAt: row.UpdatedAt,
+              }
+          }
+
+          '''
+          text = text.replace(marker, adapter + marker, 1)
+          repository.write_text(text)
+
+          claims = Path("internal/modules/domain/claims.go")
+          text = claims.read_text()
+          replacements = [
+              (
+                  "\tsource, err := queries.GetDomainByNameForClaim(ctx, name)",
+                  "\tsource, err := queries.GetDomainByNameForClaim(ctx, dbsqlc.GetDomainByNameForClaimParams{Name: name})",
+                  "claim source lookup params",
+              ),
+              (
+                  "\t\tCreatedBy:         createdBy,",
+                  "\t\tCreatedBy:         &createdBy,",
+                  "claim created_by pointer",
+              ),
+              (
+                  "\t\tclaims = append(claims, DomainClaimReconciliation{Claim: domainClaimFromSQLC(row)})",
+                  "\t\tclaims = append(claims, DomainClaimReconciliation{Claim: domainClaimFromPendingRow(row)})",
+                  "claim CTE row conversion",
+              ),
+              (
+                  "\t\tBlockedReason: reason,",
+                  "\t\tBlockedReason: &reason,",
+                  "blocked reason pointer",
+              ),
+              (
+                  "\t\tFailureReason: reason,",
+                  "\t\tFailureReason: &reason,",
+                  "failure reason pointer",
+              ),
+              (
+                  "\treturn r.queries.DomainHasPendingScheduledEmails(ctx, domainID)",
+                  "\treturn r.queries.DomainHasPendingScheduledEmails(ctx, dbsqlc.DomainHasPendingScheduledEmailsParams{DomainID: &domainID})",
+                  "pending email params",
+              ),
+              (
+                  "\tclaim, err := queries.GetDomainClaimByID(ctx, claimID)",
+                  "\tclaim, err := queries.GetDomainClaimByID(ctx, dbsqlc.GetDomainClaimByIDParams{ID: claimID})",
+                  "claim by ID params",
+              ),
+              (
+                  "\tsource, err := queries.DeleteDomainForClaim(ctx, *claim.SourceDomainID)",
+                  "\tsource, err := queries.DeleteDomainForClaim(ctx, dbsqlc.DeleteDomainForClaimParams{ID: *claim.SourceDomainID})",
+                  "delete source domain params",
+              ),
+          ]
+          for old, new, label in replacements:
+              text = replace_once(text, old, new, label)
+
+          marker = "func domainClaimFromSQLC(row dbsqlc.DomainClaim) DomainClaim {"
+          if marker not in text:
+              raise SystemExit("domain claim conversion marker not found")
+          adapter = '''func domainClaimFromPendingRow(row dbsqlc.ClaimPendingDomainClaimsRow) DomainClaim {
+              return domainClaimFromSQLC(dbsqlc.DomainClaim{
+                  ID: row.ID,
+                  TargetDomainID: row.TargetDomainID,
+                  SourceDomainID: row.SourceDomainID,
+                  NormalizedName: row.NormalizedName,
+                  SourceTeamID: row.SourceTeamID,
+                  TargetTeamID: row.TargetTeamID,
+                  ProviderRegion: row.ProviderRegion,
+                  CustomReturnPath: row.CustomReturnPath,
+                  OpenTracking: row.OpenTracking,
+                  ClickTracking: row.ClickTracking,
+                  TrackingSubdomain: row.TrackingSubdomain,
+                  TlsMode: row.TlsMode,
+                  SendingEnabled: row.SendingEnabled,
+                  ReceivingEnabled: row.ReceivingEnabled,
+                  Status: row.Status,
+                  BlockedReason: row.BlockedReason,
+                  FailureReason: row.FailureReason,
+                  RecordName: row.RecordName,
+                  RecordValue: row.RecordValue,
+                  RecordTtl: row.RecordTtl,
+                  VerificationRequestedAt: row.VerificationRequestedAt,
+                  VerifiedAt: row.VerifiedAt,
+                  CompletedAt: row.CompletedAt,
+                  ExpiresAt: row.ExpiresAt,
+                  ReconcileLockedAt: row.ReconcileLockedAt,
+                  ReconcileLockedBy: row.ReconcileLockedBy,
+                  CreatedBy: row.CreatedBy,
+                  CreatedAt: row.CreatedAt,
+                  UpdatedAt: row.UpdatedAt,
+              })
+          }
+
+          '''
+          text = text.replace(marker, adapter + marker, 1)
+          claims.write_text(text)
+
+      - name: Format and test
+        run: |
+          gofmt -w internal/modules/domain/repository.go internal/modules/domain/claims.go
+          go test ./...
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-domain-sqlc-calls.yml
+          git add -A
+          git commit -m "Fix domain sqlc call shapes"
+          git push origin HEAD:agent/create-domains-aggregate
