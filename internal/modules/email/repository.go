@@ -89,25 +89,25 @@ func (r *Repository) CreateTx(ctx context.Context, tx pgx.Tx, teamID uuid.UUID, 
 		return Message{}, fmt.Errorf("encode email tags: %w", err)
 	}
 	row, err := r.queries.WithTx(tx).CreateEmailMessage(ctx, dbsqlc.CreateEmailMessageParams{
-		TeamID:                  teamID,
-		SenderProviderBindingID: req.SenderDomainID,
-		DeliveryProvider:        req.Provider,
-		ProviderRegion:          req.ProviderRegion,
-		MessageType:             req.MessageType,
-		FromEmail:               req.FromEmail,
-		FromName:                req.FromName,
-		ReplyToEmail:            req.ReplyToEmail,
-		ToEmail:                 req.ToEmail,
-		ToName:                  req.ToName,
-		Subject:                 req.Subject,
-		HtmlBody:                req.HTMLBody,
-		TextBody:                req.TextBody,
-		Metadata:                req.Metadata,
-		Recipients:              recipients,
-		Headers:                 headers,
-		Attachments:             attachments,
-		Tags:                    tags,
-		ScheduledAt:             pgconv.NullableTimestamptz(req.ScheduledAt),
+		TeamID:           teamID,
+		SenderDomainID:   req.SenderDomainID,
+		DeliveryProvider: req.Provider,
+		ProviderRegion:   req.ProviderRegion,
+		MessageType:      req.MessageType,
+		FromEmail:        req.FromEmail,
+		FromName:         req.FromName,
+		ReplyToEmail:     req.ReplyToEmail,
+		ToEmail:          req.ToEmail,
+		ToName:           req.ToName,
+		Subject:          req.Subject,
+		HtmlBody:         req.HTMLBody,
+		TextBody:         req.TextBody,
+		Metadata:         req.Metadata,
+		Recipients:       recipients,
+		Headers:          headers,
+		Attachments:      attachments,
+		Tags:             tags,
+		ScheduledAt:      pgconv.NullableTimestamptz(req.ScheduledAt),
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("create email message: %w", err)
@@ -119,27 +119,15 @@ func (r *Repository) ResolveSenderDomain(ctx context.Context, teamID uuid.UUID, 
 	var route SenderDomainRoute
 	var disabledAt *time.Time
 	err := r.db.QueryRow(ctx, `
-		SELECT binding.id,
-			CASE binding.provider WHEN 'ses' THEN 'aws_ses' ELSE binding.provider END,
-			COALESCE(binding.region, ''),
-			CASE binding.status
-				WHEN 'active' THEN 'verified'
-				WHEN 'rejected' THEN 'failed'
-				ELSE binding.status
-			END,
-			binding.health_status,
-			binding.disabled_at
-		FROM sender_provider_bindings AS binding
-		JOIN sender_assets AS asset
-		  ON asset.id = binding.sender_asset_id
-		JOIN sender_asset_grants AS grant_record
-		  ON grant_record.sender_asset_id = asset.id
-		 AND grant_record.team_id = $1
-		 AND grant_record.channel = 'email'
-		 AND grant_record.status = 'active'
-		WHERE asset.channel = 'email'
-		  AND asset.normalized_identity = lower(trim($2))
-		ORDER BY binding.created_at DESC
+		SELECT domain_record.id,
+			domain_record.provider,
+			domain_record.provider_region,
+			domain_record.status,
+			domain_record.health_status,
+			domain_record.disabled_at
+		FROM domains AS domain_record
+		WHERE domain_record.team_id = $1
+		  AND domain_record.normalized_name = lower(trim($2))
 		LIMIT 1
 	`, teamID, domainName).Scan(
 		&route.ID,

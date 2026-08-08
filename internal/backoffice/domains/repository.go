@@ -19,27 +19,27 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const domainProjection = `
-	binding.id,
-	asset.id,
-	COALESCE(asset.team_id::text, ''),
+	domain_record.id,
+	domain_record.id,
+	domain_record.team_id::text,
 	COALESCE(team.name, ''),
-	asset.normalized_identity,
-	asset.owner_type,
-	asset.status,
-	COALESCE(binding.provider, ''),
-	binding.provider_account,
-	COALESCE(binding.region, ''),
-	binding.status,
-	COALESCE(binding.provider_status, ''),
-	binding.verified,
-	binding.health_status,
-	binding.attempts,
-	binding.consecutive_health_failures,
-	COALESCE(binding.last_error, ''),
-	binding.last_checked_at,
-	binding.next_check_at,
-	binding.created_at,
-	binding.updated_at`
+	domain_record.normalized_name,
+	'team',
+	domain_record.status,
+	domain_record.provider,
+	domain_record.provider_account,
+	domain_record.provider_region,
+	domain_record.status,
+	COALESCE(domain_record.provider_status, ''),
+	domain_record.status = 'verified',
+	domain_record.health_status,
+	domain_record.reconciliation_attempts,
+	domain_record.consecutive_health_failures,
+	COALESCE(domain_record.last_error, ''),
+	domain_record.last_checked_at,
+	domain_record.next_check_at,
+	domain_record.created_at,
+	domain_record.updated_at`
 
 func (repository *Repository) List(
 	ctx context.Context,
@@ -51,13 +51,9 @@ func (repository *Repository) List(
 	}
 	rows, err := repository.db.Query(ctx, `
 		SELECT `+domainProjection+`
-		FROM sender_provider_bindings AS binding
-		JOIN sender_assets AS asset
-		  ON asset.id = binding.sender_asset_id
-		LEFT JOIN teams AS team
-		  ON team.id = asset.team_id
-		WHERE asset.channel = 'email'
-		ORDER BY binding.created_at DESC, binding.id DESC
+		FROM domains AS domain_record
+		LEFT JOIN teams AS team ON team.id = domain_record.team_id
+		ORDER BY domain_record.created_at DESC, domain_record.id DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
@@ -85,13 +81,9 @@ func (repository *Repository) Get(ctx context.Context, id uuid.UUID) (Domain, er
 	}
 	row := repository.db.QueryRow(ctx, `
 		SELECT `+domainProjection+`
-		FROM sender_provider_bindings AS binding
-		JOIN sender_assets AS asset
-		  ON asset.id = binding.sender_asset_id
-		LEFT JOIN teams AS team
-		  ON team.id = asset.team_id
-		WHERE asset.channel = 'email'
-		  AND binding.id = $1
+		FROM domains AS domain_record
+		LEFT JOIN teams AS team ON team.id = domain_record.team_id
+		WHERE domain_record.id = $1
 	`, id)
 	domain, err := scanDomain(row)
 	if err != nil {

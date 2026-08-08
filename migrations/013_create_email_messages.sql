@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS email_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    sender_provider_binding_id UUID REFERENCES sender_provider_bindings(id) ON DELETE SET NULL,
+    sender_domain_id UUID REFERENCES domains(id) ON DELETE SET NULL,
     delivery_provider TEXT NOT NULL DEFAULT 'aws_ses',
     provider_region TEXT NOT NULL DEFAULT 'us-east-1',
     message_type TEXT NOT NULL DEFAULT 'transactional',
@@ -58,9 +58,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_messages_id_team
 CREATE INDEX IF NOT EXISTS idx_email_messages_team_created
     ON email_messages (team_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_email_messages_sender_provider_binding
-    ON email_messages (sender_provider_binding_id)
-    WHERE sender_provider_binding_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_email_messages_sender_domain
+    ON email_messages (sender_domain_id)
+    WHERE sender_domain_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_messages_provider_message
     ON email_messages (provider, provider_message_id)

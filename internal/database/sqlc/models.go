@@ -160,10 +160,98 @@ type Currency struct {
 	IsEnabled bool   `db:"is_enabled" json:"is_enabled"`
 }
 
+type Domain struct {
+	ID                        uuid.UUID          `db:"id" json:"id"`
+	TeamID                    uuid.UUID          `db:"team_id" json:"team_id"`
+	Name                      string             `db:"name" json:"name"`
+	NormalizedName            string             `db:"normalized_name" json:"normalized_name"`
+	Provider                  string             `db:"provider" json:"provider"`
+	ProviderAccount           string             `db:"provider_account" json:"provider_account"`
+	ProviderRegion            string             `db:"provider_region" json:"provider_region"`
+	ProviderExternalID        *string            `db:"provider_external_id" json:"provider_external_id"`
+	Status                    string             `db:"status" json:"status"`
+	ProviderStatus            *string            `db:"provider_status" json:"provider_status"`
+	OpenTracking              bool               `db:"open_tracking" json:"open_tracking"`
+	ClickTracking             bool               `db:"click_tracking" json:"click_tracking"`
+	TrackingSubdomain         *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
+	ActiveTrackingSubdomain   *string            `db:"active_tracking_subdomain" json:"active_tracking_subdomain"`
+	TlsMode                   string             `db:"tls_mode" json:"tls_mode"`
+	SendingEnabled            bool               `db:"sending_enabled" json:"sending_enabled"`
+	ReceivingEnabled          bool               `db:"receiving_enabled" json:"receiving_enabled"`
+	CustomReturnPath          string             `db:"custom_return_path" json:"custom_return_path"`
+	HealthStatus              string             `db:"health_status" json:"health_status"`
+	ConsecutiveHealthFailures int32              `db:"consecutive_health_failures" json:"consecutive_health_failures"`
+	FailureReason             *string            `db:"failure_reason" json:"failure_reason"`
+	LastError                 *string            `db:"last_error" json:"last_error"`
+	SubmittedAt               pgtype.Timestamptz `db:"submitted_at" json:"submitted_at"`
+	VerifiedAt                pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	DisabledAt                pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	LastCheckedAt             pgtype.Timestamptz `db:"last_checked_at" json:"last_checked_at"`
+	NextCheckAt               pgtype.Timestamptz `db:"next_check_at" json:"next_check_at"`
+	LastHealthCheckedAt       pgtype.Timestamptz `db:"last_health_checked_at" json:"last_health_checked_at"`
+	LastHealthFailureAt       pgtype.Timestamptz `db:"last_health_failure_at" json:"last_health_failure_at"`
+	ReconciliationAttempts    int32              `db:"reconciliation_attempts" json:"reconciliation_attempts"`
+	ReconcileLockedAt         pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
+	ReconcileLockedBy         *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
+	CreatedBy                 *uuid.UUID         `db:"created_by" json:"created_by"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type DomainClaim struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	TargetDomainID          uuid.UUID          `db:"target_domain_id" json:"target_domain_id"`
+	SourceDomainID          *uuid.UUID         `db:"source_domain_id" json:"source_domain_id"`
+	NormalizedName          string             `db:"normalized_name" json:"normalized_name"`
+	SourceTeamID            uuid.UUID          `db:"source_team_id" json:"source_team_id"`
+	TargetTeamID            uuid.UUID          `db:"target_team_id" json:"target_team_id"`
+	ProviderRegion          string             `db:"provider_region" json:"provider_region"`
+	CustomReturnPath        string             `db:"custom_return_path" json:"custom_return_path"`
+	OpenTracking            bool               `db:"open_tracking" json:"open_tracking"`
+	ClickTracking           bool               `db:"click_tracking" json:"click_tracking"`
+	TrackingSubdomain       *string            `db:"tracking_subdomain" json:"tracking_subdomain"`
+	TlsMode                 string             `db:"tls_mode" json:"tls_mode"`
+	SendingEnabled          bool               `db:"sending_enabled" json:"sending_enabled"`
+	ReceivingEnabled        bool               `db:"receiving_enabled" json:"receiving_enabled"`
+	Status                  string             `db:"status" json:"status"`
+	BlockedReason           *string            `db:"blocked_reason" json:"blocked_reason"`
+	FailureReason           *string            `db:"failure_reason" json:"failure_reason"`
+	RecordName              string             `db:"record_name" json:"record_name"`
+	RecordValue             string             `db:"record_value" json:"record_value"`
+	RecordTtl               string             `db:"record_ttl" json:"record_ttl"`
+	VerificationRequestedAt pgtype.Timestamptz `db:"verification_requested_at" json:"verification_requested_at"`
+	VerifiedAt              pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	CompletedAt             pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	ExpiresAt               pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ReconcileLockedAt       pgtype.Timestamptz `db:"reconcile_locked_at" json:"reconcile_locked_at"`
+	ReconcileLockedBy       *string            `db:"reconcile_locked_by" json:"reconcile_locked_by"`
+	CreatedBy               *uuid.UUID         `db:"created_by" json:"created_by"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type DomainDnsRecord struct {
+	ID           uuid.UUID          `db:"id" json:"id"`
+	DomainID     uuid.UUID          `db:"domain_id" json:"domain_id"`
+	Purpose      string             `db:"purpose" json:"purpose"`
+	Record       string             `db:"record" json:"record"`
+	Name         string             `db:"name" json:"name"`
+	Type         string             `db:"type" json:"type"`
+	Value        string             `db:"value" json:"value"`
+	Ttl          string             `db:"ttl" json:"ttl"`
+	Priority     *int32             `db:"priority" json:"priority"`
+	Status       string             `db:"status" json:"status"`
+	IsCurrent    bool               `db:"is_current" json:"is_current"`
+	VerifiedAt   pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	SupersededAt pgtype.Timestamptz `db:"superseded_at" json:"superseded_at"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type EmailMessage struct {
 	ID                       uuid.UUID          `db:"id" json:"id"`
 	TeamID                   uuid.UUID          `db:"team_id" json:"team_id"`
-	SenderProviderBindingID  *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
+	SenderDomainID           *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
 	DeliveryProvider         string             `db:"delivery_provider" json:"delivery_provider"`
 	ProviderRegion           string             `db:"provider_region" json:"provider_region"`
 	MessageType              string             `db:"message_type" json:"message_type"`
@@ -282,6 +370,7 @@ type MessageDeliveryAttempt struct {
 	ProviderAccount         string             `db:"provider_account" json:"provider_account"`
 	ProviderMessageID       *string            `db:"provider_message_id" json:"provider_message_id"`
 	ProviderStatus          *string            `db:"provider_status" json:"provider_status"`
+	SenderDomainID          *uuid.UUID         `db:"sender_domain_id" json:"sender_domain_id"`
 	SenderAssetID           *uuid.UUID         `db:"sender_asset_id" json:"sender_asset_id"`
 	SenderProviderBindingID *uuid.UUID         `db:"sender_provider_binding_id" json:"sender_provider_binding_id"`
 	ErrorCode               *string            `db:"error_code" json:"error_code"`
