@@ -70,7 +70,7 @@ func (r *Repository) Create(ctx context.Context, input CreateDomainInput) (Sende
 		TlsMode:           input.Configuration.TLS,
 		SendingEnabled:    input.Configuration.Capabilities.Sending,
 		ReceivingEnabled:  input.Configuration.Capabilities.Receiving,
-		CreatedBy:         input.CreatedBy,
+		CreatedBy:         &input.CreatedBy,
 	})
 	if isUniqueViolation(err) {
 		return SenderDomain{}, ErrSenderDomainAlreadyExists
@@ -91,7 +91,7 @@ func (r *Repository) List(ctx context.Context, teamID uuid.UUID) ([]SenderDomain
 	if err := r.requireConfigured(); err != nil {
 		return nil, err
 	}
-	rows, err := r.queries.ListDomains(ctx, teamID)
+	rows, err := r.queries.ListDomains(ctx, dbsqlc.ListDomainsParams{TeamID: teamID})
 	if err != nil {
 		return nil, fmt.Errorf("list sender domains: %w", err)
 	}
@@ -131,7 +131,7 @@ func (r *Repository) GetByName(ctx context.Context, teamID uuid.UUID, name strin
 }
 
 func (r *Repository) getByID(ctx context.Context, id uuid.UUID) (SenderDomain, error) {
-	row, err := r.queries.GetDomainByID(ctx, id)
+	row, err := r.queries.GetDomainByID(ctx, dbsqlc.GetDomainByIDParams{ID: id})
 	if err != nil {
 		return SenderDomain{}, err
 	}
@@ -213,7 +213,7 @@ func (r *Repository) ClaimPendingReconciliations(
 	}
 	claims := make([]ReconciliationClaim, 0, len(rows))
 	for _, row := range rows {
-		value, err := r.domainWithRecords(ctx, row)
+		value, err := r.domainWithRecords(ctx, domainFromReconciliationRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +272,7 @@ func (r *Repository) RecordReconciliationFailure(
 		reason = cause.Error()
 	}
 	row, err := r.queries.RecordDomainReconciliationFailure(ctx, dbsqlc.RecordDomainReconciliationFailureParams{
-		LastError:   reason,
+		LastError:   &reason,
 		NextCheckAt: timestamptz(nextCheckAt),
 		ID:          id,
 		WorkerID:    strings.TrimSpace(workerID),
@@ -314,7 +314,7 @@ func (r *Repository) RecordHealthFailure(
 	}
 	row, err := r.queries.RecordDomainHealthFailure(ctx, dbsqlc.RecordDomainHealthFailureParams{
 		FailureThreshold: failureThreshold,
-		LastError:        reason,
+		LastError:        &reason,
 		NextCheckAt:      timestamptz(nextCheckAt),
 		ID:               id,
 		WorkerID:         strings.TrimSpace(workerID),
@@ -398,7 +398,7 @@ func (r *Repository) PurgeIfUnreferenced(ctx context.Context, id, teamID uuid.UU
 }
 
 func (r *Repository) domainWithRecords(ctx context.Context, row dbsqlc.Domain) (SenderDomain, error) {
-	records, err := r.queries.ListDomainDNSRecords(ctx, row.ID)
+	records, err := r.queries.ListDomainDNSRecords(ctx, dbsqlc.ListDomainDNSRecordsParams{DomainID: row.ID})
 	if err != nil {
 		return SenderDomain{}, fmt.Errorf("list sender domain DNS records: %w", err)
 	}
@@ -411,7 +411,7 @@ func replaceDomainDNSRecords(
 	domainID uuid.UUID,
 	records []VerificationRecord,
 ) error {
-	if err := queries.DeleteCurrentDomainDNSRecords(ctx, domainID); err != nil {
+	if err := queries.DeleteCurrentDomainDNSRecords(ctx, dbsqlc.DeleteCurrentDomainDNSRecordsParams{DomainID: domainID}); err != nil {
 		return fmt.Errorf("delete current sender domain DNS records: %w", err)
 	}
 	for _, record := range records {
@@ -435,6 +435,25 @@ func replaceDomainDNSRecords(
 		}
 	}
 	return nil
+}
+
+func domainFromReconciliationRow(row dbsqlc.ClaimPendingDomainReconciliationsRow) dbsqlc.Domain {
+	return dbsqlc.Domain{
+		ID: row.ID, TeamID: row.TeamID, Name: row.Name, NormalizedName: row.NormalizedName,
+		Provider: row.Provider, ProviderAccount: row.ProviderAccount, ProviderRegion: row.ProviderRegion,
+		ProviderExternalID: row.ProviderExternalID, Status: row.Status, ProviderStatus: row.ProviderStatus,
+		OpenTracking: row.OpenTracking, ClickTracking: row.ClickTracking,
+		TrackingSubdomain: row.TrackingSubdomain, ActiveTrackingSubdomain: row.ActiveTrackingSubdomain,
+		TlsMode: row.TlsMode, SendingEnabled: row.SendingEnabled, ReceivingEnabled: row.ReceivingEnabled,
+		CustomReturnPath: row.CustomReturnPath, HealthStatus: row.HealthStatus,
+		ConsecutiveHealthFailures: row.ConsecutiveHealthFailures, FailureReason: row.FailureReason,
+		LastError: row.LastError, SubmittedAt: row.SubmittedAt, VerifiedAt: row.VerifiedAt,
+		DisabledAt: row.DisabledAt, LastCheckedAt: row.LastCheckedAt, NextCheckAt: row.NextCheckAt,
+		LastHealthCheckedAt: row.LastHealthCheckedAt, LastHealthFailureAt: row.LastHealthFailureAt,
+		ReconciliationAttempts: row.ReconciliationAttempts, ReconcileLockedAt: row.ReconcileLockedAt,
+		ReconcileLockedBy: row.ReconcileLockedBy, CreatedBy: row.CreatedBy,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	}
 }
 
 func domainFromSQLC(row dbsqlc.Domain, records []dbsqlc.DomainDnsRecord) SenderDomain {

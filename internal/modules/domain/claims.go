@@ -43,7 +43,7 @@ func (r *Repository) CreateClaim(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	queries := r.queries.WithTx(tx)
-	source, err := queries.GetDomainByNameForClaim(ctx, name)
+	source, err := queries.GetDomainByNameForClaim(ctx, dbsqlc.GetDomainByNameForClaimParams{Name: name})
 	if err != nil {
 		return DomainClaim{}, err
 	}
@@ -71,7 +71,7 @@ func (r *Repository) CreateClaim(
 		RecordValue:       verificationToken,
 		RecordTtl:         "Auto",
 		ExpiresAt:         timestamptz(time.Now().UTC().Add(DefaultClaimLifetime)),
-		CreatedBy:         createdBy,
+		CreatedBy:         &createdBy,
 	})
 	if isUniqueViolation(err) {
 		return DomainClaim{}, ErrDomainClaimAlreadyExists
@@ -143,7 +143,7 @@ func (r *Repository) ClaimPendingClaims(
 	}
 	claims := make([]DomainClaimReconciliation, 0, len(rows))
 	for _, row := range rows {
-		claims = append(claims, DomainClaimReconciliation{Claim: domainClaimFromSQLC(row)})
+		claims = append(claims, DomainClaimReconciliation{Claim: domainClaimFromPendingRow(row)})
 	}
 	return claims, nil
 }
@@ -182,7 +182,7 @@ func (r *Repository) MarkClaimBlocked(
 	workerID, reason string,
 ) (DomainClaim, error) {
 	row, err := r.queries.MarkDomainClaimBlocked(ctx, dbsqlc.MarkDomainClaimBlockedParams{
-		BlockedReason: reason,
+		BlockedReason: &reason,
 		ID:            claimID,
 		WorkerID:      strings.TrimSpace(workerID),
 	})
@@ -203,7 +203,7 @@ func (r *Repository) MarkClaimFailed(
 		reason = cause.Error()
 	}
 	row, err := r.queries.MarkDomainClaimFailed(ctx, dbsqlc.MarkDomainClaimFailedParams{
-		FailureReason: reason,
+		FailureReason: &reason,
 		ID:            claimID,
 		WorkerID:      strings.TrimSpace(workerID),
 	})
@@ -214,7 +214,7 @@ func (r *Repository) MarkClaimFailed(
 }
 
 func (r *Repository) HasPendingScheduledEmails(ctx context.Context, domainID uuid.UUID) (bool, error) {
-	return r.queries.DomainHasPendingScheduledEmails(ctx, domainID)
+	return r.queries.DomainHasPendingScheduledEmails(ctx, dbsqlc.DomainHasPendingScheduledEmailsParams{DomainID: &domainID})
 }
 
 func (r *Repository) CompleteClaimTransfer(
@@ -233,14 +233,14 @@ func (r *Repository) CompleteClaimTransfer(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	queries := r.queries.WithTx(tx)
-	claim, err := queries.GetDomainClaimByID(ctx, claimID)
+	claim, err := queries.GetDomainClaimByID(ctx, dbsqlc.GetDomainClaimByIDParams{ID: claimID})
 	if err != nil {
 		return SenderDomain{}, DomainClaim{}, fmt.Errorf("get domain claim for completion: %w", err)
 	}
 	if claim.Status != ClaimStatusVerified || claim.SourceDomainID == nil {
 		return SenderDomain{}, DomainClaim{}, errors.New("domain claim is not ready for completion")
 	}
-	source, err := queries.DeleteDomainForClaim(ctx, *claim.SourceDomainID)
+	source, err := queries.DeleteDomainForClaim(ctx, dbsqlc.DeleteDomainForClaimParams{ID: *claim.SourceDomainID})
 	if err != nil {
 		return SenderDomain{}, DomainClaim{}, fmt.Errorf("remove source domain during claim: %w", err)
 	}
@@ -435,6 +435,23 @@ func (s *Service) ReconcileClaim(
 		return DomainClaim{}, err
 	}
 	return completed, nil
+}
+
+func domainClaimFromPendingRow(row dbsqlc.ClaimPendingDomainClaimsRow) DomainClaim {
+	return domainClaimFromSQLC(dbsqlc.DomainClaim{
+		ID: row.ID, TargetDomainID: row.TargetDomainID, SourceDomainID: row.SourceDomainID,
+		NormalizedName: row.NormalizedName, SourceTeamID: row.SourceTeamID, TargetTeamID: row.TargetTeamID,
+		ProviderRegion: row.ProviderRegion, CustomReturnPath: row.CustomReturnPath,
+		OpenTracking: row.OpenTracking, ClickTracking: row.ClickTracking,
+		TrackingSubdomain: row.TrackingSubdomain, TlsMode: row.TlsMode,
+		SendingEnabled: row.SendingEnabled, ReceivingEnabled: row.ReceivingEnabled,
+		Status: row.Status, BlockedReason: row.BlockedReason, FailureReason: row.FailureReason,
+		RecordName: row.RecordName, RecordValue: row.RecordValue, RecordTtl: row.RecordTtl,
+		VerificationRequestedAt: row.VerificationRequestedAt, VerifiedAt: row.VerifiedAt,
+		CompletedAt: row.CompletedAt, ExpiresAt: row.ExpiresAt,
+		ReconcileLockedAt: row.ReconcileLockedAt, ReconcileLockedBy: row.ReconcileLockedBy,
+		CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	})
 }
 
 func domainClaimFromSQLC(row dbsqlc.DomainClaim) DomainClaim {
